@@ -1,4 +1,7 @@
 pub mod discover;
+pub mod listen;
+pub mod info;
+pub mod scan;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
