@@ -1,3 +1,4 @@
+use pnet::datalink;
 use crate::cmd::Target;
 use crate::net;
 
@@ -8,6 +9,6 @@ pub fn discover(target: Target) {
 }
 
 pub fn discover_lan() {
-    let interface = net::iface::select(Target::LAN);
-    println!("{interface}")
+    let interface = net::interface::select(Target::LAN, &datalink::interfaces());
+    println!("{:?}", interface)
 }

@@ -16,14 +16,18 @@ pub struct CommandLine {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Show networking information about this device
+    #[command(alias = "i")]
     Info,
     /// Enumerate a network passively
+    #[command(alias = "l")]
     Listen,
     /// Discover hosts in a given network
+    #[command(alias = "d")]
     Discover {
         target: Target,
     },
     /// Scan one or more hosts
+    #[command(alias = "s")]
     Scan {
         target: Target,
     }
