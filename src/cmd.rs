@@ -21,16 +21,16 @@ pub enum Commands {
     Listen,
     /// Discover hosts in a given network
     Discover {
-        network: Network,
+        target: Target,
     },
     /// Scan one or more hosts
     Scan {
-        scan_target: String,
+        target: Target,
     }
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
-pub enum Network {
+pub enum Target {
     LAN,
 }
 
