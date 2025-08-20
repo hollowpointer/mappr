@@ -7,29 +7,51 @@ use super::util::{ni, v4, v6};
                        Tests for LAN
 **************************************************************/
 
+fn assert_lan_selected(expected: &NetworkInterface, interfaces: Vec<NetworkInterface>) {
+    let got = interface::select(Target::LAN, &interfaces);
+    assert_eq!(
+        got.as_ref(), Some(expected),
+        "LAN select mismatch.\nexpected: {:?}\n     got: {:?}\nfrom set: {:#?}",
+        expected, got, interfaces);
+}
+
+#[test]
+fn lan_ignores_down_interfaces() {
+    let got = interface::select(Target::LAN, &vec![enp9s0_down()]);
+    assert_eq!(None, got);
+}
+
+#[test]
+fn lan_ignores_virtuals_and_bridges() {
+    let got = interface::select(Target::LAN, &vec![docker0(), br0(), veth1234()]);
+    assert!(got.is_none());
+}
+
+#[test]
+fn lan_ignores_ipv6_link_local_only() {
+    let got = interface::select(Target::LAN, &vec![veth1234(), ipv6leakintrf0()]);
+    assert!(got.is_none());
+}
+
 #[test]
 fn lan_selects_enp9s0() {
-    let interfaces: Vec<NetworkInterface> = iface_all();
-    assert_eq!(enp9s0(), interface::select(Target::LAN, &interfaces).unwrap());
-}
-
-#[test]
-fn lan_selects_nothing_when_no_lan() {
-    let interfaces: Vec<NetworkInterface> = vec![lo(), veth1234(), tun0(), ipv6leakintrf0()];
-    let selected = interface::select(Target::LAN, &interfaces);
-    assert!(selected.is_none(), "Expected no interface, received: {selected:?}");
-}
-
-#[test]
-fn lan_selects_wlan0() {
-    let interfaces: Vec<NetworkInterface> = vec![ipv6leakintrf0(), lo(), veth1234(), wlan0()];
-    assert_eq!(wlan0(), interface::select(Target::LAN, &interfaces).unwrap());
+    assert_lan_selected(&enp9s0(), iface_all());
 }
 
 #[test]
 fn lan_selects_eth1() {
-    let interfaces: Vec<NetworkInterface> = vec![lo(), ipv6leakintrf0(), veth1234(), eth1()];
-    assert_eq!(eth1(), interface::select(Target::LAN, &interfaces).unwrap());
+    assert_lan_selected(&eth1(), vec![lo(), ipv6leakintrf0(), docker0(), eth1(), veth1234(), br0()]);
+}
+
+#[test]
+fn lan_selects_wlan0() {
+    assert_lan_selected(&wlan0(), vec![ipv6leakintrf0(), lo(), br0(), veth1234(), wlan0()])
+}
+
+#[test]
+fn lan_prefers_wired_over_wifi() {
+    let got = interface::select(Target::LAN, &vec![wlan0(), enp9s0()]);
+    assert_eq!(Some(enp9s0()), got);
 }
 
 /*************************************************************
@@ -73,6 +95,14 @@ fn enp9s0() -> NetworkInterface {
         69699,
     )
 }
+
+fn enp9s0_down() -> NetworkInterface {
+    let mut nic = enp9s0();
+    // Mask out the UP flag if your ni() encodes it in flags.
+    nic.flags &= !libc::IFF_UP as u32;
+    nic
+}
+
 
 fn tun0() -> NetworkInterface {
     ni(
