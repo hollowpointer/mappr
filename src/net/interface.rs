@@ -1,6 +1,8 @@
+use std::net::Ipv4Addr;
 use pnet::datalink::NetworkInterface;
 use crate::cmd::Target;
 use std::path::Path;
+use pnet::ipnetwork::IpNetwork;
 
 pub fn select(target: Target, interfaces: &[NetworkInterface]) -> Option<NetworkInterface> {
     match target {
@@ -8,7 +10,18 @@ pub fn select(target: Target, interfaces: &[NetworkInterface]) -> Option<Network
     }
 }
 
-// Selects the first LAN interface it finds
+pub fn get_ipv4(interface: &NetworkInterface) -> Result<Ipv4Addr, String> {
+    if let Some(ip_net) = interface.ips.first() {
+        if let IpNetwork::V4(v4_net) = ip_net {
+            Ok(v4_net.ip())
+        } else {
+            return Err("Interface does not have an IPv4 address".into());
+        }
+    } else {
+        return Err("Interface has no IP address at all".into());
+    }
+}
+
 fn select_lan(interfaces: &[NetworkInterface]) -> Option<NetworkInterface> {
     let mut candidates: Vec<_> = interfaces
         .iter()
