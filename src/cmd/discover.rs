@@ -24,11 +24,27 @@ impl Host {
         }
     }
 
-    fn print_tree(&self) {
-        println!("Found Device:");
-        println!("├── IP      : {}", self.ipv4);
-        println!("└── MAC     : {}", self.mac_addr);
+    fn print(&self) {
+        let side = "\x1b[90m│\x1b[0m";
+        let width = 31; // inner width of the box
+
+        println!("\x1b[90m┌{}┐\x1b[0m", "─".repeat(width));
+
+        // Device Found line (pad first, then color)
+        let text = "[+] Device Found";
+        println!("{side} \x1b[32m{text}\x1b[0m{:pad$}{side}", "", pad = width - text.len() - 1);
+
+        // IP line
+        let ip_text = format!("├─ IP  : {}", self.ipv4);
+        println!("{side} \x1b[36m{:<width$}\x1b[0m{side}", ip_text, width = width - 1);
+
+        // MAC line
+        let mac_text = format!("└─ MAC : {}", self.mac_addr);
+        println!("{side} \x1b[33m{:<width$}\x1b[0m{side}", mac_text, width = width - 1);
+
+        println!("\x1b[90m└{}┘\x1b[0m", "─".repeat(width));
     }
+
 }
 
 pub fn discover(target: Target) {
@@ -44,7 +60,7 @@ fn discover_lan() -> Result<()> {
         .ok_or_else(|| anyhow!("No suitable LAN interface found"))?;
 
     let mut cfg: Config = Config::default();
-    cfg.read_timeout = Some(Duration::from_millis(50));
+    cfg.read_timeout = Some(Duration::from_millis(100));
     let (mut tx, mut rx) = match datalink::channel(&interface, cfg) {
         Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => anyhow::bail!("Non-ethernet channel returned for interface {}", interface.name),
@@ -59,8 +75,7 @@ fn discover_lan() -> Result<()> {
         }
     }
 
-    println!("===============================");
-    let deadline = Instant::now() + Duration::from_millis(1000);
+    let deadline = Instant::now() + Duration::from_millis(3000);
     while deadline > Instant::now() {
         match rx.next() {
             Ok(frame) => {
@@ -71,8 +86,7 @@ fn discover_lan() -> Result<()> {
                                 let host = Host::new(
                                     arp.get_sender_proto_addr(),
                                     arp.get_sender_hw_addr());
-                                host.print_tree();
-                                println!("===============================");
+                                host.print();
                             }
                         }
                     }
