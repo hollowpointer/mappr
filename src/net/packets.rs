@@ -33,7 +33,7 @@ pub enum Packet {
 
 impl Packet {
     pub fn new(packet_type: PacketType, interface: &NetworkInterface, target_addr: Ipv4Addr)
-        -> Result<Self, PacketError> {
+        -> Result<Packet, PacketError> {
         match packet_type {
             PacketType::ARP => create_arp_request(interface, target_addr),
         }
