@@ -1,24 +1,29 @@
-use std::net::Ipv4Addr;
-use std::time::{Duration, Instant};
+use anyhow::{anyhow, Result};
+use mac_oui::Oui;
 use pnet::datalink;
 use pnet::datalink::{Channel, Config};
-use anyhow::{anyhow, Result};
 use pnet::packet::arp::{ArpOperations, ArpPacket};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::Packet;
 use pnet::util::MacAddr;
+use std::net::Ipv4Addr;
+use std::time::{Duration, Instant};
 use crate::cmd::Target;
 use crate::net::packets;
 use crate::net;
 
 struct Host {
+    id: u32,
+    vendor: String,
     ipv4: Ipv4Addr,
     mac_addr: MacAddr,
 }
 
 impl Host {
-    fn new(ipv4: Ipv4Addr, mac_addr: MacAddr) -> Self {
+    fn new(id: u32, vendor: String, ipv4: Ipv4Addr, mac_addr: MacAddr) -> Self {
         Self {
+            id,
+            vendor,
             ipv4,
             mac_addr,
         }
@@ -26,20 +31,24 @@ impl Host {
 
     fn print(&self) {
         let side = "\x1b[90m│\x1b[0m";
-        let width = 31; // inner width of the box
+        let width = 50; // inner width of the box
 
         println!("\x1b[90m┌{}┐\x1b[0m", "─".repeat(width));
 
         // Device Found line (pad first, then color)
-        let text = "[+] Device Found";
+        let text = format!("[+] Device {} Found", self.id);
         println!("{side} \x1b[32m{text}\x1b[0m{:pad$}{side}", "", pad = width - text.len() - 1);
 
-        // IP line
-        let ip_text = format!("├─ IP  : {}", self.ipv4);
-        println!("{side} \x1b[36m{:<width$}\x1b[0m{side}", ip_text, width = width - 1);
+        // Vendor Line (magenta)
+        let vendor_text = format!("├─ Vendor : {}", self.vendor);
+        println!("{side} \x1b[35m{:<width$}\x1b[0m{side}", vendor_text, width = width - 1);
 
-        // MAC line
-        let mac_text = format!("└─ MAC : {}", self.mac_addr);
+        // IP line (blue)
+        let ip_text = format!("├─ IP     : {}", self.ipv4);
+        println!("{side} \x1b[34m{:<width$}\x1b[0m{side}", ip_text, width = width - 1);
+
+        // MAC line (yellow)
+        let mac_text = format!("└─ MAC    : {}", self.mac_addr);
         println!("{side} \x1b[33m{:<width$}\x1b[0m{side}", mac_text, width = width - 1);
 
         println!("\x1b[90m└{}┘\x1b[0m", "─".repeat(width));
@@ -75,7 +84,9 @@ fn discover_lan() -> Result<()> {
         }
     }
 
+    let oui_db = Oui::default().expect("Failed to load OUI DB");
     let deadline = Instant::now() + Duration::from_millis(3000);
+    let mut id = 1;
     while deadline > Instant::now() {
         match rx.next() {
             Ok(frame) => {
@@ -83,10 +94,21 @@ fn discover_lan() -> Result<()> {
                     if eth.get_ethertype() == EtherTypes::Arp {
                         if let Some(arp) = ArpPacket::new(eth.payload()) {
                             if arp.get_operation() == ArpOperations::Reply {
+                                let vendor: String = match oui_db.lookup_by_mac(&arp.get_sender_hw_addr().to_string()) {
+                                    Ok(Some(entry)) => entry.company_name.clone(), // get the String from the entry
+                                    Ok(None)        => "Unknown".to_string(),
+                                    Err(e) => {
+                                        eprintln!("OUI lookup failed: {e}");
+                                        "Unknown".to_string()
+                                    }
+                                };
                                 let host = Host::new(
+                                    id,
+                                    vendor,
                                     arp.get_sender_proto_addr(),
                                     arp.get_sender_hw_addr());
                                 host.print();
+                                id += 1;
                             }
                         }
                     }
