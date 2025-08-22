@@ -1,7 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use mac_oui::Oui;
 use pnet::datalink;
-use pnet::datalink::{Channel, Config};
+use pnet::datalink::{Config, NetworkInterface};
 use pnet::packet::arp::{ArpOperations, ArpPacket};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::Packet;
@@ -29,14 +29,23 @@ impl Host {
         }
     }
 
-    fn print(&self) {
+    fn print_lan(&self) {
+        /*
+        Prints this for each host found:
+        ┌──────────────────────────────────────────────────┐
+        │ [+] Host 3 Found                                 │
+        │ ├─ Vendor : Raspberry Pi Trading Ltd             │
+        │ ├─ IP     : 192.168.0.150                        │
+        │ └─ MAC    : c8:52:61:c7:05:94                    │
+        └──────────────────────────────────────────────────┘
+         */
         let side = "\x1b[90m│\x1b[0m";
         let width = 50; // inner width of the box
 
         println!("\x1b[90m┌{}┐\x1b[0m", "─".repeat(width));
 
         // Device Found line (pad first, then color)
-        let text = format!("[+] Device {} Found", self.id);
+        let text = format!("[+] Host {} Found", self.id);
         println!("{side} \x1b[32m{text}\x1b[0m{:pad$}{side}", "", pad = width - text.len() - 1);
 
         // Vendor Line (magenta)
@@ -53,40 +62,36 @@ impl Host {
 
         println!("\x1b[90m└{}┘\x1b[0m", "─".repeat(width));
     }
-
 }
 
 pub fn discover(target: Target) {
     if let Err(e) = match target {
-        Target::LAN => discover_lan()
+        Target::LAN => discover_lan(net::interface::select(Target::LAN, &datalink::interfaces())),
+        _ => { Ok(()) }
     } {
         eprintln!("discover failed: {e}")
     }
 }
 
-fn discover_lan() -> Result<()> {
-    let interface = net::interface::select(Target::LAN, &datalink::interfaces())
-        .ok_or_else(|| anyhow!("No suitable LAN interface found"))?;
+fn discover_lan(intf: NetworkInterface) -> Result<()> {
+    let mut channel_cfg: Config = Config::default();
+    channel_cfg.read_timeout = Some(Duration::from_millis(100));
+    try_arp(intf, channel_cfg).expect("Failed to perform ARP sweep");
+    Ok(())
+}
 
-    let mut cfg: Config = Config::default();
-    cfg.read_timeout = Some(Duration::from_millis(100));
-    let (mut tx, mut rx) = match datalink::channel(&interface, cfg) {
-        Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
-        Ok(_) => anyhow::bail!("Non-ethernet channel returned for interface {}", interface.name),
-        Err(e) => anyhow::bail!("Error creating datalink channel: {}", e)
-    };
-
+fn try_arp(intf: NetworkInterface, channel_cfg: Config) -> Result<()> {
+    let (mut tx, mut rx) = net::channel::open_ethernet_channel(&intf, &channel_cfg)?;
+    let oui_db = Oui::default().expect("Failed to load OUI DB");
+    let deadline = Instant::now() + Duration::from_millis(3000);
+    let mut host_id = 1;
     for ip in 1..=254u8 {
         let ip_addr = Ipv4Addr::new(192,168,0, ip);
-        let pkt = packets::Packet::new(packets::PacketType::ARP, &interface, ip_addr)?;
-        if let Some(Err(e)) = tx.send_to(pkt.bytes(), Some(interface.clone())) {
+        let pkt = packets::Packet::new(packets::PacketType::ARP, &intf, ip_addr)?;
+        if let Some(Err(e)) = tx.send_to(pkt.bytes(), Some(intf.clone())) {
             eprintln!("send {ip_addr} failed: {e}");
         }
     }
-
-    let oui_db = Oui::default().expect("Failed to load OUI DB");
-    let deadline = Instant::now() + Duration::from_millis(3000);
-    let mut id = 1;
     while deadline > Instant::now() {
         match rx.next() {
             Ok(frame) => {
@@ -95,7 +100,7 @@ fn discover_lan() -> Result<()> {
                         if let Some(arp) = ArpPacket::new(eth.payload()) {
                             if arp.get_operation() == ArpOperations::Reply {
                                 let vendor: String = match oui_db.lookup_by_mac(&arp.get_sender_hw_addr().to_string()) {
-                                    Ok(Some(entry)) => entry.company_name.clone(), // get the String from the entry
+                                    Ok(Some(entry)) => entry.company_name.clone(),
                                     Ok(None)        => "Unknown".to_string(),
                                     Err(e) => {
                                         eprintln!("OUI lookup failed: {e}");
@@ -103,12 +108,12 @@ fn discover_lan() -> Result<()> {
                                     }
                                 };
                                 let host = Host::new(
-                                    id,
+                                    host_id,
                                     vendor,
                                     arp.get_sender_proto_addr(),
                                     arp.get_sender_hw_addr());
-                                host.print();
-                                id += 1;
+                                host.print_lan();
+                                host_id += 1;
                             }
                         }
                     }
@@ -117,6 +122,5 @@ fn discover_lan() -> Result<()> {
             Err(_) => { }
         }
     }
-
     Ok(())
 }

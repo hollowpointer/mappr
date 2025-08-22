@@ -4,9 +4,10 @@ use crate::cmd::Target;
 use std::path::Path;
 use pnet::ipnetwork::IpNetwork;
 
-pub fn select(target: Target, interfaces: &[NetworkInterface]) -> Option<NetworkInterface> {
+pub fn select(target: Target, interfaces: &[NetworkInterface]) -> NetworkInterface {
     match target {
         Target::LAN => select_lan(interfaces),
+        _ => { select_lan(interfaces) }
     }
 }
 
@@ -22,7 +23,7 @@ pub fn get_ipv4(interface: &NetworkInterface) -> Result<Ipv4Addr, String> {
     }
 }
 
-fn select_lan(interfaces: &[NetworkInterface]) -> Option<NetworkInterface> {
+fn select_lan(interfaces: &[NetworkInterface]) -> NetworkInterface {
     let mut candidates: Vec<_> = interfaces
         .iter()
         .filter(|i| {
@@ -38,7 +39,11 @@ fn select_lan(interfaces: &[NetworkInterface]) -> Option<NetworkInterface> {
 
     // Prefer wired over wireless
     candidates.sort_by_key(|k| is_wireless(*k));
-    candidates.first().cloned().cloned()
+    candidates
+        .first()
+        .cloned()
+        .cloned()
+        .expect("no suitable network interfaces found")
 }
 
 /*********************************
