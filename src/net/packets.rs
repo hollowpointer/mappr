@@ -17,6 +17,11 @@ const MIN_ETH_FRAME_NO_FCS: usize = 60;
 
 pub enum PacketType { ARP }
 
+pub enum FrameOutcome {
+    Handled,
+    _Skipped
+}
+
 #[derive(Debug, Error)]
 pub enum PacketError {
     #[error("Interface missing MAC address")]
@@ -30,6 +35,9 @@ pub enum PacketError {
 
     #[error("IPv4 address retrieval failed: {0}")]
     IpLookup(String),
+
+    #[error("unsupported ethertype: 0x{0:04x}")]
+    UnsupportedEtherType(u16),
 }
 
 pub enum CraftedPacket {
@@ -61,12 +69,16 @@ fn create_arp_request(interface: &NetworkInterface, target_addr: Ipv4Addr)
     Ok(CraftedPacket::ARP(pkt))
 }
 
-pub fn handle_frame(frame: &[u8], oui_db: &Oui) {
-    if let Some(eth) = EthernetPacket::new(frame) {
-        if eth.get_ethertype() == EtherTypes::Arp {
-            if let Some(arp) = ArpPacket::new(eth.payload()) {
-                arp::read(&arp, &oui_db);
-            }
+pub fn handle_frame(frame: &[u8], oui_db: &Oui) -> Result<FrameOutcome, PacketError> {
+    let eth = EthernetPacket::new(frame).ok_or(PacketError::EthernetBuffer)?;
+    match eth.get_ethertype() {
+        EtherTypes::Arp => {
+            let arp = ArpPacket::new(eth.payload()).ok_or(PacketError::ArpBuffer)?;
+            arp::read(&arp, oui_db);
+            Ok(FrameOutcome::Handled)
+        }
+        other => {
+            Err(PacketError::UnsupportedEtherType(other.0))
         }
     }
 }
@@ -135,4 +147,63 @@ mod tests {
             .expect("expected error");
         assert!(matches!(err, PacketError::MissingMac));
     }
+
+    #[test]
+    fn handle_frame_returns_handled_for_valid_arp() {
+        let mut b = buf();
+
+        ethernet::make_header(&mut b, MacAddr::zero(), MacAddr::broadcast(), EtherTypes::Arp)
+            .expect("eth header");
+
+        // Valid ARP payload
+        let src_mac = MacAddr::new(0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff);
+        let src_ip = Ipv4Addr::new(10, 0, 0, 1);
+        let target_ip = Ipv4Addr::new(10, 0, 0, 2);
+        arp::request_payload(&mut b, src_mac, src_ip, target_ip).expect("arp payload");
+
+        let oui = Oui::default().unwrap();
+        let res = handle_frame(&b, &oui).expect("ok result");
+        match res {
+            FrameOutcome::Handled => {}
+            _ => panic!("expected FrameOutcome::Handled"),
+        }
+    }
+
+    #[test]
+    fn handle_frame_errors_on_short_ethernet_buffer() {
+        // Too short to contain an Ethernet header
+        let short = [0u8; ETH_HDR_LEN - 1];
+        let oui = Oui::default().unwrap();
+        let err = handle_frame(&short, &oui).err().expect("expected error");
+        assert!(matches!(err, PacketError::EthernetBuffer));
+    }
+
+    #[test]
+    fn handle_frame_errors_on_bad_arp_buffer() {
+        // Frame declares ARP but payload is too short for an ARP packet
+        let mut frame = vec![0u8; ETH_HDR_LEN + ARP_LEN - 1]; // one byte short
+        ethernet::make_header(
+            &mut frame,
+            MacAddr::zero(),
+            MacAddr::broadcast(),
+            EtherTypes::Arp,
+        )
+            .expect("eth header");
+
+        let oui = Oui::default().unwrap();
+        let err = handle_frame(&frame, &oui).err().expect("expected error");
+        assert!(matches!(err, PacketError::ArpBuffer));
+    }
+
+    #[test]
+    fn handle_frame_unsupported_ethertype() {
+        let mut b = buf();
+        ethernet::make_header(&mut b, MacAddr::zero(), MacAddr::broadcast(), EtherTypes::Ipv4)
+            .expect("eth header");
+
+        let oui = Oui::default().unwrap();
+        let err = handle_frame(&b, &oui).err().expect("expected error");
+        assert!(matches!(err, PacketError::UnsupportedEtherType(t) if t == EtherTypes::Ipv4.0));
+    }
+
 }

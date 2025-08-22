@@ -1,13 +1,14 @@
 use std::net::Ipv4Addr;
-use pnet::datalink::NetworkInterface;
+use pnet::datalink::{interfaces, NetworkInterface};
 use crate::cmd::Target;
 use std::path::Path;
 use pnet::ipnetwork::{IpNetwork, Ipv4Network};
 
-pub fn select(target: Target, interfaces: &[NetworkInterface]) -> NetworkInterface {
+pub fn select(target: Target) -> NetworkInterface {
     match target {
-        Target::LAN => select_lan(interfaces),
-        _ => { select_lan(interfaces) }
+        Target::LAN => select_lan(),
+        Target::Host { addr } => select_host(addr).unwrap(),
+        _ => { select_lan() }
     }
 }
 
@@ -19,8 +20,9 @@ pub fn get_prefix(interface: &NetworkInterface) -> Result<u8, String> {
     first_ipv4_net(interface).map(|net| net.prefix())
 }
 
-fn select_lan(interfaces: &[NetworkInterface]) -> NetworkInterface {
-    let mut candidates: Vec<_> = interfaces
+fn select_lan() -> NetworkInterface {
+    let interfaces = interfaces();
+    let candidates: Vec<_> = interfaces
         .iter()
         .filter(|i| {
             i.is_up()
@@ -32,9 +34,18 @@ fn select_lan(interfaces: &[NetworkInterface]) -> NetworkInterface {
                 && i.ips.iter().any(|ip| ip.is_ipv4())
         })
         .collect();
+    wired_over_wireless(candidates)
+}
 
-    // Prefer wired over wireless
-    candidates.sort_by_key(|k| is_wireless(*k));
+fn select_host(addr: Ipv4Addr) -> Option<NetworkInterface> {
+    match addr.octets()[0] {
+        10 | 172 | 192 => Some(select_lan()),
+        _ => None
+    }
+}
+
+fn wired_over_wireless(mut candidates: Vec<&NetworkInterface>) -> NetworkInterface {
+    candidates.sort_by_key(|k| is_wireless(k));
     candidates
         .first()
         .cloned()

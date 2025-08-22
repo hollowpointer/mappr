@@ -1,46 +1,45 @@
 use anyhow;
-use mac_oui::Oui;
-use pnet::datalink;
 use pnet::datalink::{Config, NetworkInterface};
 use pnet::util::MacAddr;
 use std::net::Ipv4Addr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use crate::cmd::Target;
-use crate::net::packets;
-use crate::net;
+use crate::net::*;
+use crate::net::channel::handle_channel;
+use crate::net::interface;
 
 pub struct Host {
     vendor: String,
     ipv4: Ipv4Addr,
     mac_addr: MacAddr,
+    // Impl for host is at the bottom
 }
 
 pub fn discover(target: Target) -> anyhow::Result<()> {
-    let intf = net::interface::select(Target::LAN, &datalink::interfaces());
-    let (start, end) = net::range::ip_range(target.clone(), &intf)?;  // works now
     match target {
-        Target::LAN => discover_lan(intf, start, end)?,
-        _ => (),
+        Target::LAN => {
+            let (start, end) = range::ip_range(Target::LAN, &interface::select(Target::LAN))?;
+            discover_lan(start, end, interface::select(Target::LAN))?
+        },
+        Target::Host { addr } => discover_host(addr)?,
+        _ => {}
     }
     Ok(())
 }
 
-fn discover_lan(intf: NetworkInterface, start_addr: Ipv4Addr, end_addr: Ipv4Addr) -> anyhow::Result<()> {
-    let oui_db = Oui::default().expect("Failed to load OUI DB");
+fn discover_lan(start_addr: Ipv4Addr, end_addr: Ipv4Addr, intf: NetworkInterface) -> anyhow::Result<()> {
     let mut channel_cfg: Config = Config::default();
     channel_cfg.read_timeout = Some(Duration::from_millis(100));
-    let (mut tx, mut rx) = net::channel::open_ethernet_channel(&intf, &channel_cfg)?;
-    for ip in u32::from(start_addr)..=u32::from(end_addr) {
-        packets::arp::send(&intf, Ipv4Addr::from(ip), &mut tx).expect("Failed to perform ARP sweep");
-    }
-    let deadline = Instant::now() + Duration::from_millis(3000);
-    while deadline > Instant::now() {
-        match rx.next() {
-            Ok(frame) => { packets::handle_frame(&frame, &oui_db); },
-            Err(_) => { }
-        }
-    }
+    handle_channel(start_addr, end_addr, intf, channel_cfg).expect("TODO: panic message");
     Ok(())
+}
+
+// WARNING: This function does not work as expected, real implementation will come later.
+fn discover_host(addr: Ipv4Addr) -> anyhow::Result<()> {
+    match addr.octets()[0] {
+        10 | 172 | 192 => { discover_lan(addr, addr, interface::select(Target::LAN)) },
+        _ => Ok(())
+    }
 }
 
 impl Host {
@@ -54,7 +53,7 @@ impl Host {
 
     pub(crate) fn print_lan(&self) {
         /*
-        Prints this for each host found:
+        Prints for each host found:
         ┌──────────────────────────────────────────────────┐
         │ [+] Host Found                                   │
         │ ├─ Vendor : Raspberry Pi Trading Ltd             │

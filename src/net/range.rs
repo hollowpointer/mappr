@@ -1,32 +1,30 @@
 use std::net::Ipv4Addr;
-use anyhow;
-use anyhow::Context;
+use anyhow::{anyhow, bail, Context, Result};
 use pnet::datalink::NetworkInterface;
 use crate::cmd::Target;
 use crate::net::interface;
 
-pub fn ip_range(target: Target, intf: &NetworkInterface) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> {
+pub fn ip_range(target: Target, intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
     match target {
-        Target::LAN => { Ok(local_range(&intf)?) },
-        Target::CIDR { cidr } => Ok(cidr_str_to_range(&cidr)?),
+        Target::LAN | Target::VPN => local_range(intf),
+        Target::CIDR { cidr } => cidr_str_to_range(&cidr),
         Target::Host { addr } => Ok((addr, addr)),
         Target::Range { start, end } => Ok((start, end)),
-        Target::VPN => Ok(local_range(&intf)?)
     }
 }
 
-fn local_range(intf: &NetworkInterface) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> {
+fn local_range(intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
     let ip = interface::get_ipv4(intf)
-        .map_err(|_| anyhow::anyhow!("Failed to get IPv4 from interface"))?;
+        .map_err(|_| anyhow!("Failed to get IPv4 from interface"))?;
 
     let prefix = interface::get_prefix(intf)
-        .map_err(|_| anyhow::anyhow!("Failed to get prefix from interface"))?;
+        .map_err(|_| anyhow!("Failed to get prefix from interface"))?;
 
     cidr_range(ip, prefix)
 }
 
-fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> {
-    if prefix > 32 { anyhow::bail!("Not a valid prefix address"); }
+fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Result<(Ipv4Addr, Ipv4Addr)> {
+    if prefix > 32 { bail!("Not a valid prefix address"); }
     let ip_u32 = u32::from(ip);
     let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
 
@@ -36,7 +34,7 @@ fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> 
     Ok((Ipv4Addr::from(network), Ipv4Addr::from(broadcast)))
 }
 
-fn cidr_str_to_range(cidr: &str) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> {
+fn cidr_str_to_range(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr)> {
     let (ip_str, prefix_str) = cidr
         .split_once('/')
         .context("CIDR must contain '/'")?;
