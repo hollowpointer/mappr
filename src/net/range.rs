@@ -1,60 +1,55 @@
 use std::net::Ipv4Addr;
+use anyhow;
+use anyhow::Context;
 use pnet::datalink::NetworkInterface;
 use crate::cmd::Target;
 use crate::net::interface;
 
-pub fn ip_range(target: Target, intf: &NetworkInterface) -> (Ipv4Addr, Ipv4Addr) {
+pub fn ip_range(target: Target, intf: &NetworkInterface) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> {
     match target {
-        Target::LAN => { local_range(&intf) },
-        Target::CIDR { cidr } =>  cidr_str_to_range(&cidr),
-        Target::Host { addr } => (addr, addr),
-        Target::Range { start, end } => (start, end),
-        Target::VPN => local_range(&intf)
+        Target::LAN => { Ok(local_range(&intf)?) },
+        Target::CIDR { cidr } => Ok(cidr_str_to_range(&cidr)?),
+        Target::Host { addr } => Ok((addr, addr)),
+        Target::Range { start, end } => Ok((start, end)),
+        Target::VPN => Ok(local_range(&intf)?)
     }
 }
 
-fn local_range(intf: &NetworkInterface) -> (Ipv4Addr, Ipv4Addr) {
-    if let Ok(ip) = interface::get_ipv4(&intf) {
-        if let Ok(prefix) = interface::get_prefix(&intf) {
-            cidr_range(ip, prefix)
-        } else {
-            eprintln!("Failed to get the ip prefix from interface!");
-            (Ipv4Addr::new(0,0,0,0), Ipv4Addr::new(0,0,0,0))
-        }
-    }
-    else {
-        eprintln!("Failed to get the ipv4 from interface!");
-        (Ipv4Addr::new(0,0,0,0), Ipv4Addr::new(0,0,0,0))
-    }
+fn local_range(intf: &NetworkInterface) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> {
+    let ip = interface::get_ipv4(intf)
+        .map_err(|_| anyhow::anyhow!("Failed to get IPv4 from interface"))?;
+
+    let prefix = interface::get_prefix(intf)
+        .map_err(|_| anyhow::anyhow!("Failed to get prefix from interface"))?;
+
+    cidr_range(ip, prefix)
 }
 
-fn cidr_range(ip: Ipv4Addr, prefix: u8) -> (Ipv4Addr, Ipv4Addr) {
-    if prefix > 32 {
-        panic!("Not a valid prefix address");
-    }
+fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> {
+    if prefix > 32 { anyhow::bail!("Not a valid prefix address"); }
     let ip_u32 = u32::from(ip);
-    let mask = if prefix == 0 {
-        0
-    } else {
-        u32::MAX << (32 - prefix)
-    };
+    let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
 
     let network = ip_u32 & mask;
     let broadcast = network | !mask;
 
-    (Ipv4Addr::from(network), Ipv4Addr::from(broadcast))
+    Ok((Ipv4Addr::from(network), Ipv4Addr::from(broadcast)))
 }
 
-fn cidr_str_to_range(cidr: &str) -> (Ipv4Addr, Ipv4Addr) {
-    let Some((ip_str, prefix_str)) = cidr.split_once('/') else { todo!() };
-    let Ok(ip) = ip_str.parse::<Ipv4Addr>() else {
-        panic!("Not a valid IPv4 address");
-    };
-    let Ok(prefix) = prefix_str.parse::<u8>() else {
-        panic!("Not a valid prefix address");
-    };
+fn cidr_str_to_range(cidr: &str) -> anyhow::Result<(Ipv4Addr, Ipv4Addr)> {
+    let (ip_str, prefix_str) = cidr
+        .split_once('/')
+        .context("CIDR must contain '/'")?;
 
-    cidr_range(ip, prefix)
+    let ip: Ipv4Addr = ip_str
+        .parse()
+        .context("Invalid IPv4 address")?;
+
+    let prefix: u8 = prefix_str
+        .parse()
+        .context("Invalid prefix")?;
+
+    Ok(cidr_range(ip, prefix)?)
 }
 
 
@@ -76,7 +71,7 @@ mod tests {
     #[test]
     fn cidr_range_basic_24() {
         let ip = Ipv4Addr::new(192, 168, 1, 42);
-        let (start, end) = cidr_range(ip, 24);
+        let (start, end) = cidr_range(ip, 24).unwrap();
         assert_eq!(start, Ipv4Addr::new(192, 168, 1, 0));
         assert_eq!(end,   Ipv4Addr::new(192, 168, 1, 255));
     }
@@ -84,7 +79,7 @@ mod tests {
     #[test]
     fn cidr_range_prefix_0() {
         let ip = Ipv4Addr::new(10, 20, 30, 40);
-        let (start, end) = cidr_range(ip, 0);
+        let (start, end) = cidr_range(ip, 0).unwrap();
         assert_eq!(start, Ipv4Addr::new(0, 0, 0, 0));
         assert_eq!(end,   Ipv4Addr::new(255, 255, 255, 255));
     }
@@ -92,27 +87,27 @@ mod tests {
     #[test]
     fn cidr_range_prefix_32_single_host() {
         let ip = Ipv4Addr::new(203, 0, 113, 7);
-        let (start, end) = cidr_range(ip, 32);
+        let (start, end) = cidr_range(ip, 32).unwrap();
         assert_eq!(start, ip);
         assert_eq!(end,   ip);
     }
 
     #[test]
     fn cidr_str_to_range_parses_and_computes() {
-        let (start, end) = cidr_str_to_range("172.16.5.10/20");
+        let (start, end) = cidr_str_to_range("172.16.5.10/20").unwrap();
         assert_eq!(start, Ipv4Addr::new(172, 16, 0, 0));
         assert_eq!(end,   Ipv4Addr::new(172, 16, 15, 255));
     }
 
     #[test]
-    #[should_panic(expected = "Not a valid IPv4 address")]
     fn cidr_str_to_range_rejects_bad_ip() {
-        let _ = cidr_str_to_range("999.1.2.3/24");
+        let res = cidr_str_to_range("999.1.2.3/24");
+        assert!(res.is_err());
     }
 
     #[test]
-    #[should_panic(expected = "Not a valid prefix address")]
     fn cidr_str_to_range_rejects_bad_prefix() {
-        let _ = cidr_str_to_range("192.168.0.1/33");
+        let res = cidr_str_to_range("192.168.0.1/33");
+        assert!(res.is_err());
     }
 }

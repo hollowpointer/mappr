@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow;
 use mac_oui::Oui;
 use pnet::datalink;
 use pnet::datalink::{Config, NetworkInterface};
@@ -15,18 +15,17 @@ pub struct Host {
     mac_addr: MacAddr,
 }
 
-pub fn discover(target: Target) {
+pub fn discover(target: Target) -> anyhow::Result<()> {
     let intf = net::interface::select(Target::LAN, &datalink::interfaces());
-    let ip_range = net::range::ip_range(target.clone(), &intf);
-    if let Err(e) = match target {
-        Target::LAN => discover_lan(intf, ip_range.0, ip_range.1),
-        _ => { Ok(()) }
-    } {
-        eprintln!("discover failed: {e}")
+    let (start, end) = net::range::ip_range(target.clone(), &intf)?;  // works now
+    match target {
+        Target::LAN => discover_lan(intf, start, end)?,
+        _ => (),
     }
+    Ok(())
 }
 
-fn discover_lan(intf: NetworkInterface, start_addr: Ipv4Addr, end_addr: Ipv4Addr) -> Result<()> {
+fn discover_lan(intf: NetworkInterface, start_addr: Ipv4Addr, end_addr: Ipv4Addr) -> anyhow::Result<()> {
     let oui_db = Oui::default().expect("Failed to load OUI DB");
     let mut channel_cfg: Config = Config::default();
     channel_cfg.read_timeout = Some(Duration::from_millis(100));

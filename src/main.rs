@@ -4,12 +4,12 @@ use cmd::{discover, listen, info, scan};
 mod cmd;
 mod net;
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let commands = cmd::CommandLine::parse_args();
     match commands.command {
-        Commands::Info => info::info(),
-        Commands::Listen => listen::listen(),
+        Commands::Info => Ok(info::info()),
+        Commands::Listen => Ok(listen::listen()),
         Commands::Discover { target } => discover::discover(target),
-        Commands::Scan { target } => scan::scan(target)
+        Commands::Scan { target } => Ok(scan::scan(target))
     }
 }
