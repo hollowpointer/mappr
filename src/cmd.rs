@@ -5,7 +5,7 @@ pub mod scan;
 
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "mappr")]
