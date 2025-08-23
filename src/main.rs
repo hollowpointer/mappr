@@ -3,13 +3,27 @@ use cmd::{discover, listen, info, scan};
 
 mod cmd;
 mod net;
+mod print;
 
 fn main() -> anyhow::Result<()> {
     let commands = cmd::CommandLine::parse_args();
+    print::print_header();
     match commands.command {
-        Commands::Info => Ok(info::info()),
-        Commands::Listen => Ok(listen::listen()),
-        Commands::Discover { target } => discover::discover(target),
-        Commands::Scan { target } => Ok(scan::scan(target))
+        Commands::Info => {
+            print::separator("sending information");
+            Ok(info::info())
+        },
+        Commands::Listen => {
+            print::separator("starting listener");
+            Ok(listen::listen())
+        },
+        Commands::Discover { target } => {
+            print::separator("performing discovery");
+            discover::discover(target)
+        },
+        Commands::Scan { target } => {
+            print::separator("starting scanner");
+            Ok(scan::scan(target))
+        }
     }
 }
