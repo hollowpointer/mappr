@@ -1,28 +1,32 @@
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use mac_oui::Oui;
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use crate::net::packets;
 
-pub fn handle_channel(start: Ipv4Addr, end: Ipv4Addr, intf: NetworkInterface, channel_cfg: Config) -> Result<()> {
-    let oui_db = Oui::default().expect("Failed to load OUI DB");
-
-    let (mut tx, mut rx) = open_ethernet_channel(&intf, &channel_cfg)?;
-
-    for ip in u32::from(start)..=u32::from(end) {
-        packets::arp::send(&intf, Ipv4Addr::from(ip), &mut tx).expect("Failed to perform ARP sweep");
+pub fn handle_ethernet_channel(
+    start: Ipv4Addr,
+    end: Ipv4Addr,
+    intf: NetworkInterface,
+    mut channel_cfg: Config,
+    duration_in_ms: Duration,
+) -> Result<()> {
+    if channel_cfg.read_timeout.is_none() {
+        channel_cfg.read_timeout = Some(Duration::from_millis(50));
     }
-
-    let deadline = Instant::now() + Duration::from_millis(3000);
+    let oui_db = Oui::default().map_err(|e| { anyhow!("loading OUI database: {}", e) })?;
+    let (mut tx, mut rx) = open_ethernet_channel(&intf, &channel_cfg)?;
+    if u32::from(start) > u32::from(end) { bail!("end IP ({end}) must be >= start IP ({start})"); }
+    packets::arp::send_sweep(start, end, &intf, &mut tx);
+    let deadline = Instant::now() + duration_in_ms;
     while deadline > Instant::now() {
         match rx.next() {
             Ok(frame) => { packets::handle_frame(&frame, &oui_db).ok(); },
             Err(_) => { }
         }
     }
-
     Ok(())
 }
 

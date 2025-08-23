@@ -3,9 +3,10 @@ use pnet::datalink::{Config, NetworkInterface};
 use pnet::util::MacAddr;
 use std::net::Ipv4Addr;
 use std::time::Duration;
+use anyhow::Context;
 use crate::cmd::Target;
 use crate::net::*;
-use crate::net::channel::handle_channel;
+use crate::net::channel::handle_ethernet_channel;
 use crate::net::interface;
 
 pub struct Host {
@@ -27,10 +28,17 @@ pub fn discover(target: Target) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn discover_lan(start_addr: Ipv4Addr, end_addr: Ipv4Addr, intf: NetworkInterface) -> anyhow::Result<()> {
+fn discover_lan(start_addr: Ipv4Addr, end_addr: Ipv4Addr, intf: NetworkInterface)
+    -> anyhow::Result<()> {
     let mut channel_cfg: Config = Config::default();
     channel_cfg.read_timeout = Some(Duration::from_millis(100));
-    handle_channel(start_addr, end_addr, intf, channel_cfg).expect("TODO: panic message");
+    handle_ethernet_channel(
+        start_addr,
+        end_addr,
+        intf,
+        channel_cfg,
+        Duration::from_millis(3000)
+    ).context("discovering via ethernet channel")?;
     Ok(())
 }
 
