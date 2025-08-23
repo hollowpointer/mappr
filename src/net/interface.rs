@@ -3,8 +3,10 @@ use pnet::datalink::{interfaces, NetworkInterface};
 use crate::cmd::Target;
 use std::path::Path;
 use pnet::ipnetwork::{IpNetwork, Ipv4Network};
+use crate::print;
 
 pub fn select(target: Target) -> NetworkInterface {
+    print::println("Searching for a suitable network interface...");
     match target {
         Target::LAN => select_lan(),
         Target::Host { addr } => select_host(addr).unwrap(),
@@ -22,8 +24,10 @@ pub fn get_prefix(interface: &NetworkInterface) -> Result<u8, String> {
 
 fn select_lan() -> NetworkInterface {
     let interfaces = interfaces();
+    let msg = format!("Identified {} network interface(s)", interfaces.len());
+    print::println(&msg);
     let candidates: Vec<_> = interfaces
-        .iter()
+        .into_iter()
         .filter(|i| {
             i.is_up()
                 && i.mac.is_some()
@@ -34,7 +38,14 @@ fn select_lan() -> NetworkInterface {
                 && i.ips.iter().any(|ip| ip.is_ipv4())
         })
         .collect();
-    wired_over_wireless(candidates)
+    if candidates.len() > 1 {
+        print::println("More than one candidate found, selecting best option...");
+        return wired_over_wireless(candidates);
+    }
+    let intf = candidates.first().unwrap().clone();
+    let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
+    print::println(&msg);
+    intf
 }
 
 fn select_host(addr: Ipv4Addr) -> Option<NetworkInterface> {
@@ -44,11 +55,13 @@ fn select_host(addr: Ipv4Addr) -> Option<NetworkInterface> {
     }
 }
 
-fn wired_over_wireless(mut candidates: Vec<&NetworkInterface>) -> NetworkInterface {
+fn wired_over_wireless(mut candidates: Vec<NetworkInterface>) -> NetworkInterface {
     candidates.sort_by_key(|k| is_wireless(k));
+    let intf = candidates.first().unwrap().clone();
+    let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
+    print::println(&msg);
     candidates
         .first()
-        .cloned()
         .cloned()
         .expect("no suitable network interfaces found")
 }

@@ -7,6 +7,7 @@ use crate::cmd::discover::Host;
 use crate::net::packets;
 use crate::net::packets::{PacketError, ARP_LEN, ETH_HDR_LEN};
 use crate::net::range::ip_iter;
+use crate::print;
 
 pub fn request_payload(buffer: &mut [u8], src_mac: MacAddr, src_addr: Ipv4Addr, target_addr: Ipv4Addr)
                        -> Result<(), PacketError>{
@@ -26,6 +27,7 @@ pub fn request_payload(buffer: &mut [u8], src_mac: MacAddr, src_addr: Ipv4Addr, 
 }
 
 pub fn send_sweep(start: Ipv4Addr, end: Ipv4Addr, intf: &NetworkInterface, tx: &mut Box<dyn DataLinkSender>) {
+    print::separator("ARP Network Scan");
     for ip in ip_iter((start, end)) {
         send(&intf, ip, tx).expect("Failed to perform ARP sweep");
     }

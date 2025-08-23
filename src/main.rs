@@ -18,7 +18,7 @@ fn main() -> anyhow::Result<()> {
             Ok(listen::listen())
         },
         Commands::Discover { target } => {
-            print::separator("performing discovery");
+            print::separator("getting ready for discovery");
             discover::discover(target)
         },
         Commands::Scan { target } => {

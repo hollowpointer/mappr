@@ -8,7 +8,7 @@ use crate::cmd::Target;
 use crate::net::*;
 use crate::net::channel::handle_ethernet_channel;
 use crate::net::interface;
-use chrono::Local;
+use crate::print;
 
 pub struct Host {
     vendor: String,
@@ -20,8 +20,10 @@ pub struct Host {
 pub fn discover(target: Target) -> anyhow::Result<()> {
     match target {
         Target::LAN => {
-            let (start, end) = range::ip_range(Target::LAN, &interface::select(Target::LAN))?;
-            discover_lan(start, end, interface::select(Target::LAN))?
+            print::println("Initializing LAN discovery...");
+            let intf = interface::select(Target::LAN);
+            let (start, end) = range::ip_range(Target::LAN, &intf)?;
+            discover_lan(start, end, intf)?
         },
         Target::Host { addr } => discover_host(addr)?,
         _ => {}
@@ -33,7 +35,7 @@ fn discover_lan(start_addr: Ipv4Addr, end_addr: Ipv4Addr, intf: NetworkInterface
     -> anyhow::Result<()> {
     let mut channel_cfg: Config = Config::default();
     channel_cfg.read_timeout = Some(Duration::from_millis(100));
-    print_lan();
+    print::println("Establishing Ethernet connection...");
     handle_ethernet_channel(
         start_addr,
         end_addr,
@@ -50,16 +52,6 @@ fn discover_host(addr: Ipv4Addr) -> anyhow::Result<()> {
         10 | 172 | 192 => { discover_lan(addr, addr, interface::select(Target::LAN)) },
         _ => Ok(())
     }
-}
-
-fn print_lan() {
-    let now = Local::now();
-    println!("[ INIT ] Local Network Recon");
-    println!("----------------------------------------");
-    println!(" >> Time      : {}", now.format("%Y-%m-%d %H:%M:%S"));
-    println!(" >> Subnet    : 192.168.0.0/24");
-    println!(" >> Interface : eth0");
-    println!("----------------------------------------");
 }
 
 impl Host {
