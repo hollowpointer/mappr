@@ -42,7 +42,7 @@ fn send(intf: &NetworkInterface, ip: Ipv4Addr, tx: &mut Box<dyn DataLinkSender>)
     Ok(())
 }
 
-pub fn read(arp: &ArpPacket, oui_db: &Oui) {
+pub fn read(arp: &ArpPacket, oui_db: &Oui) -> Option<Host> {
     if arp.get_operation() == ArpOperations::Reply {
         let vendor: String = match oui_db.lookup_by_mac(&arp.get_sender_hw_addr().to_string()) {
             Ok(Some(entry)) => entry.company_name.clone(),
@@ -57,8 +57,8 @@ pub fn read(arp: &ArpPacket, oui_db: &Oui) {
             arp.get_sender_proto_addr(),
             arp.get_sender_hw_addr()
         );
-        host.print_lan(1);
-    }
+        Some(host)
+    } else { None }
 }
 
 

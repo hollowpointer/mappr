@@ -4,16 +4,17 @@ use anyhow::{anyhow, bail, Context, Result};
 use mac_oui::Oui;
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
+use crate::cmd::discover::Host;
 use crate::net::packets;
 use crate::print;
 
-pub fn handle_ethernet_channel(
+pub fn discover_hosts_on_eth_channel(
     start: Ipv4Addr,
     end: Ipv4Addr,
     intf: NetworkInterface,
     mut channel_cfg: Config,
     duration_in_ms: Duration,
-) -> Result<()> {
+) -> Result<Vec<Host>> {
     if channel_cfg.read_timeout.is_none() {
         channel_cfg.read_timeout = Some(Duration::from_millis(50));
     }
@@ -22,14 +23,19 @@ pub fn handle_ethernet_channel(
     if u32::from(start) > u32::from(end) { bail!("end IP ({end}) must be >= start IP ({start})"); }
     print::print_status("Connection established. Beginning ARP sweep...");
     packets::arp::send_sweep(start, end, &intf, &mut tx);
+    let mut hosts: Vec<Host> = Vec::new();
     let deadline = Instant::now() + duration_in_ms;
     while deadline > Instant::now() {
         match rx.next() {
-            Ok(frame) => { packets::handle_frame(&frame, &oui_db).ok(); },
+            Ok(frame) => {
+                if let Some(host) = packets::handle_frame(&frame, &oui_db).ok() {
+                    hosts.extend(host);
+                }
+            },
             Err(_) => { }
         }
     }
-    Ok(())
+    Ok(hosts)
 }
 
 fn open_ethernet_channel(intf: &NetworkInterface, cfg: &Config)

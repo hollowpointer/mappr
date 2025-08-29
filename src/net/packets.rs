@@ -9,6 +9,7 @@ use pnet::packet::arp::ArpPacket;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::Packet;
 use pnet::util::MacAddr;
+use crate::cmd::discover::Host;
 use crate::net::interface::get_ipv4;
 
 const ETH_HDR_LEN: usize = 14;
@@ -16,11 +17,6 @@ const ARP_LEN: usize = 28;
 const MIN_ETH_FRAME_NO_FCS: usize = 60;
 
 pub enum PacketType { ARP }
-
-pub enum FrameOutcome {
-    Handled,
-    _Skipped
-}
 
 #[derive(Debug, Error)]
 pub enum PacketError {
@@ -69,13 +65,12 @@ fn create_arp_request(interface: &NetworkInterface, target_addr: Ipv4Addr)
     Ok(CraftedPacket::ARP(pkt))
 }
 
-pub fn handle_frame(frame: &[u8], oui_db: &Oui) -> Result<FrameOutcome, PacketError> {
+pub fn handle_frame(frame: &[u8], oui_db: &Oui) -> Result<Option<Host>, PacketError> {
     let eth = EthernetPacket::new(frame).ok_or(PacketError::EthernetBuffer)?;
     match eth.get_ethertype() {
         EtherTypes::Arp => {
             let arp = ArpPacket::new(eth.payload()).ok_or(PacketError::ArpBuffer)?;
-            arp::read(&arp, oui_db);
-            Ok(FrameOutcome::Handled)
+            Ok(arp::read(&arp, oui_db))
         }
         other => {
             Err(PacketError::UnsupportedEtherType(other.0))
@@ -146,27 +141,6 @@ mod tests {
             .err()
             .expect("expected error");
         assert!(matches!(err, PacketError::MissingMac));
-    }
-
-    #[test]
-    fn handle_frame_returns_handled_for_valid_arp() {
-        let mut b = buf();
-
-        ethernet::make_header(&mut b, MacAddr::zero(), MacAddr::broadcast(), EtherTypes::Arp)
-            .expect("eth header");
-
-        // Valid ARP payload
-        let src_mac = MacAddr::new(0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff);
-        let src_ip = Ipv4Addr::new(10, 0, 0, 1);
-        let target_ip = Ipv4Addr::new(10, 0, 0, 2);
-        arp::request_payload(&mut b, src_mac, src_ip, target_ip).expect("arp payload");
-
-        let oui = Oui::default().unwrap();
-        let res = handle_frame(&b, &oui).expect("ok result");
-        match res {
-            FrameOutcome::Handled => {}
-            _ => panic!("expected FrameOutcome::Handled"),
-        }
     }
 
     #[test]
