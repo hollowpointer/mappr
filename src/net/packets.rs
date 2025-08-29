@@ -16,6 +16,7 @@ const ETH_HDR_LEN: usize = 14;
 const ARP_LEN: usize = 28;
 const MIN_ETH_FRAME_NO_FCS: usize = 60;
 
+#[derive(Clone, Copy)]
 pub enum PacketType { ARP }
 
 #[derive(Debug, Error)]
