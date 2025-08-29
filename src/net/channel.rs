@@ -5,6 +5,7 @@ use mac_oui::Oui;
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use crate::net::packets;
+use crate::print;
 
 pub fn handle_ethernet_channel(
     start: Ipv4Addr,
@@ -19,6 +20,7 @@ pub fn handle_ethernet_channel(
     let oui_db = Oui::default().map_err(|e| { anyhow!("loading OUI database: {}", e) })?;
     let (mut tx, mut rx) = open_ethernet_channel(&intf, &channel_cfg)?;
     if u32::from(start) > u32::from(end) { bail!("end IP ({end}) must be >= start IP ({start})"); }
+    print::print_status("Connection established. Beginning ARP sweep...");
     packets::arp::send_sweep(start, end, &intf, &mut tx);
     let deadline = Instant::now() + duration_in_ms;
     while deadline > Instant::now() {

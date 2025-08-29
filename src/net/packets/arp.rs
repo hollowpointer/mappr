@@ -57,7 +57,7 @@ pub fn read(arp: &ArpPacket, oui_db: &Oui) {
             arp.get_sender_proto_addr(),
             arp.get_sender_hw_addr()
         );
-        host.print_lan();
+        host.print_lan(1);
     }
 }
 

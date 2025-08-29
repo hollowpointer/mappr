@@ -102,7 +102,7 @@ pub fn separator(msg: &str) {
     println!("{}", line);
 }
 
-pub fn println(msg: &str) {
-    let prefix = ">>>".bright_black();
+pub fn print_status(msg: &str) {
+    let prefix = ">".bright_black();
     println!("{}", format!("{} {}", prefix, msg));
 }

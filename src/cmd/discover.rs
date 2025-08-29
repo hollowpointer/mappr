@@ -4,6 +4,7 @@ use pnet::util::MacAddr;
 use std::net::Ipv4Addr;
 use std::time::Duration;
 use anyhow::Context;
+use colored::Colorize;
 use crate::cmd::Target;
 use crate::net::*;
 use crate::net::channel::handle_ethernet_channel;
@@ -20,7 +21,7 @@ pub struct Host {
 pub fn discover(target: Target) -> anyhow::Result<()> {
     match target {
         Target::LAN => {
-            print::println("Initializing LAN discovery...");
+            print::print_status("Initializing LAN discovery...");
             let intf = interface::select(Target::LAN);
             let (start, end) = range::ip_range(Target::LAN, &intf)?;
             discover_lan(start, end, intf)?
@@ -35,7 +36,7 @@ fn discover_lan(start_addr: Ipv4Addr, end_addr: Ipv4Addr, intf: NetworkInterface
     -> anyhow::Result<()> {
     let mut channel_cfg: Config = Config::default();
     channel_cfg.read_timeout = Some(Duration::from_millis(100));
-    print::println("Establishing Ethernet connection...");
+    print::print_status("Establishing Ethernet connection...");
     handle_ethernet_channel(
         start_addr,
         end_addr,
@@ -63,37 +64,16 @@ impl Host {
         }
     }
 
-    pub(crate) fn print_lan(&self) {
-        /*
-        Prints for each host found:
-        ┌──────────────────────────────────────────────────┐
-        │ [+] Host Found                                   │
-        │ ├─ Vendor : Raspberry Pi Trading Ltd             │
-        │ ├─ IP     : 192.168.0.150                        │
-        │ └─ MAC    : c8:52:61:c7:a1:49                    │
-        └──────────────────────────────────────────────────┘
-         */
-        let side = "\x1b[90m│\x1b[0m";
-        let width = 50; // inner width of the box
-
-        println!("\x1b[90m┌{}┐\x1b[0m", "─".repeat(width));
-
-        // Host Found line (pad first, then color)
-        let text = "[+] Host Found".to_string();
-        println!("{side} \x1b[32m{text}\x1b[0m{:pad$}{side}", "", pad = width - text.len() - 1);
-
-        // Vendor Line (magenta)
-        let vendor_text = format!("├─ Vendor : {}", self.vendor);
-        println!("{side} \x1b[35m{:<width$}\x1b[0m{side}", vendor_text, width = width - 1);
-
-        // IP line (blue)
-        let ip_text = format!("├─ IP     : {}", self.ipv4);
-        println!("{side} \x1b[34m{:<width$}\x1b[0m{side}", ip_text, width = width - 1);
-
-        // MAC line (yellow)
-        let mac_text = format!("└─ MAC    : {}", self.mac_addr);
-        println!("{side} \x1b[33m{:<width$}\x1b[0m{side}", mac_text, width = width - 1);
-
-        println!("\x1b[90m└{}┘\x1b[0m", "─".repeat(width));
+    // Print one host entry as:
+    // [+] Vendor
+    //     ├─ IP     : ...
+    //     └─ MAC    : ...
+    pub(crate) fn print_lan(&self, index: u32) {
+        print!("\x1b[32m[+] \x1b[0m{}\n\
+                  \x1b[90m    ├─\x1b[0m IP  : \x1b[34m{}\x1b[0m\n\
+                  \x1b[90m    └─\x1b[0m MAC : \x1b[33m{}\x1b[0m\n",
+                 self.vendor, self.ipv4, self.mac_addr);
+        let separator = "------------------------------------------------------------".bright_black();
+        println!("{separator}");
     }
 }

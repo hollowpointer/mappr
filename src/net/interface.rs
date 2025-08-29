@@ -6,7 +6,7 @@ use pnet::ipnetwork::{IpNetwork, Ipv4Network};
 use crate::print;
 
 pub fn select(target: Target) -> NetworkInterface {
-    print::println("Searching for a suitable network interface...");
+    print::print_status("Searching for a suitable network interface...");
     match target {
         Target::LAN => select_lan(),
         Target::Host { addr } => select_host(addr).unwrap(),
@@ -25,7 +25,7 @@ pub fn get_prefix(interface: &NetworkInterface) -> Result<u8, String> {
 fn select_lan() -> NetworkInterface {
     let interfaces = interfaces();
     let msg = format!("Identified {} network interface(s)", interfaces.len());
-    print::println(&msg);
+    print::print_status(&msg);
     let candidates: Vec<_> = interfaces
         .into_iter()
         .filter(|i| {
@@ -39,12 +39,12 @@ fn select_lan() -> NetworkInterface {
         })
         .collect();
     if candidates.len() > 1 {
-        print::println("More than one candidate found, selecting best option...");
+        print::print_status("More than one candidate found, selecting best option...");
         return wired_over_wireless(candidates);
     }
     let intf = candidates.first().unwrap().clone();
     let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
-    print::println(&msg);
+    print::print_status(&msg);
     intf
 }
 
@@ -59,7 +59,7 @@ fn wired_over_wireless(mut candidates: Vec<NetworkInterface>) -> NetworkInterfac
     candidates.sort_by_key(|k| is_wireless(k));
     let intf = candidates.first().unwrap().clone();
     let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
-    print::println(&msg);
+    print::print_status(&msg);
     candidates
         .first()
         .cloned()
