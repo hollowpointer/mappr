@@ -9,6 +9,7 @@ mac_oui = { version = "0.4.10", features = ["with-db"] }
 pnet = "0.35.0"
 thiserror = "2.0.16"
 anyhow = "1.0.99"
-chrono = "0.4.41"
 colored = "3.0.0"
 rand = "0.9.2"
+tokio = { version = "1.47.1", features = ["full"] }
+is-root = "0.1.3"

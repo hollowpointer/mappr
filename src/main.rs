@@ -5,7 +5,8 @@ mod cmd;
 mod net;
 mod print;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let commands = cmd::CommandLine::parse_args();
     print::print_header();
     match commands.command {
@@ -19,7 +20,7 @@ fn main() -> anyhow::Result<()> {
         },
         Commands::Discover { target } => {
             print::separator("getting ready for discovery");
-            discover::discover(target)
+            discover::discover(target).await
         },
         Commands::Scan { target } => {
             print::separator("starting scanner");

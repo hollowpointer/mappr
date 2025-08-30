@@ -14,7 +14,7 @@ fn send(intf: &NetworkInterface,
         ip: Ipv4Addr,
         packet_type: PacketType,
         tx: &mut Box<dyn DataLinkSender>
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let pkt = CraftedPacket::new(packet_type, &intf, ip)?;
     if let Some(Err(e)) = tx.send_to(pkt.bytes(), Some(intf.clone())) {
         eprintln!("send {ip} failed: {e}");
@@ -28,7 +28,6 @@ fn send_sweep(start: Ipv4Addr,
                   packet_type: PacketType,
                   tx: &mut Box<dyn DataLinkSender>
 ) {
-    print::separator("ARP Network Scan");
     for ip in ip_iter((start, end)) {
         send(&intf, ip, packet_type, tx).expect("Failed to perform ARP sweep");
     }
@@ -70,7 +69,7 @@ fn open_ethernet_channel(intf: &NetworkInterface, cfg: &Config)
         .with_context(|| format!("opening on {}", intf.name))?;
     match ch {
         Channel::Ethernet(tx, rx) => Ok((tx, rx)),
-        _ => anyhow::bail!("non-ethernet channel for {}", intf.name),
+        _ => bail!("non-ethernet channel for {}", intf.name),
     }
 }
 
