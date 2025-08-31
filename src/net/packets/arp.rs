@@ -34,9 +34,9 @@ pub fn read(arp: &ArpPacket, oui_db: &Oui) -> Option<Host> {
             }
         };
         let host = Host::new(
-            vendor,
             arp.get_sender_proto_addr(),
-            arp.get_sender_hw_addr()
+            Some(vendor),
+            Some(arp.get_sender_hw_addr())
         );
         Some(host)
     } else { None }
