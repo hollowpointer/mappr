@@ -62,7 +62,7 @@ async fn discover_lan(start_addr: Ipv4Addr, end_addr: Ipv4Addr, intf: NetworkInt
         end_addr,
         intf,
         channel_cfg,
-        Duration::from_millis(3000)
+        Duration::from_millis(500),
     ).context("discovering via ethernet channel")?;
     Ok(hosts)
 }
