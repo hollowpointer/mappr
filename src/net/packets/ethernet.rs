@@ -1,14 +1,20 @@
+use anyhow::Context;
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::{EtherType, MutableEthernetPacket};
-use crate::net::packets::PacketError;
 
-pub fn make_header(buffer: &mut [u8], src_mac: MacAddr, dst_mac: MacAddr, et: EtherType)
-               -> Result<(), PacketError> {
-    let mut eth =
-        MutableEthernetPacket::new(&mut buffer[..]).ok_or(PacketError::EthernetBuffer)?;
+pub fn make_header(
+    buffer: &mut [u8],
+    src_mac: MacAddr,
+    dst_mac: MacAddr,
+    et: EtherType,
+) -> anyhow::Result<()> {
+    let mut eth = MutableEthernetPacket::new(&mut buffer[..])
+        .context("failed to create mutable Ethernet packet")?;
+
     eth.set_source(src_mac);
     eth.set_destination(dst_mac);
     eth.set_ethertype(et);
+
     Ok(())
 }
 
@@ -27,7 +33,7 @@ pub fn make_header(buffer: &mut [u8], src_mac: MacAddr, dst_mac: MacAddr, et: Et
 mod tests {
     use pnet::datalink::MacAddr;
     use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
-    use crate::net::packets::{PacketError, ETH_HDR_LEN};
+    use crate::net::packets::ETH_HDR_LEN;
     use crate::net::packets::ethernet::make_header;
 
     #[test]
@@ -47,8 +53,14 @@ mod tests {
     #[test]
     fn ethernet_header_errors_when_buffer_too_small() {
         let mut tiny: [u8; 0] = [];
+
         let err = make_header(&mut tiny, MacAddr::zero(), MacAddr::zero(), EtherTypes::Arp)
             .unwrap_err();
-        matches!(err, PacketError::EthernetBuffer);
+
+        assert!(
+            err.to_string().contains("Ethernet"),
+            "unexpected error: {err:?}"
+        );
     }
+
 }

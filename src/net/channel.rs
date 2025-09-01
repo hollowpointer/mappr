@@ -1,11 +1,10 @@
 use std::net::Ipv4Addr;
 use std::thread;
 use std::time::{Duration, Instant};
-use anyhow::{anyhow, bail, Context, Result};
-use mac_oui::Oui;
+use anyhow::{bail, Context, Result};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
-use crate::cmd::discover::Host;
+use crate::host::Host;
 use crate::net::packets;
 use crate::net::packets::{CraftedPacket, PacketType};
 use crate::net::range::ip_iter;
@@ -48,7 +47,6 @@ pub fn discover_hosts_on_eth_channel(
     if channel_cfg.read_timeout.is_none() {
         channel_cfg.read_timeout = Some(Duration::from_millis(50));
     }
-    let oui_db = Oui::default().map_err(|e| { anyhow!("loading OUI database: {}", e) })?;
     let (mut tx, mut rx) = open_ethernet_channel(&intf, &channel_cfg)?;
     if u32::from(start) > u32::from(end) { bail!("end IP ({end}) must be >= start IP ({start})"); }
     print::print_status("Connection established. Beginning sweep...");
@@ -58,7 +56,7 @@ pub fn discover_hosts_on_eth_channel(
     while deadline > Instant::now() {
         match rx.next() {
             Ok(frame) => {
-                if let Some(host) = packets::handle_frame(&frame, &oui_db).ok() {
+                if let Some(host) = packets::handle_frame(&frame).ok() {
                     hosts.extend(host);
                 }
             },

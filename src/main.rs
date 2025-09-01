@@ -4,6 +4,7 @@ use cmd::{discover, listen, info, scan};
 mod cmd;
 mod net;
 mod print;
+mod host;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

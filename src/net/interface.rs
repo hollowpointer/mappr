@@ -2,6 +2,7 @@ use std::net::Ipv4Addr;
 use pnet::datalink::{interfaces, NetworkInterface};
 use crate::cmd::Target;
 use std::path::Path;
+use anyhow::anyhow;
 use pnet::ipnetwork::{IpNetwork, Ipv4Network};
 use crate::print;
 
@@ -14,11 +15,11 @@ pub fn select(target: Target) -> NetworkInterface {
     }
 }
 
-pub fn get_ipv4(interface: &NetworkInterface) -> Result<Ipv4Addr, String> {
+pub fn get_ipv4(interface: &NetworkInterface) -> anyhow::Result<Ipv4Addr> {
     first_ipv4_net(interface).map(|net| net.ip())
 }
 
-pub fn get_prefix(interface: &NetworkInterface) -> Result<u8, String> {
+pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<u8> {
     first_ipv4_net(interface).map(|net| net.prefix())
 }
 
@@ -66,15 +67,15 @@ fn wired_over_wireless(mut candidates: Vec<NetworkInterface>) -> NetworkInterfac
         .expect("no suitable network interfaces found")
 }
 
-fn first_ipv4_net(interface: &NetworkInterface) -> Result<Ipv4Network, String> {
+fn first_ipv4_net(interface: &NetworkInterface) -> anyhow::Result<Ipv4Network> {
     if let Some(ip_net) = interface.ips.first() {
         if let IpNetwork::V4(v4_net) = ip_net {
             Ok(*v4_net)
         } else {
-            Err("Interface does not have an IPv4 address".into())
+            Err(anyhow!("Interface does not have an IPv4 address"))
         }
     } else {
-        Err("Interface has no IP address at all".into())
+        Err(anyhow!("Interface has no IP address at all"))
     }
 }
 
