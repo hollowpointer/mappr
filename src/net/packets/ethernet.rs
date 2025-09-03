@@ -31,9 +31,9 @@ pub fn make_header(
 
 #[cfg(test)]
 mod tests {
+    const ETH_HDR_LEN: usize = 14;
     use pnet::datalink::MacAddr;
     use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
-    use crate::net::packets::ETH_HDR_LEN;
     use crate::net::packets::ethernet::make_header;
 
     #[test]

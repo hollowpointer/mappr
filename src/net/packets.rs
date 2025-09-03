@@ -1,68 +1,100 @@
 pub mod arp;
 mod ethernet;
+mod icmp;
 
-use std::net::Ipv4Addr;
-use anyhow::{anyhow, bail, Context};
+use std::net::{Ipv4Addr, Ipv6Addr};
+use anyhow::{bail, Context};
 use pnet::datalink::NetworkInterface;
 use pnet::packet::arp::ArpPacket;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
+use pnet::packet::ip::IpNextHeaderProtocol;
+use pnet::packet::ipv6::MutableIpv6Packet;
 use pnet::packet::Packet;
 use pnet::util::MacAddr;
 use crate::host::Host;
-use crate::net::interface::get_ipv4;
-
-const ETH_HDR_LEN: usize = 14;
-const ARP_LEN: usize = 28;
-const MIN_ETH_FRAME_NO_FCS: usize = 60;
+use crate::net::interface;
+use crate::net::utils::*;
 
 #[derive(Clone, Copy, Debug)]
-pub enum PacketType { ARP }
+pub enum PacketType { ARP, _EchoRequestV6 }
 
 #[derive(Debug)]
 pub enum CraftedPacket {
     ARP([u8; MIN_ETH_FRAME_NO_FCS]),
+    EchoRequestV6([u8; ETH_HDR_LEN + IP_V6_HDR_LEN + ICMP_V6_ECHO_REQ_LEN]),
 }
 
 impl CraftedPacket {
     pub fn new(packet_type: PacketType, interface: &NetworkInterface, target_addr: Ipv4Addr)
         -> anyhow::Result<CraftedPacket> {
+        let src_mac: MacAddr = interface.mac.context("failed to retrieve mac address")?;
+        let src_addr: Ipv4Addr = interface::get_ipv4(interface).context("failed to fetch IPv4 address for interface")?;
+        let sr_addr_v6 = Ipv6Addr::new(0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0);
+        // interface::get_ipv6(interface).context("failed to fetch IPv6 address for interface")?;
+        let multicast_ipv6_addr: Ipv6Addr = Ipv6Addr::new(0xff02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1);
         match packet_type {
-            PacketType::ARP => create_arp_request(interface, target_addr),
+            PacketType::ARP => create_arp_request(src_mac, src_addr, target_addr),
+            PacketType::_EchoRequestV6 => create_echo_request_v6(src_mac, sr_addr_v6, multicast_ipv6_addr)
         }
     }
 
     pub fn bytes(&self) -> &[u8] {
-        match self { CraftedPacket::ARP(b) => b }
+        match self {
+            CraftedPacket::ARP(b) => b,
+            CraftedPacket::EchoRequestV6(b) => b,
+        }
     }
 }
 
-fn create_arp_request(interface: &NetworkInterface, target_addr: Ipv4Addr)
+fn create_arp_request(src_mac: MacAddr, src_addr: Ipv4Addr, target_addr: Ipv4Addr)
                       -> anyhow::Result<CraftedPacket> {
 
     let mut pkt = [0u8; MIN_ETH_FRAME_NO_FCS];
-    let src_mac = interface.mac.context("missing MAC on interface")?;
-
-    let src_addr = get_ipv4(interface).map_err(|e| anyhow!(e))
-        .context("failed to lookup IPv4 address for interface")?;
     ethernet::make_header(&mut pkt, src_mac, MacAddr::broadcast(), EtherTypes::Arp)?;
-    arp::request_payload(&mut pkt, src_mac, src_addr, target_addr)?;
+    arp::create_request_payload(&mut pkt, src_mac, src_addr, target_addr)?;
     Ok(CraftedPacket::ARP(pkt))
+}
+
+fn create_echo_request_v6(src_mac: MacAddr, src_addr: Ipv6Addr, dst_addr: Ipv6Addr) -> anyhow::Result<CraftedPacket> {
+    println!("{}", src_addr);
+    let mut pkt = [0u8; ETH_HDR_LEN + IP_V6_HDR_LEN + ICMP_V6_ECHO_REQ_LEN];
+    let multicast_mac_addr = MacAddr::new(0x33, 0x33, 0, 0, 0, 1);
+    ethernet::make_header(&mut pkt, src_mac, multicast_mac_addr, EtherTypes::Ipv6)?;
+    create_ipv6_header(&mut pkt, src_addr, dst_addr)?;
+    icmp::create_echo_request_v6(&mut pkt, src_addr, dst_addr)?;
+
+    Ok(CraftedPacket::EchoRequestV6(pkt))
+}
+
+fn create_ipv6_header(buf: &mut[u8], src_addr: Ipv6Addr, dst_addr: Ipv6Addr) -> anyhow::Result<()> {
+    let mut pkt = MutableIpv6Packet::new(
+        &mut buf[ETH_HDR_LEN..ETH_HDR_LEN+IP_V6_HDR_LEN]
+    ).context("failed to create Ipv6 packet")?;
+    pkt.set_version(6);
+    pkt.set_traffic_class(0);
+    pkt.set_flow_label(0xC000F);
+    pkt.set_payload_length(ICMP_V6_ECHO_REQ_LEN as u16);
+    pkt.set_next_header(IpNextHeaderProtocol(58));
+    pkt.set_hop_limit(1);
+    pkt.set_source(src_addr);
+    pkt.set_destination(dst_addr);
+    Ok(())
 }
 
 pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
     let eth = EthernetPacket::new(frame)
         .context("truncated or invalid Ethernet frame")?;
 
+    let payload = eth.payload();
     match eth.get_ethertype() {
         EtherTypes::Arp => {
-            let payload = eth.payload();
-            let arp = ArpPacket::new(payload)
-                .with_context(|| format!(
+            let arp_packet = ArpPacket::new(payload)
+                .context(format!(
                     "truncated or invalid ARP packet (payload len {})",
                     payload.len()
                 ))?;
-            arp::read(&arp) // -> anyhow::Result<Option<Host>>
-        }
+            arp::read(&arp_packet)
+        },
         other => bail!("unsupported ethertype: 0x{:04x}", other.0),
     }
 }
@@ -86,6 +118,9 @@ mod tests {
     use pnet::util::MacAddr;
     use std::net::Ipv4Addr;
 
+    const ARP_LEN: usize = 28;
+    const ETH_HDR_LEN: usize = 14;
+
     pub(crate) fn buf() -> [u8; MIN_ETH_FRAME_NO_FCS] {
         [0u8; MIN_ETH_FRAME_NO_FCS]
     }
@@ -101,7 +136,7 @@ mod tests {
         let src_ip = Ipv4Addr::new(192, 168, 1, 10);
         let target_ip = Ipv4Addr::new(192, 168, 1, 20);
 
-        arp::request_payload(&mut b, src_mac, src_ip, target_ip).unwrap();
+        arp::create_request_payload(&mut b, src_mac, src_ip, target_ip).unwrap();
 
         let arp = ArpPacket::new(&b[ETH_HDR_LEN..ETH_HDR_LEN + ARP_LEN]).expect("parse arp");
         assert_eq!(arp.get_hardware_type(), ArpHardwareTypes::Ethernet);
@@ -113,27 +148,6 @@ mod tests {
         assert_eq!(arp.get_target_hw_addr(), MacAddr::new(0, 0, 0, 0, 0, 0));
         assert_eq!(arp.get_sender_proto_addr(), src_ip);
         assert_eq!(arp.get_target_proto_addr(), target_ip);
-    }
-
-    #[test]
-    fn create_arp_request_errors_when_interface_missing_mac() {
-        let iface = NetworkInterface {
-            name: "lo".into(),
-            description: "".to_string(),
-            index: 0,
-            mac: None,
-            ips: vec![],
-            flags: 0,
-        };
-
-        let err = create_arp_request(&iface, Ipv4Addr::new(192, 168, 1, 1))
-            .unwrap_err();
-
-        // check that the error message contains what we expect
-        assert!(
-            err.to_string().contains("missing MAC"),
-            "unexpected error: {err:?}"
-        );
     }
 
     #[test]

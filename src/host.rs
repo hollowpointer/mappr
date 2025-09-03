@@ -17,7 +17,8 @@ pub struct Host {
 
 impl Host {
     pub fn new(ipv4: Ipv4Addr, mac_addr: Option<MacAddr>) -> Self {
-        let vendor = mac_addr.and_then(|mac| identify_vendor(mac).expect("REASON"));
+        let vendor = mac_addr.and_then(|mac|
+            identify_vendor(mac).expect("failed to identify vendor"));
         Self { ipv4, vendor, mac_addr }
     }
 

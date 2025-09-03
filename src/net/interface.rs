@@ -1,9 +1,9 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use pnet::datalink::{interfaces, NetworkInterface};
 use crate::cmd::Target;
 use std::path::Path;
 use anyhow::anyhow;
-use pnet::ipnetwork::{IpNetwork, Ipv4Network};
+use pnet::ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
 use crate::print;
 
 pub fn select(target: Target) -> NetworkInterface {
@@ -17,6 +17,10 @@ pub fn select(target: Target) -> NetworkInterface {
 
 pub fn get_ipv4(interface: &NetworkInterface) -> anyhow::Result<Ipv4Addr> {
     first_ipv4_net(interface).map(|net| net.ip())
+}
+
+pub fn _get_ipv6(interface: &NetworkInterface) -> anyhow::Result<Ipv6Addr> {
+    _first_ipv6_net(interface).map(|net| net.ip())
 }
 
 pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<u8> {
@@ -71,6 +75,18 @@ fn first_ipv4_net(interface: &NetworkInterface) -> anyhow::Result<Ipv4Network> {
     if let Some(ip_net) = interface.ips.first() {
         if let IpNetwork::V4(v4_net) = ip_net {
             Ok(*v4_net)
+        } else {
+            Err(anyhow!("Interface does not have an IPv4 address"))
+        }
+    } else {
+        Err(anyhow!("Interface has no IP address at all"))
+    }
+}
+
+fn _first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Ipv6Network> {
+    if let Some(ip_net) = interface.ips.first() {
+        if let IpNetwork::V6(v6_net) = ip_net {
+            Ok(*v6_net)
         } else {
             Err(anyhow!("Interface does not have an IPv4 address"))
         }

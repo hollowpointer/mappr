@@ -4,9 +4,9 @@ use pnet::datalink::MacAddr;
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
 use pnet::packet::ethernet::EtherTypes;
 use crate::host::Host;
-use crate::net::packets::{ARP_LEN, ETH_HDR_LEN};
+use crate::net::utils::{ETH_HDR_LEN, ARP_LEN};
 
-pub fn request_payload(
+pub fn create_request_payload(
     buffer: &mut [u8],
     src_mac: MacAddr,
     src_addr: Ipv4Addr,
@@ -16,18 +16,18 @@ pub fn request_payload(
         return Err(anyhow!("buffer too short for ARP payload"));
     }
 
-    let mut arp = MutableArpPacket::new(&mut buffer[ETH_HDR_LEN..ETH_HDR_LEN + ARP_LEN])
+    let mut arp_packet = MutableArpPacket::new(&mut buffer[ETH_HDR_LEN..ETH_HDR_LEN + ARP_LEN])
         .context("failed to create mutable ARP packet")?;
 
-    arp.set_hardware_type(ArpHardwareTypes::Ethernet);
-    arp.set_protocol_type(EtherTypes::Ipv4);
-    arp.set_hw_addr_len(6);
-    arp.set_proto_addr_len(4);
-    arp.set_operation(ArpOperations::Request);
-    arp.set_sender_hw_addr(src_mac);
-    arp.set_target_hw_addr(MacAddr::new(0, 0, 0, 0, 0, 0));
-    arp.set_sender_proto_addr(src_addr);
-    arp.set_target_proto_addr(target_addr);
+    arp_packet.set_hardware_type(ArpHardwareTypes::Ethernet);
+    arp_packet.set_protocol_type(EtherTypes::Ipv4);
+    arp_packet.set_hw_addr_len(6);
+    arp_packet.set_proto_addr_len(4);
+    arp_packet.set_operation(ArpOperations::Request);
+    arp_packet.set_sender_hw_addr(src_mac);
+    arp_packet.set_target_hw_addr(MacAddr::new(0, 0, 0, 0, 0, 0));
+    arp_packet.set_sender_proto_addr(src_addr);
+    arp_packet.set_target_proto_addr(target_addr);
 
     Ok(())
 }
@@ -58,8 +58,7 @@ mod tests {
     use super::*;
     use std::net::Ipv4Addr;
     use pnet::datalink::MacAddr;
-    use crate::net::packets::{ARP_LEN, ETH_HDR_LEN};
-    use crate::net::packets::arp::request_payload;
+    use crate::net::packets::arp::create_request_payload;
     use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, MutableArpPacket};
     use pnet::packet::ethernet::EtherTypes;
 
@@ -68,7 +67,7 @@ mod tests {
         // one byte short of ETH_HDR_LEN + ARP_LEN
         let mut small = vec![0u8; ETH_HDR_LEN + ARP_LEN - 1];
 
-        let err = request_payload(
+        let err = create_request_payload(
             &mut small,
             MacAddr::zero(),
             Ipv4Addr::new(1, 2, 3, 4),
@@ -91,7 +90,7 @@ mod tests {
         let src_ip = Ipv4Addr::new(10, 0, 0, 42);
         let dst_ip = Ipv4Addr::new(10, 0, 0, 1);
 
-        request_payload(&mut buf, src_mac, src_ip, dst_ip).expect("payload should fit");
+        create_request_payload(&mut buf, src_mac, src_ip, dst_ip).expect("payload should fit");
 
         // look only at the ARP slice the function wrote to
         let arp = ArpPacket::new(
@@ -119,7 +118,7 @@ mod tests {
         let src_ip = Ipv4Addr::new(192, 168, 1, 123);
         let dst_ip = Ipv4Addr::new(192, 168, 1, 1);
 
-        request_payload(&mut buf, src_mac, src_ip, dst_ip).unwrap();
+        create_request_payload(&mut buf, src_mac, src_ip, dst_ip).unwrap();
         let arp = ArpPacket::new(
             &buf[ETH_HDR_LEN..ETH_HDR_LEN + ARP_LEN]
         ).unwrap();
