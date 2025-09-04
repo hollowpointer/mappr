@@ -2,7 +2,7 @@ pub mod arp;
 mod ethernet;
 mod icmp;
 
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use anyhow::{bail, Context};
 use pnet::datalink::NetworkInterface;
 use pnet::packet::arp::ArpPacket;
@@ -16,7 +16,7 @@ use crate::net::interface;
 use crate::net::utils::*;
 
 #[derive(Clone, Copy, Debug)]
-pub enum PacketType { ARP, _EchoRequestV6 }
+pub enum PacketType { ARP, EchoRequestV6 }
 
 #[derive(Debug)]
 pub enum CraftedPacket {
@@ -25,23 +25,30 @@ pub enum CraftedPacket {
 }
 
 impl CraftedPacket {
-    pub fn new(packet_type: PacketType, interface: &NetworkInterface, target_addr: Ipv4Addr)
-        -> anyhow::Result<CraftedPacket> {
-        let src_mac: MacAddr = interface.mac.context("failed to retrieve mac address")?;
-        let src_addr: Ipv4Addr = interface::get_ipv4(interface).context("failed to fetch IPv4 address for interface")?;
-        let sr_addr_v6 = Ipv6Addr::new(0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0);
-        // interface::get_ipv6(interface).context("failed to fetch IPv6 address for interface")?;
-        let multicast_ipv6_addr: Ipv6Addr = Ipv6Addr::new(0xff02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1);
-        match packet_type {
-            PacketType::ARP => create_arp_request(src_mac, src_addr, target_addr),
-            PacketType::_EchoRequestV6 => create_echo_request_v6(src_mac, sr_addr_v6, multicast_ipv6_addr)
-        }
+    pub fn new(packet_type: PacketType, intf: &NetworkInterface, dst_addr: IpAddr)
+        -> anyhow::Result<CraftedPacket > {
+            let src_mac: MacAddr = intf.mac.context("failed to retrieve mac address")?;
+            match (packet_type, dst_addr) {
+                // ------- IPv4 paths -------
+                (PacketType::ARP, IpAddr::V4(dst_v4)) => {
+                    let src_v4 = interface::get_ipv4(intf).context("failed to fetch IPv4 address for interface")?;
+                    let pkt = create_arp_request(src_mac, src_v4, dst_v4)?;
+                    Ok(pkt)
+                },
+                // ------- IPv6 paths -------
+                (PacketType::EchoRequestV6, IpAddr::V6(dst_v6)) => {
+                    let src_v6 = interface::get_ipv6(intf).context("failed to fetch IPv6 address for interface")?;
+                    let pkt = create_echo_request_v6(src_mac, src_v6, dst_v6)?;
+                    Ok(pkt)
+                },
+                _ => { bail!("wrong combination of packet type and destination address!") }
+            }
     }
 
     pub fn bytes(&self) -> &[u8] {
         match self {
-            CraftedPacket::ARP(b) => b,
-            CraftedPacket::EchoRequestV6(b) => b,
+            CraftedPacket::ARP(data) => data,
+            CraftedPacket::EchoRequestV6(data) => data,
         }
     }
 }

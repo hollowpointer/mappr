@@ -19,8 +19,8 @@ pub fn get_ipv4(interface: &NetworkInterface) -> anyhow::Result<Ipv4Addr> {
     first_ipv4_net(interface).map(|net| net.ip())
 }
 
-pub fn _get_ipv6(interface: &NetworkInterface) -> anyhow::Result<Ipv6Addr> {
-    _first_ipv6_net(interface).map(|net| net.ip())
+pub fn get_ipv6(interface: &NetworkInterface) -> anyhow::Result<Ipv6Addr> {
+    first_ipv6_net(interface).map(|net| net.ip())
 }
 
 pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<u8> {
@@ -83,7 +83,7 @@ fn first_ipv4_net(interface: &NetworkInterface) -> anyhow::Result<Ipv4Network> {
     }
 }
 
-fn _first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Ipv6Network> {
+fn first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Ipv6Network> {
     if let Some(ip_net) = interface.ips.first() {
         if let IpNetwork::V6(v6_net) = ip_net {
             Ok(*v6_net)

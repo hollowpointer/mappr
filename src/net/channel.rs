@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::thread;
 use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
@@ -11,7 +11,7 @@ use crate::net::range::ip_iter;
 use crate::print;
 
 fn send(intf: &NetworkInterface,
-        ip: Ipv4Addr,
+        ip: IpAddr,
         packet_type: PacketType,
         tx: &mut Box<dyn DataLinkSender>
 ) -> Result<()> {
@@ -31,7 +31,7 @@ fn send_sweep(start: Ipv4Addr,
     let len: u64 = u64::from(u32::from(end) - u32::from(start) + 1);
     let progress_bar = print::create_progressbar(len, format!("{:?}", packet_type));
     for ip in ip_iter((start, end)) {
-        send(&intf, ip, packet_type, tx).expect("Failed to perform ARP sweep");
+        send(&intf, IpAddr::V4(ip), packet_type, tx).expect("Failed to perform ARP sweep");
         progress_bar.inc(1);
         thread::sleep(Duration::from_millis(5));
     }
