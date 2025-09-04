@@ -11,7 +11,7 @@ use crate::net::*;
 use crate::net::channel::discover_hosts_on_eth_channel;
 use crate::net::interface;
 use crate::net::tcp::handshake_discovery;
-use crate::print;
+use crate::{host, print};
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     let hosts: Option<Vec<Host>> = match target {
@@ -25,10 +25,9 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     };
     print::separator("Network Discovery");
     if let Some(hosts) = hosts {
-        let mut idx: u32 = 0;
-        for host in hosts {
-            host.print_lan(idx);
-            idx += 1;
+        let hosts = host::merge_by_mac_addr(hosts);
+        for (idx, h) in hosts.into_iter().enumerate() {
+            h.print_lan(idx as u32);
         }
     }
     Ok(())
