@@ -48,7 +48,7 @@ fn select_lan() -> NetworkInterface {
         return wired_over_wireless(candidates);
     }
     let intf = candidates.first().unwrap().clone();
-    let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
+    let msg = format!("Selected {} with address {}", intf.name, get_ipv6(&intf).unwrap());
     print::print_status(&msg);
     intf
 }
@@ -72,27 +72,17 @@ fn wired_over_wireless(mut candidates: Vec<NetworkInterface>) -> NetworkInterfac
 }
 
 fn first_ipv4_net(interface: &NetworkInterface) -> anyhow::Result<Ipv4Network> {
-    if let Some(ip_net) = interface.ips.first() {
-        if let IpNetwork::V4(v4_net) = ip_net {
-            Ok(*v4_net)
-        } else {
-            Err(anyhow!("Interface does not have an IPv4 address"))
-        }
-    } else {
-        Err(anyhow!("Interface has no IP address at all"))
-    }
+    interface.ips.iter().find_map(|ip| match ip {
+        IpNetwork::V4(n) => Some(*n),
+        _ => None,
+    }).ok_or_else(|| anyhow!("Interface does not have an IPv4 address"))
 }
 
 fn first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Ipv6Network> {
-    if let Some(ip_net) = interface.ips.first() {
-        if let IpNetwork::V6(v6_net) = ip_net {
-            Ok(*v6_net)
-        } else {
-            Err(anyhow!("Interface does not have an IPv4 address"))
-        }
-    } else {
-        Err(anyhow!("Interface has no IP address at all"))
-    }
+    interface.ips.iter().find_map(|ip| match ip {
+        IpNetwork::V6(n) => Some(*n),
+        _ => None,
+    }).ok_or_else(|| anyhow!("Interface does not have an IPv6 address"))
 }
 
 /*********************************
@@ -118,5 +108,5 @@ OS dependent functions for WIRELESS
 **********************************/
 #[cfg(target_os = "linux")]
 fn is_wireless(interface: &NetworkInterface) -> bool {
-    Path::new(&format!("sys/class/net/{}/wireless", interface)).exists()
+    Path::new(&format!("sys/class/net/{}/wireless", interface.name)).exists()
 }

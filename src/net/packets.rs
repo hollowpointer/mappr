@@ -1,15 +1,14 @@
 pub mod arp;
 mod ethernet;
 mod icmp;
+mod ip;
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use anyhow::{bail, Context};
 use pnet::datalink::NetworkInterface;
-use pnet::packet::arp::ArpPacket;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::IpNextHeaderProtocol;
 use pnet::packet::ipv6::MutableIpv6Packet;
-use pnet::packet::Packet;
 use pnet::util::MacAddr;
 use crate::host::Host;
 use crate::net::interface;
@@ -53,6 +52,18 @@ impl CraftedPacket {
     }
 }
 
+pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
+    let eth = EthernetPacket::new(frame)
+        .context("truncated or invalid Ethernet frame")?;
+    let mac_addr = eth.get_source();
+    let host = match eth.get_ethertype() {
+        EtherTypes::Arp => { arp::handle_packet(eth)? },
+        EtherTypes::Ipv6 => { ip::handle_v6_packet(eth)? },
+        other => bail!("unsupported ethertype: 0x{:04x}", other.0),
+    };
+    if let Some(mut host) = host { host.set_mac_addr(mac_addr)?; Ok(Some(host)) } else { Ok(None) }
+}
+
 fn create_arp_request(src_mac: MacAddr, src_addr: Ipv4Addr, target_addr: Ipv4Addr)
                       -> anyhow::Result<CraftedPacket> {
 
@@ -63,7 +74,6 @@ fn create_arp_request(src_mac: MacAddr, src_addr: Ipv4Addr, target_addr: Ipv4Add
 }
 
 fn create_echo_request_v6(src_mac: MacAddr, src_addr: Ipv6Addr, dst_addr: Ipv6Addr) -> anyhow::Result<CraftedPacket> {
-    println!("{}", src_addr);
     let mut pkt = [0u8; ETH_HDR_LEN + IP_V6_HDR_LEN + ICMP_V6_ECHO_REQ_LEN];
     let multicast_mac_addr = MacAddr::new(0x33, 0x33, 0, 0, 0, 1);
     ethernet::make_header(&mut pkt, src_mac, multicast_mac_addr, EtherTypes::Ipv6)?;
@@ -87,26 +97,6 @@ fn create_ipv6_header(buf: &mut[u8], src_addr: Ipv6Addr, dst_addr: Ipv6Addr) -> 
     pkt.set_destination(dst_addr);
     Ok(())
 }
-
-pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
-    let eth = EthernetPacket::new(frame)
-        .context("truncated or invalid Ethernet frame")?;
-
-    let payload = eth.payload();
-    match eth.get_ethertype() {
-        EtherTypes::Arp => {
-            let arp_packet = ArpPacket::new(payload)
-                .context(format!(
-                    "truncated or invalid ARP packet (payload len {})",
-                    payload.len()
-                ))?;
-            arp::read(&arp_packet)
-        },
-        other => bail!("unsupported ethertype: 0x{:04x}", other.0),
-    }
-}
-
-
 
 // ╔════════════════════════════════════════════╗
 // ║ ████████╗███████╗███████╗████████╗███████╗ ║

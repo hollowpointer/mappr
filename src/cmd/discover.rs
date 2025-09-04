@@ -1,7 +1,7 @@
 use anyhow;
 use pnet::datalink::{Config, NetworkInterface};
 use pnet::util::MacAddr;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 use anyhow::Context;
 use is_root::is_root;
@@ -41,7 +41,7 @@ async fn discover_lan(start_addr: Ipv4Addr, end_addr: Ipv4Addr, intf: NetworkInt
         let addresses = handshake_discovery(start_addr, end_addr).await?;
         for address in addresses {
             let mac_addr: Option<MacAddr> = None;
-            let host = Host::new(address, mac_addr);
+            let host = Host::new(IpAddr::V4(address), mac_addr);
             hosts.push(host);
         }
         return Ok(hosts)

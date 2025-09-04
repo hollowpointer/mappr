@@ -1,8 +1,9 @@
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use anyhow::{anyhow, Context};
 use pnet::datalink::MacAddr;
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
-use pnet::packet::ethernet::EtherTypes;
+use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
+use pnet::packet::Packet;
 use crate::host::Host;
 use crate::net::utils::{ETH_HDR_LEN, ARP_LEN};
 
@@ -32,11 +33,20 @@ pub fn create_request_payload(
     Ok(())
 }
 
-pub fn read(arp: &ArpPacket) -> anyhow::Result<Option<Host>> {
-    if arp.get_operation() == ArpOperations::Reply {
+pub fn handle_packet(ethernet_packet: EthernetPacket) -> anyhow::Result<Option<Host>> {
+    let arp_packet = ArpPacket::new(ethernet_packet.payload())
+        .context(format!(
+            "truncated or invalid ARP packet (payload len {})",
+            ethernet_packet.payload().len()
+        ))?;
+    read(&arp_packet)
+}
+
+fn read(arp_packet: &ArpPacket) -> anyhow::Result<Option<Host>> {
+    if arp_packet.get_operation() == ArpOperations::Reply {
         let host = Host::new(
-            arp.get_sender_proto_addr(),
-            Some(arp.get_sender_hw_addr()),
+            IpAddr::V4(arp_packet.get_sender_proto_addr()),
+            Some(arp_packet.get_sender_hw_addr()),
         );
         Ok(Some(host))
     } else { Ok(None) }

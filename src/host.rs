@@ -1,4 +1,5 @@
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
+use anyhow::Context;
 use colored::{ColoredString, Colorize};
 use mac_oui::Oui;
 use pnet::datalink::MacAddr;
@@ -10,20 +11,26 @@ static OUI_DB: Lazy<Oui> = Lazy::new(|| {
 
 #[derive(Debug)]
 pub struct Host {
-    ipv4: Ipv4Addr,
+    ip_addr: IpAddr,
     vendor: Option<String>,
     mac_addr: Option<MacAddr>,
 }
 
 impl Host {
-    pub fn new(ipv4: Ipv4Addr, mac_addr: Option<MacAddr>) -> Self {
+    pub fn new(ip_addr: IpAddr, mac_addr: Option<MacAddr>) -> Self {
         let vendor = mac_addr.and_then(|mac|
             identify_vendor(mac).expect("failed to identify vendor"));
-        Self { ipv4, vendor, mac_addr }
+        Self { ip_addr, vendor, mac_addr }
+    }
+
+    pub fn set_mac_addr(&mut self, mac: MacAddr) -> anyhow::Result<()> {
+        self.mac_addr = Some(mac);
+        self.vendor = self.mac_addr.and_then(|m| identify_vendor(m).ok()).context("")?;
+        Ok(())
     }
 
     pub fn print_lan(&self, idx: u32) {
-        let ip_addr = self.ipv4.to_string().blue();
+        let ip_addr = self.ip_addr.to_string().blue();
         let mut vendor: ColoredString = "Unknown".red().bold();
         if let Some(vendor_string) = self.vendor.clone() {
             vendor = vendor_string.red().bold();

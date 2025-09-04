@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::thread;
 use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
@@ -51,6 +51,8 @@ pub fn discover_hosts_on_eth_channel(
     if u32::from(start) > u32::from(end) { bail!("end IP ({end}) must be >= start IP ({start})"); }
     print::print_status("Connection established. Beginning sweep...");
     send_sweep(start, end, &intf, PacketType::ARP, &mut tx);
+    let dst_addr = Ipv6Addr::new(0xff02, 0x0 , 0x0, 0x0, 0x0, 0x0, 0x0, 0x1);
+    send(&intf, IpAddr::V6(dst_addr), PacketType::EchoRequestV6, &mut tx)?;
     let mut hosts: Vec<Host> = Vec::new();
     let deadline = Instant::now() + duration_in_ms;
     while deadline > Instant::now() {
