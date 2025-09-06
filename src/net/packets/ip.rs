@@ -1,4 +1,3 @@
-use std::net::IpAddr;
 use anyhow::Context;
 use pnet::packet::ethernet::EthernetPacket;
 use pnet::packet::ip::IpNextHeaderProtocol;
@@ -18,9 +17,13 @@ pub fn handle_v6_packet(ethernet_packet: EthernetPacket) -> anyhow::Result<Optio
 }
 
 fn read_v6(ipv6_packet: &Ipv6Packet) -> anyhow::Result<Option<Host>> {
-    let src_addr = IpAddr::V6(ipv6_packet.get_source());
+    let src_addr = ipv6_packet.get_source();
     let host: Option<Host> = match ipv6_packet.get_next_header() {
-        IpNextHeaderProtocol(ICMP_NEXT_HEADER_CODE) => { Some(Host::new(src_addr, None)) },
+        IpNextHeaderProtocol(ICMP_NEXT_HEADER_CODE) => {
+            let mut host = Host::default();
+            host.add_ipv6(src_addr);
+            Some(host)
+        },
         _ => { None }
     };
     Ok(host)

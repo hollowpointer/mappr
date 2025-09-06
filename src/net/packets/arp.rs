@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::Ipv4Addr;
 use anyhow::{anyhow, Context};
 use pnet::datalink::MacAddr;
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
@@ -44,10 +44,9 @@ pub fn handle_packet(ethernet_packet: EthernetPacket) -> anyhow::Result<Option<H
 
 fn read(arp_packet: &ArpPacket) -> anyhow::Result<Option<Host>> {
     if arp_packet.get_operation() == ArpOperations::Reply {
-        let host = Host::new(
-            IpAddr::V4(arp_packet.get_sender_proto_addr()),
-            Some(arp_packet.get_sender_hw_addr()),
-        );
+        let mut host = Host::default();
+        host.set_ipv4(arp_packet.get_sender_proto_addr());
+        host.set_mac_addr(arp_packet.get_sender_hw_addr())?;
         Ok(Some(host))
     } else { Ok(None) }
 }

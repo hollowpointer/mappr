@@ -1,7 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::net::IpAddr;
-use anyhow::Context;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use colored::{ColoredString, Colorize};
 use mac_oui::Oui;
 use pnet::datalink::MacAddr;
@@ -11,48 +10,62 @@ static OUI_DB: Lazy<Oui> = Lazy::new(|| {
     Oui::default().expect("failed to load OUI database")
 });
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Host {
-    ip_addrs: Vec<IpAddr>,
-    vendor: Option<String>,
+    ipv4: Option<Ipv4Addr>,
+    ipv6: Vec<Ipv6Addr>,
     mac_addr: Option<MacAddr>,
+    vendor: Option<String>,
 }
 
 impl Host {
-    pub fn new(ip_addr: IpAddr, mac_addr: Option<MacAddr>) -> Self {
-        let vendor = mac_addr.and_then(|mac|
-            identify_vendor(mac).expect("failed to identify vendor"));
-        Self { ip_addrs: vec![ip_addr], vendor, mac_addr }
+    pub fn _new(ipv4: Option<Ipv4Addr>, ipv6: Vec<Ipv6Addr>, mac_addr: Option<MacAddr>)
+        -> anyhow::Result<Self> {
+        let vendor = match mac_addr {
+            Some(mac) => identify_vendor(mac)?,
+            None => None
+        };
+        Ok(Self { ipv4, ipv6, mac_addr, vendor })
     }
 
-    pub fn add_ip(&mut self, ip_addr: IpAddr) {
-        if !self.ip_addrs.contains(&ip_addr) { self.ip_addrs.push(ip_addr) }
+    pub fn set_ipv4(&mut self, ipv4: Ipv4Addr) {
+        self.ipv4 = Some(ipv4)
     }
 
-    pub fn add_ips(&mut self, ip_addrs: Vec<IpAddr>) {
-        for ip in ip_addrs { self.add_ip(ip) }
+    pub fn add_ipv6(&mut self, ipv6: Ipv6Addr) {
+        if !self.ipv6.contains(&ipv6) { self.ipv6.push(ipv6) }
     }
 
-    pub fn set_mac_addr(&mut self, mac: MacAddr) -> anyhow::Result<()> {
-        self.mac_addr = Some(mac);
-        self.vendor = self.mac_addr.and_then(|m| identify_vendor(m).ok()).context("")?;
+    pub fn add_ipv6_as_vec(&mut self, ipv6: Vec<Ipv6Addr>) {
+        for ip in ipv6 { self.add_ipv6(ip) }
+    }
+
+    pub fn set_mac_addr(&mut self, mac_addr: MacAddr) -> anyhow::Result<()> {
+        self.mac_addr = Some(mac_addr);
+        self.vendor = identify_vendor(mac_addr)?;
         Ok(())
     }
 
     pub fn print_lan(&self, idx: u32) {
-        let ip_addr = format!("{:?}", self.ip_addrs).blue();
         let mut vendor: ColoredString = "Unknown".red().bold();
         if let Some(vendor_string) = self.vendor.clone() {
             vendor = vendor_string.red().bold();
         }
-        let mut mac_addr_str: ColoredString = "??:??:??:??:??:??".yellow();
-        if let Some(mac_addr) = self.mac_addr {
-            mac_addr_str = mac_addr.to_string().yellow();
+        println!("\x1b[32m[{idx}] {vendor}");
+        if let Some(ipv4) = self.ipv4 {
+            println!("├─ IPv4 : {}", ipv4.to_string().cyan())
         }
-        print!("\x1b[32m[{idx}] {vendor}\n\
-                       ├─ IP  : {ip_addr}\n\
-                       └─ MAC : {mac_addr_str}\n"
-        );
+        if let Some(gua) = self.ipv6.iter()
+            .find(|&&x| { x.to_string().starts_with("2") }) {
+            println!("├─ GUA  : {}", gua.to_string().blue())
+        }
+        if let Some(lla) = self.ipv6.iter()
+            .find(|&&x| { x.to_string().starts_with("fe80") }) {
+            println!("├─ LLA  : {}", lla.to_string().blue())
+        }
+        if let Some(mac_addr) = self.mac_addr {
+            println!("└─ MAC  : {}", mac_addr.to_string().yellow())
+        }
         let separator = "------------------------------------------------------------".bright_black();
         println!("{separator}");
     }
@@ -67,7 +80,7 @@ pub fn merge_by_mac_addr(hosts: Vec<Host>) -> Vec<Host> {
             Some(mac) => match by_mac.entry(mac) {
                 Entry::Vacant(v) => { v.insert(host); }
                 Entry::Occupied(mut e) => {
-                    e.get_mut().add_ips(host.ip_addrs);
+                    e.get_mut().add_ipv6_as_vec(host.ipv6);
                     if e.get().vendor.is_none() && host.vendor.is_some() {
                         e.get_mut().vendor = host.vendor;
                     }
