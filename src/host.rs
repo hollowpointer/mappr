@@ -19,7 +19,7 @@ pub struct Host {
 }
 
 impl Host {
-    pub fn _new(ipv4: Option<Ipv4Addr>, ipv6: Vec<Ipv6Addr>, mac_addr: Option<MacAddr>)
+    pub fn new(ipv4: Option<Ipv4Addr>, ipv6: Vec<Ipv6Addr>, mac_addr: Option<MacAddr>)
         -> anyhow::Result<Self> {
         let vendor = match mac_addr {
             Some(mac) => identify_vendor(mac)?,
@@ -53,18 +53,18 @@ impl Host {
         }
         println!("\x1b[32m[{idx}] {vendor}");
         if let Some(ipv4) = self.ipv4 {
-            println!("├─ IPv4 : {}", ipv4.to_string().cyan())
+            println!(" ├─ IPv4 : {}", ipv4.to_string().cyan())
         }
         if let Some(gua) = self.ipv6.iter()
             .find(|&&x| { x.to_string().starts_with("2") }) {
-            println!("├─ GUA  : {}", gua.to_string().blue())
+            println!(" ├─ GUA  : {}", gua.to_string().blue())
         }
         if let Some(lla) = self.ipv6.iter()
             .find(|&&x| { x.to_string().starts_with("fe80") }) {
-            println!("├─ LLA  : {}", lla.to_string().blue())
+            println!(" ├─ LLA  : {}", lla.to_string().blue())
         }
         if let Some(mac_addr) = self.mac_addr {
-            println!("└─ MAC  : {}", mac_addr.to_string().yellow())
+            println!(" └─ MAC  : {}", mac_addr.to_string().yellow())
         }
         let separator = "------------------------------------------------------------".bright_black();
         println!("{separator}");

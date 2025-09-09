@@ -1,81 +1,81 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::thread;
+use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
-use anyhow::{bail, Context, Result};
+use anyhow;
+use anyhow::{bail, Context};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
+use pnet::util::MacAddr;
 use crate::host::Host;
-use crate::net::packets;
-use crate::net::packets::{CraftedPacket, PacketType};
-use crate::net::range::ip_iter;
+use crate::net::{interface, packets};
+use crate::net::packets::{arp, PacketType};
+use crate::net::range::{ip_iter, Ipv4Range};
 use crate::print;
 
-fn send(intf: &NetworkInterface,
-        ip: IpAddr,
-        packet_type: PacketType,
-        tx: &mut Box<dyn DataLinkSender>
-) -> Result<()> {
-    let pkt = CraftedPacket::new(packet_type, &intf, ip)?;
-    if let Some(Err(e)) = tx.send_to(pkt.bytes(), Some(intf.clone())) {
-        eprintln!("send {ip} failed: {e}");
-    }
-    Ok(())
+pub enum ProbeType {
+    All,
+    Arp,
+    Default,
+    Ipv4,
+    Ipv6,
+    Custom(Vec<PacketType>)
 }
 
-fn send_sweep(start: Ipv4Addr,
-              end: Ipv4Addr,
-              intf: &NetworkInterface,
-              packet_type: PacketType,
-              tx: &mut Box<dyn DataLinkSender>,
-) {
-    let len: u64 = u64::from(u32::from(end) - u32::from(start) + 1);
-    let progress_bar = print::create_progressbar(len, format!("{:?}", packet_type));
-    for ip in ip_iter((start, end)) {
-        send(&intf, IpAddr::V4(ip), packet_type, tx).expect("Failed to perform ARP sweep");
-        progress_bar.inc(1);
-        thread::sleep(Duration::from_millis(5));
-    }
-}
-
-pub fn discover_hosts_on_eth_channel(
-    start: Ipv4Addr,
-    end: Ipv4Addr,
+pub struct SenderContext {
+    pub ipv4range: Ipv4Range,
+    pub src_addr_v4: Ipv4Addr,
     intf: NetworkInterface,
-    mut channel_cfg: Config,
-    duration_in_ms: Duration,
-) -> Result<Vec<Host>> {
-    if channel_cfg.read_timeout.is_none() {
-        channel_cfg.read_timeout = Some(Duration::from_millis(50));
+    pub mac_addr: MacAddr,
+    pub tx: Box<dyn DataLinkSender>
+}
+
+impl SenderContext {
+    fn new(ipv4range: Ipv4Range, src_addr_v4: Ipv4Addr, intf: NetworkInterface, tx: Box<dyn DataLinkSender>)
+     -> Self { Self { ipv4range, src_addr_v4, mac_addr: intf.mac.unwrap(), intf, tx } }
+}
+
+pub fn discover_hosts_on_eth_channel(ipv4range: Ipv4Range,
+                                     intf: NetworkInterface,
+                                     channel_cfg: Config,
+                                     probe_type: ProbeType,
+                                     duration_in_ms: Duration
+) -> anyhow::Result<Vec<Host>> {
+    let (tx, rx) = open_eth_channel(&intf, &channel_cfg)?;
+    let mut send_context: SenderContext = SenderContext::new(ipv4range, interface::get_ipv4(&intf)?, intf, tx);
+    match probe_type {
+        ProbeType::Default => {
+            arp::send_packets(&mut send_context)?;
+            //icmp::send_echo_request_v6();
+        },
+        _ => bail!("other probe types not implemented yet!")
     }
-    let (mut tx, mut rx) = open_ethernet_channel(&intf, &channel_cfg)?;
-    if u32::from(start) > u32::from(end) { bail!("end IP ({end}) must be >= start IP ({start})"); }
-    print::print_status("Connection established. Beginning sweep...");
-    send_sweep(start, end, &intf, PacketType::ARP, &mut tx);
-    let dst_addr = Ipv6Addr::new(0xff02, 0x0 , 0x0, 0x0, 0x0, 0x0, 0x0, 0x1);
-    send(&intf, IpAddr::V6(dst_addr), PacketType::EchoRequestV6, &mut tx)?;
+    Ok(listen_for_hosts(rx, duration_in_ms))
+}
+
+fn open_eth_channel(intf: &NetworkInterface, cfg: &Config)
+    -> anyhow::Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>)> {
+    let ch = datalink::channel(intf, *cfg).with_context(|| format!("opening on {}", intf.name))?;
+    match ch {
+        Channel::Ethernet(tx, rx) => {
+            print::print_status("Connection established. Beginning sweep...");
+            Ok((tx, rx))
+        },
+        _ => bail!("non-ethernet channel for {}", intf.name),
+    }
+}
+
+fn listen_for_hosts(mut rx: Box<dyn DataLinkReceiver>, duration_in_ms: Duration) -> Vec<Host> {
     let mut hosts: Vec<Host> = Vec::new();
     let deadline = Instant::now() + duration_in_ms;
     while deadline > Instant::now() {
         match rx.next() {
             Ok(frame) => {
-                if let Some(host) = packets::handle_frame(&frame).ok() {
-                    hosts.extend(host);
-                }
+                if let Some(host) = packets::handle_frame(&frame).ok()
+                { hosts.extend(host); }
             },
             Err(_) => { }
         }
     }
-    Ok(hosts)
-}
-
-fn open_ethernet_channel(intf: &NetworkInterface, cfg: &Config)
-                             -> Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>)> {
-    let ch = datalink::channel(intf, *cfg)
-        .with_context(|| format!("opening on {}", intf.name))?;
-    match ch {
-        Channel::Ethernet(tx, rx) => Ok((tx, rx)),
-        _ => bail!("non-ethernet channel for {}", intf.name),
-    }
+    hosts
 }
 
 // ╔════════════════════════════════════════════╗
@@ -96,8 +96,6 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use pnet::datalink::{DataLinkSender, MacAddr, NetworkInterface};
     use pnet::ipnetwork::{IpNetwork, Ipv4Network};
-    use crate::net::channel::send_sweep;
-    use crate::net::packets::PacketType;
 
     // ---- Fake sender to spy on send_sweep ----
     struct FakeSender {
@@ -150,21 +148,5 @@ mod tests {
             )],
             flags: 0,
         }
-    }
-
-    #[test]
-    fn send_sweep_calls_send_to_for_each_ip_even_if_one_fails() {
-        // 3 IPs in range
-        let start = Ipv4Addr::new(192, 168, 1, 1);
-        let end   = Ipv4Addr::new(192, 168, 1, 3);
-
-        let intf = dummy_iface();
-        let (mut tx, sent_counter) = FakeSender::new(true);
-
-        // should not panic and should attempt all three sends
-        send_sweep(start, end, &intf, PacketType::ARP, &mut tx);
-
-        let sent = *sent_counter.lock().unwrap();
-        assert_eq!(sent, 3, "expected one send per IP in range");
     }
 }

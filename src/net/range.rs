@@ -4,10 +4,75 @@ use pnet::datalink::NetworkInterface;
 use crate::cmd::Target;
 use crate::net::interface;
 
+pub struct Ipv4Range {
+    pub start_addr: Ipv4Addr,
+    pub end_addr: Ipv4Addr
+}
+
+impl Ipv4Range {
+    pub fn new(start_addr: Ipv4Addr, end_addr: Ipv4Addr) -> Self { Self { start_addr, end_addr } }
+    pub fn from_tuple(range: (Ipv4Addr, Ipv4Addr)) -> Self {
+        Self {
+            start_addr: range.0,
+            end_addr: range.1
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct IpRange {
     front: u32,
     back: u32,
+}
+
+pub fn ip_iter(ipv4range: &Ipv4Range) -> IpRange {
+    IpRange::new(ipv4range.start_addr, ipv4range.end_addr)
+}
+
+pub fn ip_range(target: Target, intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
+    match target {
+        Target::LAN | Target::VPN => interface_range_v4(intf),
+        Target::CIDR { cidr } => cidr_str_to_range(&cidr),
+        Target::Host { addr } => Ok((addr, addr)),
+        Target::Range { start, end } => Ok((start, end)),
+    }
+}
+
+pub fn interface_range_v4(intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
+    let ip = interface::get_ipv4(intf)
+        .map_err(|_| anyhow!("Failed to get IPv4 from interface"))?;
+
+    let prefix = interface::get_prefix(intf)
+        .map_err(|_| anyhow!("Failed to get prefix from interface"))?;
+
+    cidr_range(ip, prefix)
+}
+
+fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Result<(Ipv4Addr, Ipv4Addr)> {
+    if prefix > 32 { bail!("Not a valid prefix address"); }
+    let ip_u32 = u32::from(ip);
+    let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
+
+    let network = ip_u32 & mask;
+    let broadcast = network | !mask;
+
+    Ok((Ipv4Addr::from(network), Ipv4Addr::from(broadcast)))
+}
+
+fn cidr_str_to_range(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr)> {
+    let (ip_str, prefix_str) = cidr
+        .split_once('/')
+        .context("CIDR must contain '/'")?;
+
+    let ip: Ipv4Addr = ip_str
+        .parse()
+        .context("Invalid IPv4 address")?;
+
+    let prefix: u8 = prefix_str
+        .parse()
+        .context("Invalid prefix")?;
+
+    Ok(cidr_range(ip, prefix)?)
 }
 
 impl IpRange {
@@ -51,56 +116,6 @@ impl DoubleEndedIterator for IpRange {
 }
 
 impl ExactSizeIterator for IpRange {}
-
-pub fn ip_iter((start, end): (Ipv4Addr, Ipv4Addr)) -> IpRange {
-    IpRange::new(start, end)
-}
-
-pub fn ip_range(target: Target, intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    match target {
-        Target::LAN | Target::VPN => local_range(intf),
-        Target::CIDR { cidr } => cidr_str_to_range(&cidr),
-        Target::Host { addr } => Ok((addr, addr)),
-        Target::Range { start, end } => Ok((start, end)),
-    }
-}
-
-fn local_range(intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    let ip = interface::get_ipv4(intf)
-        .map_err(|_| anyhow!("Failed to get IPv4 from interface"))?;
-
-    let prefix = interface::get_prefix(intf)
-        .map_err(|_| anyhow!("Failed to get prefix from interface"))?;
-
-    cidr_range(ip, prefix)
-}
-
-fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    if prefix > 32 { bail!("Not a valid prefix address"); }
-    let ip_u32 = u32::from(ip);
-    let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
-
-    let network = ip_u32 & mask;
-    let broadcast = network | !mask;
-
-    Ok((Ipv4Addr::from(network), Ipv4Addr::from(broadcast)))
-}
-
-fn cidr_str_to_range(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    let (ip_str, prefix_str) = cidr
-        .split_once('/')
-        .context("CIDR must contain '/'")?;
-
-    let ip: Ipv4Addr = ip_str
-        .parse()
-        .context("Invalid IPv4 address")?;
-
-    let prefix: u8 = prefix_str
-        .parse()
-        .context("Invalid prefix")?;
-
-    Ok(cidr_range(ip, prefix)?)
-}
 
 
 

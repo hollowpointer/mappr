@@ -3,53 +3,18 @@ mod ethernet;
 mod icmp;
 mod ip;
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv6Addr};
 use anyhow::{bail, Context};
-use pnet::datalink::NetworkInterface;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::IpNextHeaderProtocol;
 use pnet::packet::ipv6::MutableIpv6Packet;
 use pnet::util::MacAddr;
 use crate::host::Host;
-use crate::net::interface;
 use crate::net::utils::*;
 
-#[derive(Clone, Copy, Debug)]
-pub enum PacketType { ARP, EchoRequestV6 }
-
-#[derive(Debug)]
-pub enum CraftedPacket {
-    ARP([u8; MIN_ETH_FRAME_NO_FCS]),
-    EchoRequestV6([u8; ETH_HDR_LEN + IP_V6_HDR_LEN + ICMP_V6_ECHO_REQ_LEN]),
-}
-
-impl CraftedPacket {
-    pub fn new(packet_type: PacketType, intf: &NetworkInterface, dst_addr: IpAddr)
-        -> anyhow::Result<CraftedPacket > {
-            let src_mac: MacAddr = intf.mac.context("failed to retrieve mac address")?;
-            match (packet_type, dst_addr) {
-                // ------- IPv4 paths -------
-                (PacketType::ARP, IpAddr::V4(dst_v4)) => {
-                    let src_v4 = interface::get_ipv4(intf).context("failed to fetch IPv4 address for interface")?;
-                    let pkt = create_arp_request(src_mac, src_v4, dst_v4)?;
-                    Ok(pkt)
-                },
-                // ------- IPv6 paths -------
-                (PacketType::EchoRequestV6, IpAddr::V6(dst_v6)) => {
-                    let src_v6 = interface::get_ipv6(intf).context("failed to fetch IPv6 address for interface")?;
-                    let pkt = create_echo_request_v6(src_mac, src_v6, dst_v6)?;
-                    Ok(pkt)
-                },
-                _ => { bail!("wrong combination of packet type and destination address!") }
-            }
-    }
-
-    pub fn bytes(&self) -> &[u8] {
-        match self {
-            CraftedPacket::ARP(data) => data,
-            CraftedPacket::EchoRequestV6(data) => data,
-        }
-    }
+pub enum PacketType {
+    ARP,
+    EchoRequestV6
 }
 
 pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
@@ -64,23 +29,14 @@ pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
     if let Some(mut host) = host { host.set_mac_addr(mac_addr)?; Ok(Some(host)) } else { Ok(None) }
 }
 
-fn create_arp_request(src_mac: MacAddr, src_addr: Ipv4Addr, target_addr: Ipv4Addr)
-                      -> anyhow::Result<CraftedPacket> {
-
-    let mut pkt = [0u8; MIN_ETH_FRAME_NO_FCS];
-    ethernet::make_header(&mut pkt, src_mac, MacAddr::broadcast(), EtherTypes::Arp)?;
-    arp::create_request_payload(&mut pkt, src_mac, src_addr, target_addr)?;
-    Ok(CraftedPacket::ARP(pkt))
-}
-
-fn create_echo_request_v6(src_mac: MacAddr, src_addr: Ipv6Addr, dst_addr: Ipv6Addr) -> anyhow::Result<CraftedPacket> {
+fn create_echo_request_v6(src_mac: MacAddr, src_addr: Ipv6Addr, dst_addr: Ipv6Addr) -> anyhow::Result<Vec<u8>> {
     let mut pkt = [0u8; ETH_HDR_LEN + IP_V6_HDR_LEN + ICMP_V6_ECHO_REQ_LEN];
     let multicast_mac_addr = MacAddr::new(0x33, 0x33, 0, 0, 0, 1);
     ethernet::make_header(&mut pkt, src_mac, multicast_mac_addr, EtherTypes::Ipv6)?;
     create_ipv6_header(&mut pkt, src_addr, dst_addr)?;
     icmp::create_echo_request_v6(&mut pkt, src_addr, dst_addr)?;
 
-    Ok(CraftedPacket::EchoRequestV6(pkt))
+    Ok(Vec::from(pkt))
 }
 
 fn create_ipv6_header(buf: &mut[u8], src_addr: Ipv6Addr, dst_addr: Ipv6Addr) -> anyhow::Result<()> {
@@ -120,31 +76,6 @@ mod tests {
 
     pub(crate) fn buf() -> [u8; MIN_ETH_FRAME_NO_FCS] {
         [0u8; MIN_ETH_FRAME_NO_FCS]
-    }
-
-    #[test]
-    fn arp_request_payload_sets_fields() {
-        let mut b = buf();
-
-        // ethernet header can be anything; ARP parser reads after ETH_HDR_LEN.
-        ethernet::make_header(&mut b, MacAddr::zero(), MacAddr::broadcast(), EtherTypes::Arp).unwrap();
-
-        let src_mac = MacAddr::new(0xde, 0xad, 0xbe, 0xef, 0x00, 0x01);
-        let src_ip = Ipv4Addr::new(192, 168, 1, 10);
-        let target_ip = Ipv4Addr::new(192, 168, 1, 20);
-
-        arp::create_request_payload(&mut b, src_mac, src_ip, target_ip).unwrap();
-
-        let arp = ArpPacket::new(&b[ETH_HDR_LEN..ETH_HDR_LEN + ARP_LEN]).expect("parse arp");
-        assert_eq!(arp.get_hardware_type(), ArpHardwareTypes::Ethernet);
-        assert_eq!(arp.get_protocol_type(), EtherTypes::Ipv4);
-        assert_eq!(arp.get_hw_addr_len(), 6);
-        assert_eq!(arp.get_proto_addr_len(), 4);
-        assert_eq!(arp.get_operation(), ArpOperations::Request);
-        assert_eq!(arp.get_sender_hw_addr(), src_mac);
-        assert_eq!(arp.get_target_hw_addr(), MacAddr::new(0, 0, 0, 0, 0, 0));
-        assert_eq!(arp.get_sender_proto_addr(), src_ip);
-        assert_eq!(arp.get_target_proto_addr(), target_ip);
     }
 
     #[test]

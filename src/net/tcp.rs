@@ -3,23 +3,22 @@ use tokio::net::TcpStream;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
 use tokio::time::timeout;
-use crate::net::range::ip_iter;
+use crate::host::Host;
+use crate::net::range::{ip_iter, Ipv4Range};
 
-pub async fn handshake_discovery(start: Ipv4Addr, end: Ipv4Addr) -> anyhow::Result<Vec<Ipv4Addr>> {
-    let mut result: Vec<Ipv4Addr> = Vec::new();
-    for ip in ip_iter((start, end)) {
-        if let Some(found) = handshake_probe(ip).await? {
-            result.push(found);
-        }
+pub async fn handshake_range_discovery(ipv4range: Ipv4Range) -> anyhow::Result<Vec<Host>> {
+    let mut result: Vec<Host> = Vec::new();
+    for ip in ip_iter(&ipv4range) {
+        if let Some(found) = handshake_probe(ip).await? { result.push(found); }
     }
     Ok(result)
 }
 
-async fn handshake_probe(addr: Ipv4Addr) -> anyhow::Result<Option<Ipv4Addr>> {
+async fn handshake_probe(addr: Ipv4Addr) -> anyhow::Result<Option<Host>> {
     let sa = SocketAddrV4::new(addr, 443);
-
+    let host: Host = Host::new(None, vec![], None)?;
     match timeout(Duration::from_millis(100), TcpStream::connect(sa)).await {
-        Ok(Ok(_)) | Ok(Err(_)) => Ok(Some(addr)),
+        Ok(Ok(_)) | Ok(Err(_)) => Ok(Some(host)),
         Err(_elapsed) => Ok(None),
     }
 }
