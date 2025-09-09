@@ -17,13 +17,13 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
             print::print_status("Initializing LAN discovery...");
             let intf: NetworkInterface = interface::select(Target::LAN);
             let ipv4range: Ipv4Range = Ipv4Range::from_tuple(range::interface_range_v4(&intf)?);
-            let hosts = discover_lan(ipv4range, intf, ProbeType::Default).await?;
-            host::merge_by_mac_addr(hosts)
+            let hosts = discover_lan(ipv4range, intf.clone(), ProbeType::Default).await?;
+            hosts.into_iter().filter(|h| { h.mac_addr != intf.mac } ).collect::<Vec<Host>>()
         },
-        _ => { bail!("This target is currently unimplemented!") }
+        _ => { bail!("this target is currently unimplemented!") }
     };
     print::separator("Network Discovery");
-    for (idx, h) in hosts.into_iter().enumerate() { h.print_lan(idx as u32); }
+    host::print(hosts, target)?;
     Ok(())
 }
 

@@ -5,6 +5,7 @@ use colored::{ColoredString, Colorize};
 use mac_oui::Oui;
 use pnet::datalink::MacAddr;
 use once_cell::sync::Lazy;
+use crate::cmd::Target;
 
 static OUI_DB: Lazy<Oui> = Lazy::new(|| {
     Oui::default().expect("failed to load OUI database")
@@ -14,7 +15,7 @@ static OUI_DB: Lazy<Oui> = Lazy::new(|| {
 pub struct Host {
     ipv4: Option<Ipv4Addr>,
     ipv6: Vec<Ipv6Addr>,
-    mac_addr: Option<MacAddr>,
+    pub mac_addr: Option<MacAddr>,
     vendor: Option<String>,
 }
 
@@ -71,27 +72,46 @@ impl Host {
     }
 }
 
-pub fn merge_by_mac_addr(hosts: Vec<Host>) -> Vec<Host> {
+pub fn print(mut hosts: Vec<Host>, target: Target) -> anyhow::Result<()> {
+    match target {
+        Target::LAN => {
+            merge_by_mac_addr(&mut hosts);
+            sort_by_ipv4(&mut hosts);
+            for (idx, h) in hosts.into_iter().enumerate() {
+                h.print_lan(idx as u32);
+            }
+            Ok(())
+        }
+        _ => anyhow::bail!("print implementation for given target not implemented!")
+    }
+}
+
+fn sort_by_ipv4(hosts: &mut Vec<Host>) {
+    hosts.sort_by(|a, b| a.ipv4.cmp(&b.ipv4));
+}
+
+fn merge_by_mac_addr(hosts: &mut Vec<Host>) {
     let mut by_mac: HashMap<MacAddr, Host> = HashMap::new();
     let mut out: Vec<Host> = Vec::new();
 
-    for host in hosts {
+    for host in hosts.drain(..) {
         match host.mac_addr {
             Some(mac) => match by_mac.entry(mac) {
                 Entry::Vacant(v) => { v.insert(host); }
                 Entry::Occupied(mut e) => {
-                    e.get_mut().add_ipv6_as_vec(host.ipv6);
-                    if e.get().vendor.is_none() && host.vendor.is_some() {
-                        e.get_mut().vendor = host.vendor;
+                    let existing = e.get_mut();
+                    existing.add_ipv6_as_vec(host.ipv6);
+                    if existing.vendor.is_none() && host.vendor.is_some() {
+                        existing.vendor = host.vendor;
                     }
                 }
             },
-            None => { out.push(host); }
+            None => out.push(host),
         }
     }
 
     out.extend(by_mac.into_values());
-    out
+    *hosts = out;
 }
 
 fn identify_vendor(mac_addr: MacAddr) -> anyhow::Result<Option<String>> {
