@@ -3,7 +3,6 @@ pub mod listen;
 pub mod info;
 pub mod scan;
 
-use std::fmt::{write, Display, Formatter};
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 use clap::{Parser, Subcommand};
@@ -47,12 +46,6 @@ pub enum Target {
 
 impl CommandLine {
     pub fn parse_args() -> Self { Self::parse() }
-}
-
-impl Display for Target {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
-    }
 }
 
 impl FromStr for Target {

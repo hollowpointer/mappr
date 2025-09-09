@@ -10,7 +10,7 @@ pub struct Ipv4Range {
 }
 
 impl Ipv4Range {
-    pub fn new(start_addr: Ipv4Addr, end_addr: Ipv4Addr) -> Self { Self { start_addr, end_addr } }
+    pub fn _new(start_addr: Ipv4Addr, end_addr: Ipv4Addr) -> Self { Self { start_addr, end_addr } }
     pub fn from_tuple(range: (Ipv4Addr, Ipv4Addr)) -> Self {
         Self {
             start_addr: range.0,

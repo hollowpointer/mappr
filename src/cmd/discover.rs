@@ -20,7 +20,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
             let hosts = discover_lan(ipv4range, intf, ProbeType::Default).await?;
             host::merge_by_mac_addr(hosts)
         },
-        _ => { bail!("{target} currently unimplemented!") }
+        _ => { bail!("This target is currently unimplemented!") }
     };
     print::separator("Network Discovery");
     for (idx, h) in hosts.into_iter().enumerate() { h.print_lan(idx as u32); }

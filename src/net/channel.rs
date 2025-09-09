@@ -1,36 +1,45 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 use anyhow;
 use anyhow::{bail, Context};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use pnet::util::MacAddr;
+use crate::cmd::Target;
+use crate::net::packets::icmp;
 use crate::host::Host;
-use crate::net::{interface, packets};
-use crate::net::packets::{arp, PacketType};
-use crate::net::range::{ip_iter, Ipv4Range};
+use crate::net::{interface, packets, range};
+use crate::net::packets::arp;
+use crate::net::range::Ipv4Range;
 use crate::print;
 
 pub enum ProbeType {
-    All,
-    Arp,
-    Default,
-    Ipv4,
-    Ipv6,
-    Custom(Vec<PacketType>)
+    Default
 }
 
 pub struct SenderContext {
     pub ipv4range: Ipv4Range,
     pub src_addr_v4: Ipv4Addr,
-    intf: NetworkInterface,
+    pub src_addr_v6: Ipv6Addr,
     pub mac_addr: MacAddr,
     pub tx: Box<dyn DataLinkSender>
 }
 
 impl SenderContext {
-    fn new(ipv4range: Ipv4Range, src_addr_v4: Ipv4Addr, intf: NetworkInterface, tx: Box<dyn DataLinkSender>)
-     -> Self { Self { ipv4range, src_addr_v4, mac_addr: intf.mac.unwrap(), intf, tx } }
+    fn new(ipv4range: Ipv4Range,
+           src_addr_v4: Ipv4Addr,
+           src_addr_v6: Ipv6Addr,
+           intf: NetworkInterface,
+           tx: Box<dyn DataLinkSender>)
+     -> Self {
+        Self {
+            ipv4range,
+            src_addr_v4,
+            src_addr_v6,
+            mac_addr: intf.mac.unwrap(),
+            tx,
+        }
+    }
 }
 
 pub fn discover_hosts_on_eth_channel(ipv4range: Ipv4Range,
@@ -40,13 +49,15 @@ pub fn discover_hosts_on_eth_channel(ipv4range: Ipv4Range,
                                      duration_in_ms: Duration
 ) -> anyhow::Result<Vec<Host>> {
     let (tx, rx) = open_eth_channel(&intf, &channel_cfg)?;
-    let mut send_context: SenderContext = SenderContext::new(ipv4range, interface::get_ipv4(&intf)?, intf, tx);
+    let _ = range::ip_range(Target::LAN, &intf); // this shit is to suppress warnings
+    let src_addr_v4: Ipv4Addr = interface::get_ipv4(&intf)?;
+    let src_addr_v6: Ipv6Addr = interface::get_ipv6(&intf)?;
+    let mut send_context: SenderContext = SenderContext::new(ipv4range, src_addr_v4, src_addr_v6, intf, tx);
     match probe_type {
         ProbeType::Default => {
             arp::send_packets(&mut send_context)?;
-            //icmp::send_echo_request_v6();
+            icmp::send_echo_request_v6(&mut send_context)?;
         },
-        _ => bail!("other probe types not implemented yet!")
     }
     Ok(listen_for_hosts(rx, duration_in_ms))
 }
