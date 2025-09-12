@@ -1,5 +1,3 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use colored::{ColoredString, Colorize};
 use mac_oui::Oui;
@@ -37,10 +35,6 @@ impl Host {
         if !self.ipv6.contains(&ipv6) { self.ipv6.push(ipv6) }
     }
 
-    pub fn add_ipv6_as_vec(&mut self, ipv6: Vec<Ipv6Addr>) {
-        for ip in ipv6 { self.add_ipv6(ip) }
-    }
-
     pub fn set_mac_addr(&mut self, mac_addr: MacAddr) -> anyhow::Result<()> {
         self.mac_addr = Some(mac_addr);
         self.vendor = identify_vendor(mac_addr)?;
@@ -75,7 +69,7 @@ impl Host {
 pub fn print(mut hosts: Vec<Host>, target: Target) -> anyhow::Result<()> {
     match target {
         Target::LAN => {
-            merge_by_mac_addr(&mut hosts);
+            merge_hosts(&mut hosts);
             sort_by_ipv4(&mut hosts);
             for (idx, h) in hosts.into_iter().enumerate() {
                 h.print_lan(idx as u32);
@@ -90,28 +84,34 @@ fn sort_by_ipv4(hosts: &mut Vec<Host>) {
     hosts.sort_by(|a, b| a.ipv4.cmp(&b.ipv4));
 }
 
-fn merge_by_mac_addr(hosts: &mut Vec<Host>) {
-    let mut by_mac: HashMap<MacAddr, Host> = HashMap::new();
-    let mut out: Vec<Host> = Vec::new();
-
-    for host in hosts.drain(..) {
-        match host.mac_addr {
-            Some(mac) => match by_mac.entry(mac) {
-                Entry::Vacant(v) => { v.insert(host); }
-                Entry::Occupied(mut e) => {
-                    let existing = e.get_mut();
-                    existing.add_ipv6_as_vec(host.ipv6);
-                    if existing.vendor.is_none() && host.vendor.is_some() {
-                        existing.vendor = host.vendor;
-                    }
+fn merge_hosts(hosts: &mut Vec<Host>) {
+    let mut merged: Vec<Host> = Vec::new();
+    for mut host in hosts.drain(..) {
+        let mut found_match = false;
+        for existing_host in merged.iter_mut() {
+            let mac_match = host.mac_addr.is_some() && existing_host.mac_addr == host.mac_addr;
+            let ipv4_match = host.ipv4.is_some() && existing_host.ipv4 == host.ipv4;
+            let ipv6_match = host.ipv6.iter().any(|ipv6| existing_host.ipv6.contains(ipv6));
+            if mac_match || ipv4_match || ipv6_match {
+                if existing_host.ipv4.is_none() && host.ipv4.is_some() {
+                    existing_host.ipv4 = host.ipv4.take();
                 }
-            },
-            None => out.push(host),
+                existing_host.ipv6.extend(&host.ipv6);
+                if existing_host.mac_addr.is_none() && host.mac_addr.is_some() {
+                    existing_host.mac_addr = host.mac_addr.take();
+                }
+                if existing_host.vendor.is_none() && host.vendor.is_some() {
+                    existing_host.vendor = host.vendor.take();
+                }
+                found_match = true;
+                break;
+            }
+        }
+        if !found_match {
+            merged.push(host);
         }
     }
-
-    out.extend(by_mac.into_values());
-    *hosts = out;
+    *hosts = merged;
 }
 
 fn identify_vendor(mac_addr: MacAddr) -> anyhow::Result<Option<String>> {
