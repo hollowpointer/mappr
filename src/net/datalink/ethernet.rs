@@ -34,7 +34,7 @@ mod tests {
     const ETH_HDR_LEN: usize = 14;
     use pnet::datalink::MacAddr;
     use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
-    use crate::net::packets::ethernet::make_header;
+    use crate::net::datalink::ethernet::make_header;
 
     #[test]
     fn ethernet_header_sets_fields() {

@@ -4,8 +4,9 @@ use pnet::datalink::MacAddr;
 use pnet::packet::{icmpv6, Packet};
 use pnet::packet::ethernet::EtherTypes;
 use pnet::packet::icmpv6::{Icmpv6Code, Icmpv6Type, checksum, Icmpv6Packet};
-use crate::net::channel::SenderContext;
-use crate::net::packets::{ethernet, ip};
+use crate::net::datalink::channel::SenderContext;
+use crate::net::datalink::ethernet;
+use crate::net::packets::ip;
 use crate::net::utils::{ETH_HDR_LEN, IP_V6_HDR_LEN, ICMP_V6_ECHO_REQ_LEN};
 
 pub fn send_echo_request_v6(sender_context: &mut SenderContext) -> anyhow::Result<()> {

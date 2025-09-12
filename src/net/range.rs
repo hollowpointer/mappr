@@ -2,8 +2,9 @@ use std::net::Ipv4Addr;
 use anyhow::{anyhow, bail, Context, Result};
 use pnet::datalink::NetworkInterface;
 use crate::cmd::Target;
-use crate::net::interface;
+use crate::net::datalink::interface;
 
+#[derive(Clone)]
 pub struct Ipv4Range {
     pub start_addr: Ipv4Addr,
     pub end_addr: Ipv4Addr

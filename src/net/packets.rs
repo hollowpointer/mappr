@@ -1,11 +1,11 @@
-pub mod arp;
-mod ethernet;
 pub mod icmp;
 mod ip;
+pub mod tcp;
 
 use anyhow::{bail, Context};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use crate::host::Host;
+use crate::net::datalink::arp;
 
 pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
     let eth = EthernetPacket::new(frame)
@@ -29,10 +29,11 @@ pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
 // ╚════════════════════════════════════════════╝
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use pnet::packet::ethernet::EtherTypes;
     use pnet::util::MacAddr;
+    use crate::net::datalink::ethernet;
     use crate::net::utils::MIN_ETH_FRAME_NO_FCS;
 
     const ARP_LEN: usize = 28;

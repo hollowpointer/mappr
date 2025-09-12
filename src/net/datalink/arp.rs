@@ -7,8 +7,8 @@ use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPa
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::Packet;
 use crate::host::Host;
-use crate::net::channel::SenderContext;
-use crate::net::packets::ethernet;
+use crate::net::datalink::channel::SenderContext;
+use crate::net::datalink::ethernet;
 use crate::net::range::ip_iter;
 use crate::net::utils::{ETH_HDR_LEN, ARP_LEN, MIN_ETH_FRAME_NO_FCS};
 use crate::print;
@@ -41,9 +41,9 @@ pub fn handle_packet(ethernet_packet: EthernetPacket) -> anyhow::Result<Option<H
 
 fn create_packet(src_mac: MacAddr, src_addr: Ipv4Addr, dst_addr: Ipv4Addr)
                      -> anyhow::Result<Vec<u8>> {
-    let mut pkt = [0u8; MIN_ETH_FRAME_NO_FCS];
-    ethernet::make_header(&mut pkt, src_mac, MacAddr::broadcast(), EtherTypes::Arp)?;
-    let mut arp_packet = MutableArpPacket::new(&mut pkt[ETH_HDR_LEN..ETH_HDR_LEN + ARP_LEN])
+    let mut buffer = [0u8; MIN_ETH_FRAME_NO_FCS];
+    ethernet::make_header(&mut buffer, src_mac, MacAddr::broadcast(), EtherTypes::Arp)?;
+    let mut arp_packet = MutableArpPacket::new(&mut buffer[ETH_HDR_LEN..ETH_HDR_LEN + ARP_LEN])
         .context("failed to create mutable ARP packet")?;
     arp_packet.set_hardware_type(ArpHardwareTypes::Ethernet);
     arp_packet.set_protocol_type(EtherTypes::Ipv4);
@@ -54,5 +54,5 @@ fn create_packet(src_mac: MacAddr, src_addr: Ipv4Addr, dst_addr: Ipv4Addr)
     arp_packet.set_target_hw_addr(MacAddr::new(0, 0, 0, 0, 0, 0));
     arp_packet.set_sender_proto_addr(src_addr);
     arp_packet.set_target_proto_addr(dst_addr);
-    Ok(Vec::from(pkt))
+    Ok(Vec::from(buffer))
 }

@@ -8,8 +8,8 @@ use pnet::util::MacAddr;
 use crate::cmd::Target;
 use crate::net::packets::icmp;
 use crate::host::Host;
-use crate::net::{interface, packets, range};
-use crate::net::packets::arp;
+use crate::net::{packets, range};
+use crate::net::datalink::{interface, arp};
 use crate::net::range::Ipv4Range;
 use crate::print;
 
@@ -42,11 +42,11 @@ impl SenderContext {
     }
 }
 
-pub fn discover_hosts_on_eth_channel(ipv4range: Ipv4Range,
-                                     intf: NetworkInterface,
-                                     channel_cfg: Config,
-                                     probe_type: ProbeType,
-                                     duration_in_ms: Duration
+pub fn discover_on_eth_channel(ipv4range: Ipv4Range,
+                               intf: NetworkInterface,
+                               channel_cfg: Config,
+                               probe_type: ProbeType,
+                               duration_in_ms: Duration
 ) -> anyhow::Result<Vec<Host>> {
     let (tx, rx) = open_eth_channel(&intf, &channel_cfg)?;
     let _ = range::ip_range(Target::LAN, &intf); // this shit is to suppress warnings
