@@ -12,6 +12,7 @@ use crate::net::datalink::interface;
 use crate::net::range;
 use crate::net::packets::tcp::handshake_range_discovery;
 use crate::{host, print};
+use crate::net::datalink::interface::get_ipv4;
 use crate::net::range::Ipv4Range;
 use crate::net::transport::discover_on_transport_channel;
 
@@ -42,13 +43,14 @@ async fn discover_lan(ipv4range: Ipv4Range, intf: NetworkInterface, probe_type: 
     let hosts: Vec<Host> = [
         discover_on_eth_channel(
             ipv4range.clone(),
-            intf,
+            intf.clone(),
             channel_cfg,
             probe_type,
             Duration::from_millis(PROBE_TIMEOUT_MS),
         ).context("discovering via ethernet channel")?,
         discover_on_transport_channel(
             512,
+            get_ipv4(&intf)?,
             TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Tcp)),
             ipv4range,
         )?,
