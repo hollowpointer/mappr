@@ -23,7 +23,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
             let intf: NetworkInterface = interface::select(Target::LAN);
             let ipv4range: Ipv4Range = Ipv4Range::from_tuple(range::interface_range_v4(&intf)?);
             let hosts = discover_lan(ipv4range, intf.clone(), ProbeType::Default).await?;
-            hosts.into_iter().filter(|h| { h.mac_addr != intf.mac } ).collect::<Vec<Host>>()
+            hosts.into_iter().filter(|h| { h.get_mac_addr() != intf.mac } ).collect::<Vec<Host>>()
         },
         _ => { bail!("this target is currently unimplemented!") }
     };

@@ -13,7 +13,7 @@ static OUI_DB: Lazy<Oui> = Lazy::new(|| {
 pub struct Host {
     ipv4: Option<Ipv4Addr>,
     ipv6: Vec<Ipv6Addr>,
-    pub mac_addr: Option<MacAddr>,
+    mac_addr: Option<MacAddr>,
     vendor: Option<String>,
 }
 
@@ -41,29 +41,43 @@ impl Host {
         Ok(())
     }
 
-    pub fn print_lan(&self, idx: u32) {
-        let mut vendor: ColoredString = "Unknown".red().bold();
-        if let Some(vendor_string) = self.vendor.clone() {
-            vendor = vendor_string.red().bold();
-        }
-        println!("\x1b[32m[{idx}] {vendor}");
-        if let Some(ipv4) = self.ipv4 {
-            println!(" ├─ IPv4 : {}", ipv4.to_string().cyan())
-        }
-        if let Some(gua) = self.ipv6.iter()
-            .find(|&&x| { x.to_string().starts_with("2") }) {
-            println!(" ├─ GUA  : {}", gua.to_string().blue())
-        }
-        if let Some(lla) = self.ipv6.iter()
-            .find(|&&x| { x.to_string().starts_with("fe80") }) {
-            println!(" ├─ LLA  : {}", lla.to_string().blue())
-        }
-        if let Some(mac_addr) = self.mac_addr {
-            println!(" └─ MAC  : {}", mac_addr.to_string().yellow())
-        }
-        let separator = "------------------------------------------------------------".bright_black();
-        println!("{separator}");
+    pub fn get_mac_addr(&self) -> Option<MacAddr> {
+        self.mac_addr
     }
+
+    pub fn print_lan(&self, idx: u32) {
+        let vendor: ColoredString = self.vendor
+            .as_deref()
+            .unwrap_or("Unknown")
+            .red()
+            .bold();
+
+        println!("\x1b[32m[{idx}] {vendor}");
+
+        let mut lines: Vec<(&str, ColoredString)> = Vec::new();
+
+        if let Some(ipv4) = self.ipv4 {
+            lines.push(("IPv4", ipv4.to_string().cyan()));
+        }
+        if let Some(gua) = self.ipv6.iter().find(|&&x| x.to_string().starts_with('2')) {
+            lines.push(("GUA", gua.to_string().blue()));
+        }
+        if let Some(lla) = self.ipv6.iter().find(|&&x| x.to_string().starts_with("fe80")) {
+            lines.push(("LLA", lla.to_string().blue()));
+        }
+        if let Some(mac) = self.mac_addr {
+            lines.push(("MAC", mac.to_string().yellow()));
+        }
+
+        for (i, (label, value)) in lines.iter().enumerate() {
+            let last = i + 1 == lines.len();
+            let branch = if last { "└─" } else { "├─" };
+            println!(" {branch} {label} : {value}");
+        }
+
+        println!("{}", "------------------------------------------------------------".bright_black());
+    }
+
 }
 
 pub fn print(mut hosts: Vec<Host>, target: Target) -> anyhow::Result<()> {
