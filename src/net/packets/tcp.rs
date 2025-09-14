@@ -49,9 +49,12 @@ pub async fn handshake_range_discovery(ipv4range: Ipv4Range) -> anyhow::Result<V
 
 async fn handshake_probe(addr: Ipv4Addr) -> anyhow::Result<Option<Host>> {
     let sa = SocketAddrV4::new(addr, 443);
-    let host: Host = Host::new(None, vec![], None)?;
+    let mut host: Host = Host::default();
     match timeout(Duration::from_millis(100), TcpStream::connect(sa)).await {
-        Ok(Ok(_)) | Ok(Err(_)) => Ok(Some(host)),
+        Ok(Ok(_)) | Ok(Err(_)) => {
+            host.set_ipv4(*sa.ip());
+            Ok(Some(host))
+        },
         Err(_elapsed) => Ok(None),
     }
 }

@@ -18,7 +18,7 @@ pub struct Host {
 }
 
 impl Host {
-    pub fn new(ipv4: Option<Ipv4Addr>, ipv6: Vec<Ipv6Addr>, mac_addr: Option<MacAddr>)
+    pub fn _new(ipv4: Option<Ipv4Addr>, ipv6: Vec<Ipv6Addr>, mac_addr: Option<MacAddr>)
         -> anyhow::Result<Self> {
         let vendor = match mac_addr {
             Some(mac) => identify_vendor(mac)?,
