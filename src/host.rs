@@ -72,7 +72,7 @@ impl Host {
         for (i, (label, value)) in lines.iter().enumerate() {
             let last = i + 1 == lines.len();
             let branch = if last { "└─" } else { "├─" };
-            println!(" {branch} {label} : {value}");
+            println!(" {branch} {label:<4} : {value}");
         }
 
         println!("{}", "------------------------------------------------------------".bright_black());

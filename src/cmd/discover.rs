@@ -5,6 +5,7 @@ use anyhow::{bail, Context};
 use is_root::is_root;
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::transport::{TransportChannelType, TransportProtocol};
+use tokio::task;
 use crate::host::Host;
 use crate::cmd::Target;
 use crate::net::datalink::channel::{discover_on_eth_channel, ProbeType};
@@ -40,20 +41,26 @@ async fn discover_lan(ipv4range: Ipv4Range, intf: NetworkInterface, probe_type: 
     if !is_root() { return handshake_range_discovery(ipv4range).await.context("handshake discovery (non-root)"); }
     let channel_cfg = Config { read_timeout: Some(Duration::from_millis(READ_TIMEOUT_MS)), ..Default::default() };
     print::print_status("Establishing Ethernet connection...");
-    let hosts: Vec<Host> = [
+    let ipv4_range_eth = ipv4range.clone();
+    let intf_eth = intf.clone();
+    let eth_fut = async move {
         discover_on_eth_channel(
-            ipv4range.clone(),
-            intf.clone(),
+            ipv4_range_eth,
+            intf_eth,
             channel_cfg,
             probe_type,
             Duration::from_millis(PROBE_TIMEOUT_MS),
-        ).context("discovering via ethernet channel")?,
+        ).context("discovering via ethernet channel")
+    };
+    let transport_join = task::spawn_blocking(move || {
         discover_on_transport_channel(
             512,
             get_ipv4(&intf)?,
             TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Tcp)),
             ipv4range,
-        )?,
-    ].into_iter().flatten().collect();
+        )
+    });
+    let (eth_res, tr_res) = tokio::join!(eth_fut, transport_join);
+    let hosts: Vec<Host> = vec![eth_res?, tr_res??].into_iter().flatten().collect();
     Ok(hosts)
 }
