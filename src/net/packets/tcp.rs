@@ -55,6 +55,7 @@ async fn handshake_probe(addr: Ipv4Addr) -> anyhow::Result<Option<Host>> {
             host.set_ipv4(*sa.ip());
             Ok(Some(host))
         },
+
         Err(_elapsed) => Ok(None),
     }
 }
