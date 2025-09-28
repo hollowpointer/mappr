@@ -12,7 +12,7 @@ use crate::net::datalink::channel::{discover_on_eth_channel, ProbeType};
 use crate::net::datalink::interface;
 use crate::net::range;
 use crate::net::packets::tcp::handshake_range_discovery;
-use crate::{host, print};
+use crate::{host, print, SPINNER};
 use crate::net::datalink::interface::get_ipv4;
 use crate::net::range::Ipv4Range;
 use crate::net::transport::discover_on_transport_channel;
@@ -20,10 +20,12 @@ use crate::net::transport::discover_on_transport_channel;
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     let hosts: Vec<Host> = match target {
         Target::LAN => {
+            SPINNER.set_message("Performing LAN discovery...");
             print::print_status("Initializing LAN discovery...");
             let intf: NetworkInterface = interface::select(Target::LAN);
             let ipv4range: Ipv4Range = Ipv4Range::from_tuple(range::interface_range_v4(&intf)?);
             let hosts = discover_lan(ipv4range, intf.clone(), ProbeType::Default).await?;
+            SPINNER.finish_and_clear();
             hosts.into_iter().filter(|h| { h.get_mac_addr() != intf.mac } ).collect::<Vec<Host>>()
         },
         _ => { bail!("this target is currently unimplemented!") }
@@ -60,8 +62,8 @@ async fn discover_lan(ipv4range: Ipv4Range, intf: NetworkInterface, probe_type: 
             ipv4range,
         )
     });
-    let eth_res = eth_handle.join().expect("")?;
-    let tr_res = tr_handle.join().expect("")?;
+    let eth_res = eth_handle.join().expect("joining ethernet handle")?;
+    let tr_res = tr_handle.join().expect("joining transport layer handle")?;
     let hosts: Vec<Host> = vec![eth_res, tr_res].into_iter().flatten().collect();
     Ok(hosts)
 }

@@ -11,15 +11,11 @@ use crate::net::datalink::channel::SenderContext;
 use crate::net::datalink::ethernet;
 use crate::net::range::ip_iter;
 use crate::net::utils::{ETH_HDR_LEN, ARP_LEN, MIN_ETH_FRAME_NO_FCS};
-use crate::print;
 
 pub fn send_packets(sender_context: &mut SenderContext) -> anyhow::Result<()> {
-    let len = ip_iter(&sender_context.ipv4range).count() as u64;
-    let progress_bar = print::create_progressbar(len, "ARP".to_string());
     for ip in ip_iter(&sender_context.ipv4range) {
         let arp_packet = create_packet(sender_context.mac_addr, sender_context.src_addr_v4, ip)?;
         sender_context.tx.send_to(arp_packet.as_slice(), None);
-        progress_bar.inc(1);
         thread::sleep(Duration::from_millis(5));
     }
     Ok(())

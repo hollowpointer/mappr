@@ -10,7 +10,6 @@ use tokio::time::timeout;
 use crate::host::Host;
 use crate::net::range::{ip_iter, Ipv4Range};
 use crate::net::utils::{MIN_TCP_HEADER_SIZE};
-use crate::print;
 
 pub fn send_syn_packet(mut ts: TransportSender,
                        src_addr: Ipv4Addr,
@@ -28,12 +27,9 @@ pub fn send_syn_packet(mut ts: TransportSender,
     tcp.set_data_offset(5);
     tcp.set_flags(TcpFlags::SYN);
 
-    let len = ip_iter(&ipv4range).count() as u64;
-    let progress_bar = print::create_progressbar(len, "SYN".to_string());
     for dst_addr in ip_iter(&ipv4range) {
         tcp.set_checksum(ipv4_checksum(&tcp.to_immutable(), &src_addr, &dst_addr));
         match ts.send_to(&tcp, IpAddr::from(dst_addr)) { Ok(_) | Err(_) => {}, }
-        progress_bar.inc(1);
         thread::sleep(Duration::from_millis(5));
     };
     Ok(())
