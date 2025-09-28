@@ -1,5 +1,5 @@
 use std::time::Duration;
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
 use cmd::Commands;
 use cmd::{discover, listen, info, scan};
@@ -11,6 +11,19 @@ mod host;
 
 pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
     let pb = ProgressBar::new_spinner();
+    let style = ProgressStyle::with_template("{spinner:.blue} {msg}")
+        .unwrap()
+        .tick_strings(
+            &["▁▁▁▁▁",
+                "▁▂▂▂▁",
+                "▁▄▂▄▁",
+                "▂▄▆▄▂",
+                "▄▆█▆▄",
+                "▂▄▆▄▂",
+                "▁▄▂▄▁",
+                "▁▂▂▂▁"]
+        );
+    pb.set_style(style);
     pb.enable_steady_tick(Duration::from_millis(100));
     pb
 });
