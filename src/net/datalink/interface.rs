@@ -1,7 +1,10 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 use pnet::datalink::{interfaces, NetworkInterface};
 use crate::cmd::Target;
+#[cfg(target_os = "linux")]
 use std::path::Path;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use anyhow::anyhow;
 use pnet::ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
 use crate::print;
@@ -37,7 +40,7 @@ fn select_lan() -> NetworkInterface {
             i.is_up()
                 && i.mac.is_some()
                 && i.is_broadcast()
-                && is_physical(i)
+                && is_physical(i).unwrap_or(false)
                 && !i.is_loopback()
                 && !i.is_point_to_point()
                 && i.ips.iter().any(|ip| ip.is_ipv4())
@@ -48,7 +51,7 @@ fn select_lan() -> NetworkInterface {
         return wired_over_wireless(candidates);
     }
     let intf = candidates.first().unwrap().clone();
-    let msg = format!("Selected {} with address {}", intf.name, get_ipv6(&intf).unwrap());
+    let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
     print::print_status(&msg);
     intf
 }
@@ -61,7 +64,7 @@ fn select_host(addr: Ipv4Addr) -> Option<NetworkInterface> {
 }
 
 fn wired_over_wireless(mut candidates: Vec<NetworkInterface>) -> NetworkInterface {
-    candidates.sort_by_key(|k| is_wireless(k));
+    candidates.sort_by_key(|k| is_wireless(k).unwrap_or(false));
     let intf = candidates.first().unwrap().clone();
     let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
     print::print_status(&msg);
@@ -85,20 +88,33 @@ fn first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Ipv6Network> {
     }).ok_or_else(|| anyhow!("Interface does not have an IPv6 address"))
 }
 
+
+
 /*********************************
 OS dependent functions for PHYSICAL
 **********************************/
 #[cfg(target_os = "linux")]
-fn is_physical(interface: &NetworkInterface) -> bool {
-    Path::new(&format!("/sys/class/net/{}/device", interface.name)).exists()
-}
-
-#[cfg(target_os = "windows")]
-fn is_physical(interface: &NetworkInterface) -> bool {
-    true
+fn is_physical(interface: &NetworkInterface) -> anyhow::Result<bool> {
+    Ok(Path::new(&format!("/sys/class/net/{}/device", interface.name)).exists())
 }
 
 #[cfg(target_os = "macos")]
+fn is_physical(interface: &NetworkInterface) -> anyhow::Result<bool> {
+    let output = Command::new("networksetup")
+        .arg("-listallhardwareports")
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("'networksetup' command failed: {}", stderr);
+    }
+
+    let stdout_str = String::from_utf8_lossy(&output.stdout);
+    let expected = format!("Device: {}", interface.name);
+    Ok(stdout_str.contains(&expected))
+}
+
+#[cfg(target_os = "windows")]
 fn is_physical(interface: &NetworkInterface) -> bool {
     true
 }
@@ -107,6 +123,16 @@ fn is_physical(interface: &NetworkInterface) -> bool {
 OS dependent functions for WIRELESS
 **********************************/
 #[cfg(target_os = "linux")]
-fn is_wireless(interface: &NetworkInterface) -> bool {
-    Path::new(&format!("sys/class/net/{}/wireless", interface.name)).exists()
+fn is_wireless(interface: &NetworkInterface) -> anyhow::Result<bool> {
+    Ok(Path::new(&format!("sys/class/net/{}/wireless", interface.name)).exists())
+}
+
+#[cfg(target_os = "macos")]
+fn is_wireless(interface: &NetworkInterface) -> anyhow::Result<bool> {
+    let output = Command::new("networksetup")
+        .arg("-getairportnetwork")
+        .arg(&interface.name)
+        .output()?;
+
+    Ok(output.status.success())
 }
