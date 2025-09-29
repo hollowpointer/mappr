@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -18,33 +19,30 @@ pub fn discover_on_transport_channel(ipv4range: Arc<Ipv4Range>,
 }
 
 
-fn listen_for_hosts(mut tr: TransportReceiver,
-                    src_addr: Ipv4Addr,
-                    ipv4range: &Ipv4Range,
-                    duration_in_ms: Duration
+fn listen_for_hosts(
+    mut tr: TransportReceiver,
+    src_addr: Ipv4Addr,
+    ipv4range: &Ipv4Range,
+    duration_in_ms: Duration,
 ) -> Vec<Host> {
-    let mut hosts: Vec<Host> = Vec::new();
-    hosts.reserve(ipv4range.len() / 10); // there is often less than 10% of the network online at a given time
+    let mut found_ips: HashSet<IpAddr> = HashSet::new();
     let mut tcp_packets = tcp_packet_iter(&mut tr);
     let deadline = Instant::now() + duration_in_ms;
+
     while deadline > Instant::now() {
-        match tcp_packets.next() {
-            Ok((_, ip_addr)) => {
-                if let IpAddr::V4(ip_v4) = ip_addr {
-                    if ipv4range.contains(&ip_v4) && src_addr != ip_v4 {
-                        let mut host = Host::default();
-                        host.set_ipv4(ip_v4);
-                        hosts.push(host);
-                    }
-                };
-                if let IpAddr::V6(ip_v6) = ip_addr {
-                    let mut host = Host::default();
-                    host.add_ipv6(ip_v6);
-                    hosts.push(host);
+        if let Ok((_, ip_addr)) = tcp_packets.next() {
+            if let IpAddr::V4(ip_v4) = ip_addr {
+                if ipv4range.contains(&ip_v4) && src_addr != ip_v4 {
+                    found_ips.insert(ip_addr);
                 }
-            },
-            Err(_) => { std::thread::sleep(Duration::from_millis(1)); }
+            }
+            else if let IpAddr::V6(_) = ip_addr {
+                found_ips.insert(ip_addr);
+            }
+        } else {
+            std::thread::sleep(Duration::from_millis(1));
         }
     }
-    hosts
+
+    found_ips.into_iter().map(Host::from).collect()
 }

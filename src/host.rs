@@ -1,4 +1,4 @@
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use colored::{ColoredString, Colorize};
 use mac_oui::Oui;
 use pnet::datalink::MacAddr;
@@ -16,6 +16,22 @@ pub struct Host {
     mac_addr: Option<MacAddr>,
     vendor: Option<String>,
 }
+
+impl From<IpAddr> for Host {
+    /// Creates a new Host from a single IP address.
+    fn from(ip_addr: IpAddr) -> Self {
+        match ip_addr {
+            IpAddr::V4(ip_v4) => Host {
+                ipv4: Some(ip_v4),
+                ..Default::default()
+            },
+            IpAddr::V6(ip_v6) => Host {
+                ipv6: vec![ip_v6],
+                ..Default::default()
+            },
+        }
+    }
+    }
 
 impl Host {
     pub fn _new(ipv4: Option<Ipv4Addr>, ipv6: Vec<Ipv6Addr>, mac_addr: Option<MacAddr>)

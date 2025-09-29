@@ -10,14 +10,13 @@ use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::transport::{TransportChannelType, TransportProtocol};
 use crate::host::Host;
 use crate::cmd::Target;
-use crate::net::datalink::channel::{discover_on_eth_channel, ProbeType};
-use crate::net::datalink::interface;
-use crate::net::range;
+use crate::net::datalink::channel::ProbeType;
+use crate::net::datalink::{channel, interface};
+use crate::net::{range, transport};
 use crate::net::packets::tcp::handshake_range_discovery;
 use crate::{host, print, SPINNER};
 use crate::net::datalink::interface::get_ipv4;
 use crate::net::range::Ipv4Range;
-use crate::net::transport::discover_on_transport_channel;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     let hosts: Vec<Host> = match target {
@@ -50,7 +49,7 @@ async fn discover_lan(ipv4range: Arc<Ipv4Range>, intf: Arc<NetworkInterface>, pr
     let channel_cfg = Config { read_timeout: Some(Duration::from_millis(READ_TIMEOUT_MS)), ..Default::default() };
     print::print_status("Establishing Ethernet connection...");
     let eth_handle = thread::spawn(move || {
-        discover_on_eth_channel(
+        channel::discover_on_eth_channel(
             eth_range,
             eth_intf,
             channel_cfg,
@@ -63,7 +62,7 @@ async fn discover_lan(ipv4range: Arc<Ipv4Range>, intf: Arc<NetworkInterface>, pr
     let buffer_size: usize = 512;
     let src_addr: Ipv4Addr = get_ipv4(&intf)?;
     let tr_handle = thread::spawn(move || {
-        discover_on_transport_channel(
+        transport::discover_on_transport_channel(
             tr_range,
             buffer_size,
             src_addr,

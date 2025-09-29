@@ -21,9 +21,6 @@ impl Ipv4Range {
     pub fn contains(&self, ip: &Ipv4Addr) -> bool {
         self.start_addr <= *ip && *ip <= self.end_addr
     }
-    pub fn len(&self) -> usize {
-        (u32::from(self.end_addr) - u32::from(self.start_addr)) as usize
-    }
 }
 
 #[derive(Clone, Debug)]
