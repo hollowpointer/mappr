@@ -29,7 +29,7 @@ pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
 // ╚════════════════════════════════════════════╝
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
     use pnet::packet::ethernet::EtherTypes;
     use pnet::util::MacAddr;
@@ -39,7 +39,7 @@ pub(crate) mod tests {
     const ARP_LEN: usize = 28;
     const ETH_HDR_LEN: usize = 14;
 
-    pub(crate) fn buf() -> [u8; MIN_ETH_FRAME_NO_FCS] {
+    pub fn buf() -> [u8; MIN_ETH_FRAME_NO_FCS] {
         [0u8; MIN_ETH_FRAME_NO_FCS]
     }
 

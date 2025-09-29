@@ -1,6 +1,7 @@
 use tokio::net::TcpStream;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use anyhow::Context;
@@ -35,7 +36,7 @@ pub fn send_syn_packet(mut ts: TransportSender,
     Ok(())
 }
 
-pub async fn handshake_range_discovery(ipv4range: Ipv4Range) -> anyhow::Result<Vec<Host>> {
+pub async fn handshake_range_discovery(ipv4range: Arc<Ipv4Range>) -> anyhow::Result<Vec<Host>> {
     let mut result: Vec<Host> = Vec::new();
     for ip in ip_iter(&ipv4range) {
         if let Some(found) = handshake_probe(ip).await? { result.push(found); }

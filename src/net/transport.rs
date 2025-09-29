@@ -1,4 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use pnet::transport;
 use pnet::transport::{tcp_packet_iter, TransportChannelType, TransportReceiver};
@@ -6,10 +7,10 @@ use crate::host::Host;
 use crate::net::packets::tcp;
 use crate::net::range::Ipv4Range;
 
-pub fn discover_on_transport_channel(buffer_size: usize,
+pub fn discover_on_transport_channel(ipv4range: Arc<Ipv4Range>,
+                                     buffer_size: usize,
                                      src_addr: Ipv4Addr,
                                      channel_type: TransportChannelType,
-                                     ipv4range: Ipv4Range
 ) -> anyhow::Result<Vec<Host>> {
     let (ts, tr) = transport::transport_channel(buffer_size, channel_type)?;
     tcp::send_syn_packet(ts, src_addr, 7777, &ipv4range, 443)?;

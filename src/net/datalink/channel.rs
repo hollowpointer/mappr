@@ -1,4 +1,5 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow;
 use anyhow::{bail, Context};
@@ -18,7 +19,7 @@ pub enum ProbeType {
 }
 
 pub struct SenderContext {
-    pub ipv4range: Ipv4Range,
+    pub ipv4range: Arc<Ipv4Range>,
     pub src_addr_v4: Ipv4Addr,
     pub src_addr_v6: Ipv6Addr,
     pub mac_addr: MacAddr,
@@ -26,10 +27,10 @@ pub struct SenderContext {
 }
 
 impl SenderContext {
-    fn new(ipv4range: Ipv4Range,
+    fn new(ipv4range: Arc<Ipv4Range>,
            src_addr_v4: Ipv4Addr,
            src_addr_v6: Ipv6Addr,
-           intf: NetworkInterface,
+           intf: Arc<NetworkInterface>,
            tx: Box<dyn DataLinkSender>)
      -> Self {
         Self {
@@ -42,8 +43,8 @@ impl SenderContext {
     }
 }
 
-pub fn discover_on_eth_channel(ipv4range: Ipv4Range,
-                               intf: NetworkInterface,
+pub fn discover_on_eth_channel(ipv4range: Arc<Ipv4Range>,
+                               intf: Arc<NetworkInterface>,
                                channel_cfg: Config,
                                probe_type: ProbeType,
                                duration_in_ms: Duration

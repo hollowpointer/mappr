@@ -1,3 +1,5 @@
+use std::net::Ipv4Addr;
+use std::sync::Arc;
 use std::thread;
 use anyhow;
 use pnet::datalink::{Config, NetworkInterface};
@@ -24,7 +26,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
             print::print_status("Initializing LAN discovery...");
             let intf: NetworkInterface = interface::select(Target::LAN);
             let ipv4range: Ipv4Range = Ipv4Range::from_tuple(range::interface_range_v4(&intf)?);
-            let hosts = discover_lan(ipv4range, intf.clone(), ProbeType::Default).await?;
+            let hosts = discover_lan(Arc::new(ipv4range), Arc::new(intf.clone()), ProbeType::Default).await?;
             SPINNER.finish_and_clear();
             hosts.into_iter().filter(|h| { h.get_mac_addr() != intf.mac } ).collect::<Vec<Host>>()
         },
@@ -38,32 +40,39 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
 const READ_TIMEOUT_MS: u64 = 50;
 const PROBE_TIMEOUT_MS: u64 = 500;
 
-async fn discover_lan(ipv4range: Ipv4Range, intf: NetworkInterface, probe_type: ProbeType)
+async fn discover_lan(ipv4range: Arc<Ipv4Range>, intf: Arc<NetworkInterface>, probe_type: ProbeType)
     -> anyhow::Result<Vec<Host>> {
+
     if !is_root() { return handshake_range_discovery(ipv4range).await.context("handshake discovery (non-root)"); }
+
+    let eth_range: Arc<Ipv4Range> = ipv4range.clone();
+    let eth_intf: Arc<NetworkInterface> = intf.clone();
     let channel_cfg = Config { read_timeout: Some(Duration::from_millis(READ_TIMEOUT_MS)), ..Default::default() };
     print::print_status("Establishing Ethernet connection...");
-    let ip_range_clone = ipv4range.clone();
-    let intf_clone = intf.clone();
     let eth_handle = thread::spawn(move || {
         discover_on_eth_channel(
-            ip_range_clone,
-            intf_clone,
+            eth_range,
+            eth_intf,
             channel_cfg,
             probe_type,
             Duration::from_millis(PROBE_TIMEOUT_MS),
         ).context("discovering via ethernet channel")
     });
+
+    let tr_range: Arc<Ipv4Range> = ipv4range.clone();
+    let buffer_size: usize = 512;
+    let src_addr: Ipv4Addr = get_ipv4(&intf)?;
     let tr_handle = thread::spawn(move || {
         discover_on_transport_channel(
-            512,
-            get_ipv4(&intf)?,
+            tr_range,
+            buffer_size,
+            src_addr,
             TransportChannelType::Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Tcp)),
-            ipv4range,
         )
     });
-    let eth_res = eth_handle.join().expect("joining ethernet handle")?;
-    let tr_res = tr_handle.join().expect("joining transport layer handle")?;
+
+    let eth_res: Vec<Host> = eth_handle.join().expect("joining ethernet handle")?;
+    let tr_res: Vec<Host> = tr_handle.join().expect("joining transport layer handle")?;
     let hosts: Vec<Host> = vec![eth_res, tr_res].into_iter().flatten().collect();
     Ok(hosts)
 }
