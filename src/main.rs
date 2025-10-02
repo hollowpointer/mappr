@@ -34,8 +34,8 @@ async fn main() -> anyhow::Result<()> {
     print::print_header();
     match commands.command {
         Commands::Info => {
-            print::separator("sending information");
-            Ok(info::info())
+            print::separator("about the tool");
+            Ok(info::info()?)
         },
         Commands::Listen => {
             print::separator("starting listener");

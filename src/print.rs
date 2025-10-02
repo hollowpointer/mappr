@@ -100,11 +100,16 @@ pub fn separator(msg: &str) {
     )
         .bright_black();
 
-    println!("{}", line);
+    let message = format!("{line}");
+    SPINNER.println(message);
 }
 
 pub fn print_status(msg: &str) {
     let prefix = ">".bright_black();
     let message = format!("{} {}", prefix, msg);
     SPINNER.println(message);
+}
+
+pub fn println(msg: &str) {
+    SPINNER.println(format!("{}", msg));
 }
