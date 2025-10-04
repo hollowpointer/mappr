@@ -26,6 +26,7 @@ pub fn info() -> anyhow::Result<()>{
 
     print::separator("network configuration");
     print_network_interfaces();
+    SPINNER.finish_and_clear();
     Ok(())
 }
 
@@ -40,8 +41,11 @@ fn print_network_interfaces() {
         print::println(format!(" ├─ IPv4     : {:?}", interface::get_ipv4(intf).unwrap_or(
             Ipv4Addr::new(0, 0, 0, 0)
         )).as_str());
+        if let Some(lla) = interface::get_link_local_addr(intf) {
+            print::println(format!(" ├─ LLA      : {lla}").as_str());
+        }
         if let Some(mac) = intf.mac {
-            print::println(format!(" └─ MAC      : {mac}").as_str())
+            print::println(format!(" └─ MAC      : {mac}").as_str());
         }
         SPINNER.println(format!("{}", "------------------------------------------------------------".bright_black()));
     }

@@ -26,6 +26,25 @@ pub fn get_ipv6(interface: &NetworkInterface) -> anyhow::Result<Ipv6Addr> {
     first_ipv6_net(interface).map(|net| net.ip())
 }
 
+pub fn get_link_local_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
+    interface.ips.iter().find_map(|ip_network| {
+        match ip_network {
+            // Get the specific IP address from the Ipv6Network using .ip()
+            IpNetwork::V6(ipv6_network) => {
+                let addr = ipv6_network.ip();
+                // Check if that one address is link-local
+                if addr.is_unicast_link_local() {
+                    Some(addr)
+                } else {
+                    None
+                }
+            }
+            // Ignore IPv4 addresses
+            IpNetwork::V4(_) => None,
+        }
+    })
+}
+
 pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<u8> {
     first_ipv4_net(interface).map(|net| net.prefix())
 }
