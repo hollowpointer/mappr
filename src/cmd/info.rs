@@ -1,6 +1,5 @@
 use std::env;
-use std::net::Ipv4Addr;
-use anyhow;
+use anyhow::{self};
 use colored::*;
 use sys_info;
 use crate::{print, SPINNER};
@@ -44,11 +43,26 @@ fn print_network_interfaces() {
     print::separator("network configuration");
     let interfaces = pnet::datalink::interfaces();
     for (idx, intf) in interfaces.iter().enumerate() {
+        let mut lines: Vec<(&str, ColoredString)> = Vec::new();
         print::println(format!("{} {}", format!("[{idx}]").green(), intf.name.green()).as_str());
-        let ipv4 = interface::get_ipv4(intf).unwrap_or(Ipv4Addr::new(0,0,0,0));
-        print_intf_line("IPv4", &ipv4.to_string());
-        if let Some(lla) = interface::get_link_local_addr(intf) { print_intf_line("LLA", &lla.to_string()); }
-        if let Some(mac) = intf.mac { print_intf_line("MAC", &mac.to_string()); }
+        match interface::get_ipv4(intf) {
+            Ok(ipv4) => lines.push(("IPv4", ipv4.unwrap().to_string().truecolor(83, 179, 203))),
+            _ => { }
+        }
+        if let Some(lla) = interface::get_link_local_addr(intf) {
+            lines.push(("LLA", lla.to_string().magenta())); 
+        }
+        if let Some(mac) = intf.mac {
+            lines.push(("MAC", mac.to_string().truecolor(255, 176, 0))); 
+        }
+        for(i, (key, value)) in lines.iter().enumerate() {
+            let last = i + 1 == lines.len();
+            let branch = if last { "└─".bright_black() } else { "├─".bright_black() };
+            let whitespace = " ".repeat(LENGTH_OF_LONGEST_WORD - key.len() - 1);
+            let colon = format!("{}{}", whitespace, ":".bright_black());
+            let output = format!(" {branch} {}{} {}", key, colon, value);
+            print::println(&output)
+        }
         SPINNER.println(format!("{}", "------------------------------------------------------------".bright_black()));
     }
 }
@@ -57,10 +71,4 @@ fn print_info_line(key: &str, value: &str) {
     let whitespace = " ".repeat(LENGTH_OF_LONGEST_WORD - key.len());
     let colon = format!("{}{}", whitespace, ":".bright_black());
     print::print_status(format!("{} {} {}", key.yellow(), colon, value).as_str());
-}
-
-fn print_intf_line(key: &str, value: &str) {
-    let whitespace = " ".repeat(LENGTH_OF_LONGEST_WORD - key.len() - 1);
-    let colon = format!("{}{}", whitespace, ":".bright_black());
-    print::println(format!("{} {}{} {}", " ├─".bright_black(), key.yellow(), colon, value).as_str())
 }

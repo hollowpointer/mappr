@@ -5,7 +5,7 @@ use crate::cmd::Target;
 use std::path::Path;
 #[cfg(target_os = "macos")]
 use std::process::Command;
-use anyhow::anyhow;
+use anyhow::{anyhow, Ok};
 use pnet::ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
 use crate::print;
 
@@ -18,12 +18,16 @@ pub fn select(target: Target) -> NetworkInterface {
     }
 }
 
-pub fn get_ipv4(interface: &NetworkInterface) -> anyhow::Result<Ipv4Addr> {
-    first_ipv4_net(interface).map(|net| net.ip())
+pub fn get_ipv4(interface: &NetworkInterface) -> anyhow::Result<Option<Ipv4Addr>> {
+    if let Some(ipv4net) = first_ipv4_net(interface)? {
+        Ok(Some(ipv4net.ip()))
+    } else { Ok(None) }
 }
 
-pub fn get_ipv6(interface: &NetworkInterface) -> anyhow::Result<Ipv6Addr> {
-    first_ipv6_net(interface).map(|net| net.ip())
+pub fn get_ipv6(interface: &NetworkInterface) -> anyhow::Result<Option<Ipv6Addr>> {
+    if let Some(ipv6net) = first_ipv6_net(interface)? {
+        Ok(Some(ipv6net.ip()))
+    } else { Ok(None) }
 }
 
 pub fn get_link_local_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
@@ -45,8 +49,10 @@ pub fn get_link_local_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
     })
 }
 
-pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<u8> {
-    first_ipv4_net(interface).map(|net| net.prefix())
+pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<Option<u8>> {
+    if let Some(ipv4net) = first_ipv4_net(interface)? {
+        Ok(Some(ipv4net.prefix()))
+    } else { Ok(None) }
 }
 
 fn select_lan() -> NetworkInterface {
@@ -70,8 +76,9 @@ fn select_lan() -> NetworkInterface {
         return wired_over_wireless(candidates);
     }
     let intf = candidates.first().unwrap().clone();
-    let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
-    print::print_status(&msg);
+    if let Some(ipv4) = get_ipv4(&intf).expect("retrieving ipv4 of interface") {
+        print::print_status(format!("Selected {} with address {}", intf.name, ipv4).as_str());
+    }
     intf
 }
 
@@ -85,26 +92,29 @@ fn select_host(addr: Ipv4Addr) -> Option<NetworkInterface> {
 fn wired_over_wireless(mut candidates: Vec<NetworkInterface>) -> NetworkInterface {
     candidates.sort_by_key(|k| is_wireless(k).unwrap_or(false));
     let intf = candidates.first().unwrap().clone();
-    let msg = format!("Selected {} with address {}", intf.name, get_ipv4(&intf).unwrap());
-    print::print_status(&msg);
+    if let Some(ipv4) = get_ipv4(&intf).expect("retrieving ipv4 of interface") {
+        print::print_status(format!("Selected {} with address {}", intf.name, ipv4).as_str());
+    }    
     candidates
         .first()
         .cloned()
         .expect("no suitable network interfaces found")
 }
 
-fn first_ipv4_net(interface: &NetworkInterface) -> anyhow::Result<Ipv4Network> {
-    interface.ips.iter().find_map(|ip| match ip {
+fn first_ipv4_net(interface: &NetworkInterface) -> anyhow::Result<Option<Ipv4Network>> {
+    let ipv4 = interface.ips.iter().find_map(|ip| match ip {
         IpNetwork::V4(n) => Some(*n),
         _ => None,
-    }).ok_or_else(|| anyhow!("Interface does not have an IPv4 address"))
+    }).ok_or_else(|| anyhow!("Interface does not have an IPv4 address"))?;
+    Ok(Some(ipv4))
 }
 
-fn first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Ipv6Network> {
-    interface.ips.iter().find_map(|ip| match ip {
+fn first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Option<Ipv6Network>> {
+    let ipv6 = interface.ips.iter().find_map(|ip| match ip {
         IpNetwork::V6(n) => Some(*n),
         _ => None,
-    }).ok_or_else(|| anyhow!("Interface does not have an IPv6 address"))
+    }).ok_or_else(|| anyhow!("Interface does not have an IPv6 address"))?;
+    Ok(Some(ipv6))
 }
 
 

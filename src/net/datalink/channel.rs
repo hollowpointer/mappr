@@ -51,8 +51,12 @@ pub fn discover_on_eth_channel(ipv4range: Arc<Ipv4Range>,
 ) -> anyhow::Result<Vec<Host>> {
     let (tx, rx) = open_eth_channel(&intf, &channel_cfg)?;
     let _ = range::ip_range(Target::LAN, &intf); // this shit is to suppress warnings
-    let src_addr_v4: Ipv4Addr = interface::get_ipv4(&intf)?;
-    let src_addr_v6: Ipv6Addr = interface::get_ipv6(&intf)?;
+    let src_addr_v4: Ipv4Addr = if let Some(ipv4) = 
+        interface::get_ipv4(&intf)? { ipv4 } 
+        else { anyhow::bail!("interface has no ipv4 address") };
+    let src_addr_v6: Ipv6Addr = if let Some(ipv6) = 
+        interface::get_ipv6(&intf)? { ipv6} 
+        else { anyhow::bail!("interface has no ipv6 address") };
     let mut send_context: SenderContext = SenderContext::new(ipv4range, src_addr_v4, src_addr_v6, intf, tx);
     match probe_type {
         ProbeType::Default => {

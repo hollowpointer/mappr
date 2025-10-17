@@ -1,5 +1,5 @@
 use std::net::Ipv4Addr;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use pnet::datalink::NetworkInterface;
 use crate::cmd::Target;
 use crate::net::datalink::interface;
@@ -17,9 +17,6 @@ impl Ipv4Range {
             start_addr: range.0,
             end_addr: range.1
         }
-    }
-    pub fn contains(&self, ip: &Ipv4Addr) -> bool {
-        self.start_addr <= *ip && *ip <= self.end_addr
     }
 }
 
@@ -43,11 +40,11 @@ pub fn ip_range(target: Target, intf: &NetworkInterface) -> Result<(Ipv4Addr, Ip
 }
 
 pub fn interface_range_v4(intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    let ip = interface::get_ipv4(intf)
-        .map_err(|_| anyhow!("Failed to get IPv4 from interface"))?;
+    let ip = if let Some(ipv4) = interface::get_ipv4(intf)? { ipv4 }
+        else { anyhow::bail!("provided interface does not have an ipv4 address") };
 
-    let prefix = interface::get_prefix(intf)
-        .map_err(|_| anyhow!("Failed to get prefix from interface"))?;
+    let prefix = if let Some(prefix) = interface::get_prefix(intf)? { prefix }
+        else { anyhow::bail!("provided interface does not have a prefix") };
 
     cidr_range(ip, prefix)
 }
