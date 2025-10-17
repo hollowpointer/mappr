@@ -3,4 +3,3 @@ pub const ARP_LEN: usize = 28;
 pub const ETH_HDR_LEN: usize = 14;
 pub const IP_V6_HDR_LEN: usize = 40;
 pub const ICMP_V6_ECHO_REQ_LEN: usize = 8;
-pub const MIN_TCP_HEADER_SIZE: usize = 20;
