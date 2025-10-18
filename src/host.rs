@@ -31,7 +31,7 @@ impl From<IpAddr> for Host {
             },
         }
     }
-    }
+}
 
 impl Host {
     pub fn _new(ipv4: Option<Ipv4Addr>, ipv6: Vec<Ipv6Addr>, mac_addr: Option<MacAddr>)
@@ -87,7 +87,7 @@ impl Host {
 
         for (i, (label, value)) in lines.iter().enumerate() {
             let last = i + 1 == lines.len();
-            let branch = if last { "└─" } else { "├─" };
+            let branch = if last { "└─".bright_black() } else { "├─".bright_black() };
             println!(" {branch} {label:<4} : {value}");
         }
 

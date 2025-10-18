@@ -41,7 +41,8 @@ fn print_local_system() -> anyhow::Result<()> {
 
 fn print_network_interfaces() {
     print::separator("network configuration");
-    let interfaces = pnet::datalink::interfaces();
+    let interfaces = interface::get_unique_interfaces(3)
+        .expect("Failed to get interfaces");
     for (idx, intf) in interfaces.iter().enumerate() {
         let mut lines: Vec<(&str, ColoredString)> = Vec::new();
         print::println(format!("{} {}", format!("[{idx}]").green(), intf.name.green()).as_str());

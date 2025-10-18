@@ -1,6 +1,6 @@
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::{net::{Ipv4Addr, Ipv6Addr}, vec::IntoIter};
 use pnet::datalink::{interfaces, NetworkInterface};
-use crate::cmd::Target;
+use crate::{cmd::Target};
 #[cfg(target_os = "linux")]
 use std::path::Path;
 #[cfg(target_os = "macos")]
@@ -30,6 +30,37 @@ pub fn get_ipv6(interface: &NetworkInterface) -> anyhow::Result<Option<Ipv6Addr>
     } else { Ok(None) }
 }
 
+pub fn get_unique_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>> {
+    let interfaces: Vec<NetworkInterface> = interfaces();
+    let mut unique_interfaces: Vec<NetworkInterface> = Vec::with_capacity(max);
+    let mut wired_iter: IntoIter<NetworkInterface> = get_all_wired(&interfaces)?.into_iter();
+    let mut wireless_iter: IntoIter<NetworkInterface> = get_all_wireless(&interfaces)?.into_iter();
+    let mut tunnel_iter: IntoIter<NetworkInterface> = get_all_tunnel(&interfaces)?.into_iter();
+
+    while unique_interfaces.len() < max {
+        let mut items_added_this_pass = 0;
+        if let Some(iface) = wired_iter.next() {
+            unique_interfaces.push(iface);
+            items_added_this_pass += 1;
+            if unique_interfaces.len() == max { break; }
+        }
+        if let Some(iface) = wireless_iter.next() {
+            unique_interfaces.push(iface);
+            items_added_this_pass += 1;
+            if unique_interfaces.len() == max { break; }
+        }
+        if let Some(iface) = tunnel_iter.next() {
+            unique_interfaces.push(iface);
+            items_added_this_pass += 1;
+            if unique_interfaces.len() == max { break; }
+        }
+        if items_added_this_pass == 0 {
+            break;
+        }
+    }
+    Ok(unique_interfaces)
+}
+
 pub fn get_link_local_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
     interface.ips.iter().find_map(|ip_network| {
         match ip_network {
@@ -53,6 +84,37 @@ pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<Option<u8>> {
     if let Some(ipv4net) = first_ipv4_net(interface)? {
         Ok(Some(ipv4net.prefix()))
     } else { Ok(None) }
+}
+
+fn get_all_wired(interfaces: &[NetworkInterface]) -> anyhow::Result<Vec<NetworkInterface>> {
+    let mut res = Vec::with_capacity(interfaces.len());
+    for i in interfaces {
+        if is_physical(i)? && !is_wireless(i)? {
+            res.push(i.clone());
+        }
+    }
+    Ok(res)
+}
+
+fn get_all_wireless(interfaces: &[NetworkInterface]) -> anyhow::Result<Vec<NetworkInterface>> {
+    let mut res = Vec::with_capacity(interfaces.len());
+    for i in interfaces {
+        if is_physical(i)? && is_wireless(i)? {
+            res.push(i.clone());
+        }
+    }
+    Ok(res)
+}
+
+// info: It will miss TAP-style tunnels since they are not point-to-point, needs refinement
+fn get_all_tunnel(interfaces: &Vec<NetworkInterface>) -> anyhow::Result<Vec<NetworkInterface>> {
+    let mut res = Vec::with_capacity(interfaces.len());
+    for i in interfaces {
+        if !is_physical(i)? && i.is_point_to_point() {
+            res.push(i.clone());
+        }
+    }
+    Ok(res)
 }
 
 fn select_lan() -> NetworkInterface {
