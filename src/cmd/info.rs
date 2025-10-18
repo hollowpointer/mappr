@@ -40,22 +40,35 @@ fn print_local_system() -> anyhow::Result<()> {
 }
 
 fn print_network_interfaces() {
-    print::separator("network configuration");
+    print::separator("interface configuration");
     let interfaces = interface::get_unique_interfaces(3)
         .expect("Failed to get interfaces");
+
     for (idx, intf) in interfaces.iter().enumerate() {
         let mut lines: Vec<(&str, ColoredString)> = Vec::new();
         print::println(format!("{} {}", format!("[{idx}]").green(), intf.name.green()).as_str());
-        match interface::get_ipv4(intf) {
-            Ok(ipv4) => lines.push(("IPv4", ipv4.unwrap().to_string().truecolor(83, 179, 203))),
-            _ => { }
+
+        if let Ok(Some(ipv4_addr)) = interface::get_ipv4(intf) {
+            if let Ok(Some(prefix)) = interface::get_prefix(intf) {
+                let value: ColoredString = ColoredString::from(
+                 format!(
+                    "{}{}{}",
+                    ipv4_addr.to_string().truecolor(83, 179, 203),
+                    "/".bright_black(),
+                    prefix.to_string().truecolor(58, 125, 142)
+                ));
+                lines.push(("IPv4", value));
+            }
         }
+
         if let Some(lla) = interface::get_link_local_addr(intf) {
             lines.push(("LLA", lla.to_string().magenta())); 
         }
+
         if let Some(mac) = intf.mac {
             lines.push(("MAC", mac.to_string().truecolor(255, 176, 0))); 
         }
+        
         for(i, (key, value)) in lines.iter().enumerate() {
             let last = i + 1 == lines.len();
             let branch = if last { "└─".bright_black() } else { "├─".bright_black() };
@@ -64,7 +77,8 @@ fn print_network_interfaces() {
             let output = format!(" {branch} {}{} {}", key, colon, value);
             print::println(&output)
         }
-        SPINNER.println(format!("{}", "------------------------------------------------------------".bright_black()));
+
+        print::dashed_separator();
     }
 }
 

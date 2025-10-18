@@ -30,6 +30,12 @@ pub fn get_ipv6(interface: &NetworkInterface) -> anyhow::Result<Option<Ipv6Addr>
     } else { Ok(None) }
 }
 
+pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<Option<u8>> {
+    if let Some(ipv4net) = first_ipv4_net(interface)? {
+        Ok(Some(ipv4net.prefix()))
+    } else { Ok(None) }
+}
+
 pub fn get_unique_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>> {
     let interfaces: Vec<NetworkInterface> = interfaces();
     let mut unique_interfaces: Vec<NetworkInterface> = Vec::with_capacity(max);
@@ -78,12 +84,6 @@ pub fn get_link_local_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
             IpNetwork::V4(_) => None,
         }
     })
-}
-
-pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<Option<u8>> {
-    if let Some(ipv4net) = first_ipv4_net(interface)? {
-        Ok(Some(ipv4net.prefix()))
-    } else { Ok(None) }
 }
 
 fn get_all_wired(interfaces: &[NetworkInterface]) -> anyhow::Result<Vec<NetworkInterface>> {
@@ -181,9 +181,9 @@ fn first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Option<Ipv6Net
 
 
 
-/*********************************
-OS dependent functions for PHYSICAL
-**********************************/
+/***************************************
+   OS dependent functions for PHYSICAL
+****************************************/
 #[cfg(target_os = "linux")]
 fn is_physical(interface: &NetworkInterface) -> anyhow::Result<bool> {
     Ok(Path::new(&format!("/sys/class/net/{}/device", interface.name)).exists())
@@ -210,9 +210,9 @@ fn is_physical(interface: &NetworkInterface) -> bool {
     true
 }
 
-/*********************************
-OS dependent functions for WIRELESS
-**********************************/
+/***************************************
+   OS dependent functions for WIRELESS
+****************************************/
 #[cfg(target_os = "linux")]
 fn is_wireless(interface: &NetworkInterface) -> anyhow::Result<bool> {
     Ok(Path::new(&format!("sys/class/net/{}/wireless", interface.name)).exists())

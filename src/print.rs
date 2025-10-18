@@ -110,6 +110,10 @@ pub fn print_status(msg: &str) {
     SPINNER.println(message);
 }
 
+pub fn dashed_separator() {
+    SPINNER.println(format!("{}", "------------------------------------------------------------".bright_black()));
+}
+
 pub fn println(msg: &str) {
     SPINNER.println(format!("{}", msg));
 }
