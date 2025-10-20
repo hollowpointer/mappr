@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::env;
 use std::net::IpAddr;
@@ -10,7 +11,9 @@ use sysinfo::{Pid, System};
 use crate::{print, SPINNER};
 use crate::net::datalink::interface;
 
-const LENGTH_OF_LONGEST_WORD: usize = 10;
+thread_local! {
+    static GLOBAL_KEY_WIDTH: Cell<usize> = Cell::new(0);
+}
 
 struct Process {
     name: String,
@@ -29,16 +32,25 @@ impl Process {
 }
 
 pub fn info() -> anyhow::Result<()>{
-    print::println("Mappr is a quick tool for mapping and exploring networks.");
+    print::println(format!("{}", 
+        "Mappr is a quick tool for mapping and exploring networks.".truecolor(192, 192, 192)).as_str());
     print::println("");
+    GLOBAL_KEY_WIDTH.set(10);
+    if !is_root() {
+        print_about_the_tool();
+        print_local_system()?;
+        print_network_interfaces();
+        return Ok(())
+    }
+    let (socket_map, longest_name) = handle_local_services()?;
+    GLOBAL_KEY_WIDTH.set(longest_name + 3);
     print_about_the_tool();
     print_local_system()?;
-    if is_root() {
-        print_local_services()?;
-        print_firewall_status();
-    }
+    print_local_services(socket_map)?;
+    print_firewall_status();
     print_network_interfaces();
 
+    print::end_of_program();
     SPINNER.finish_and_clear();
     Ok(())
 }
@@ -97,20 +109,18 @@ fn print_network_interfaces() {
         for(i, (key, value)) in lines.iter().enumerate() {
             let last = i + 1 == lines.len();
             let branch = if last { "└─".bright_black() } else { "├─".bright_black() };
-            let whitespace = " ".repeat(LENGTH_OF_LONGEST_WORD - key.len() - 1);
-            let colon = format!("{}{}", whitespace, ":".bright_black());
+            let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() - key.len() - 1);
+            let colon = format!("{}{}", whitespace.bright_black(), ":".bright_black());
             let output = format!(" {branch} {}{} {}", key, colon, value);
             print::println(&output)
         }
-
-        print::dashed_separator();
+        if idx + 1 != interfaces.len() { print::println(""); }
     }
 }
 
-fn print_local_services() -> anyhow::Result<()> {
-    let (socket_map, longest_name) = handle_local_services()?;
+fn print_local_services(socket_map: HashMap<IpAddr, Vec<Process>>) -> anyhow::Result<()> {
     print::separator("local services (tcp)");
-    for (i, (ip_addr, processess)) in socket_map.iter().enumerate() {
+    for (idx, (ip_addr, processess)) in socket_map.iter().enumerate() {
         let ip_addr = if ip_addr.is_ipv4() { 
             ip_addr.to_string().truecolor(83, 179, 203) 
         } else { ip_addr.to_string().magenta() };
@@ -118,16 +128,16 @@ fn print_local_services() -> anyhow::Result<()> {
         for (i, process) in processess.iter().enumerate() {
             let last: bool = i + 1 == processess.len();
             let branch: ColoredString = if last { "└─".bright_black() } else { "├─".bright_black() };
-            let dashes: usize = (longest_name + 2) as usize - process.name.len();
+            let dashes: usize = GLOBAL_KEY_WIDTH.get() - process.name.len() - 2;
             let output: String = format!(" {branch} {} {}{}{}", 
                 process.name.cyan(),
                 ".".repeat(dashes).bright_black(),
-                ":".bright_black(),
+                ": ".bright_black(),
                 process.local_port.to_string().truecolor(192, 192, 192)
             );
             print::println(&output);
         }
-        if i + 1 != socket_map.len() { print::println(""); }
+        if idx + 1 != socket_map.len() { print::println(""); }
     }
     Ok(())
 }
@@ -136,20 +146,20 @@ fn print_firewall_status() {
 
 }
 
-fn handle_local_services() -> anyhow::Result<(HashMap<IpAddr, Vec<Process>>, u8)> {
+fn handle_local_services() -> anyhow::Result<(HashMap<IpAddr, Vec<Process>>, usize)> {
     let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
     let proto_flags = ProtocolFlags::TCP | ProtocolFlags::UDP;
     let sockets_info = get_sockets_info(af_flags, proto_flags)?;
     let sys = System::new_all();
-    let mut longest_name: u8 = 0;
+    let mut longest_name: usize = 0;
     let mut socket_map: HashMap<IpAddr, Vec<Process>> = HashMap::new();
     for si in sockets_info {
         match si.protocol_socket_info {
             ProtocolSocketInfo::Tcp(tcp_si) => {
                 if let Some(&pid) = si.associated_pids.get(0) { 
                     if let Some(process) = sys.process(Pid::from_u32(pid)) {
-                        if process.name().len() > longest_name as usize { 
-                            longest_name = process.name().len() as u8
+                        if process.name().len() > longest_name { 
+                            longest_name = process.name().len()
                         }
                         let process: Process = Process::new(
                             process.name().to_string_lossy().to_string(), 
@@ -167,7 +177,7 @@ fn handle_local_services() -> anyhow::Result<(HashMap<IpAddr, Vec<Process>>, u8)
 }
 
 fn print_info_line(key: &str, value: &str) {
-    let whitespace = ".".repeat(LENGTH_OF_LONGEST_WORD - key.len());
+    let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() - key.len());
     let colon = format!("{}{}", whitespace.bright_black(), ":".bright_black());
-    print::print_status(format!("{} {} {}", key.yellow(), colon, value).as_str());
+    print::print_status(format!("{} {} {}", key.yellow(), colon, value.truecolor(192, 192, 192)).as_str());
 }

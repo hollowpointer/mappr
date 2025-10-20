@@ -110,8 +110,8 @@ pub fn print_status(msg: &str) {
     SPINNER.println(message);
 }
 
-pub fn dashed_separator() {
-    SPINNER.println(format!("{}", "------------------------------------------------------------".bright_black()));
+pub fn end_of_program() {
+    println(format!("{}", "─".repeat(60).bright_black()).as_str());
 }
 
 pub fn println(msg: &str) {
