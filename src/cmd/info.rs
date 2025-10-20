@@ -18,15 +18,15 @@ thread_local! {
 struct Process {
     name: String,
     local_address: IpAddr,
-    local_port: u16
+    local_ports: Vec<u16>
 }
 
 impl Process {
-    fn new(name: String, local_address: IpAddr, local_port: u16) -> Self {
+    fn new(name: String, local_address: IpAddr, local_ports: Vec<u16>) -> Self {
         Self {
             name,
             local_address,
-            local_port
+            local_ports
         }
     }
 }
@@ -129,11 +129,15 @@ fn print_local_services(socket_map: HashMap<IpAddr, Vec<Process>>) -> anyhow::Re
             let last: bool = i + 1 == processess.len();
             let branch: ColoredString = if last { "└─".bright_black() } else { "├─".bright_black() };
             let dashes: usize = GLOBAL_KEY_WIDTH.get() - process.name.len() - 2;
+            let ports: String = process.local_ports.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<String>>()
+                .join(", ");
             let output: String = format!(" {branch} {} {}{}{}", 
                 process.name.cyan(),
                 ".".repeat(dashes).bright_black(),
                 ": ".bright_black(),
-                process.local_port.to_string().truecolor(192, 192, 192)
+                ports.truecolor(192, 192, 192)
             );
             print::println(&output);
         }
@@ -152,26 +156,35 @@ fn handle_local_services() -> anyhow::Result<(HashMap<IpAddr, Vec<Process>>, usi
     let sockets_info = get_sockets_info(af_flags, proto_flags)?;
     let sys = System::new_all();
     let mut longest_name: usize = 0;
-    let mut socket_map: HashMap<IpAddr, Vec<Process>> = HashMap::new();
+    let mut process_map: HashMap<(String, IpAddr), Process> = HashMap::new();
     for si in sockets_info {
         match si.protocol_socket_info {
             ProtocolSocketInfo::Tcp(tcp_si) => {
                 if let Some(&pid) = si.associated_pids.get(0) { 
                     if let Some(process) = sys.process(Pid::from_u32(pid)) {
-                        if process.name().len() > longest_name { 
-                            longest_name = process.name().len()
-                        }
-                        let process: Process = Process::new(
-                            process.name().to_string_lossy().to_string(), 
-                            tcp_si.local_addr, 
-                            tcp_si.local_port
-                        );
-                        socket_map.entry(process.local_address).or_default().push(process);
+                        let process_name_str = process.name();
+                        if  process_name_str.len() > longest_name { longest_name = process_name_str.len() }
+                        let process_name = process_name_str.to_string_lossy().to_string();
+                        let local_addr: IpAddr = tcp_si.local_addr;
+                        let local_port: u16 = tcp_si.local_port;
+                        let process_entry = process_map
+                            .entry((process_name.clone(), local_addr))
+                            .or_insert_with(|| {
+                                Process::new(process_name, local_addr, Vec::new())
+                        });
+                        process_entry.local_ports.push(local_port);
                     }
                 }
             },
         ProtocolSocketInfo::Udp(_) => { }
         }
+    }
+    let mut socket_map: HashMap<IpAddr, Vec<Process>> = HashMap::new();
+    for process in process_map.into_values() {
+        socket_map
+            .entry(process.local_address)
+            .or_default()
+            .push(process);
     }
     Ok((socket_map, longest_name))
 }
