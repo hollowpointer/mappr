@@ -2,6 +2,8 @@ use colored::*;
 use rand;
 use crate::SPINNER;
 
+const TOTAL_WIDTH: usize = 64;
+
 const BANNER_0: &str =  r#"
        ███▄ ▄███▓ ▄▄▄       ██▓███   ██▓███   ██▀███
       ▓██▒▀█▀ ██▒▒████▄    ▓██░  ██▒▓██░  ██▒▓██ ▒ ██▒
@@ -84,11 +86,10 @@ fn banner(id: u8) {
 }
 
 pub fn separator(msg: &str) {
-    let total_width: usize = 60; // explicitly typed
     let formatted = format!("⟦ {} ⟧", msg);
     let msg_len = formatted.chars().count();
 
-    let dash_count = total_width.saturating_sub(msg_len);
+    let dash_count = TOTAL_WIDTH.saturating_sub(msg_len);
     let left = dash_count / 2;
     let right = dash_count - left;
 
@@ -111,7 +112,7 @@ pub fn print_status(msg: &str) {
 }
 
 pub fn end_of_program() {
-    println(format!("{}", "─".repeat(60).bright_black()).as_str());
+    println(format!("{}", "─".repeat(TOTAL_WIDTH).bright_black()).as_str());
 }
 
 pub fn println(msg: &str) {
