@@ -68,9 +68,9 @@ pub fn print_header() {
 }
 
 fn initialize() {
-    let sep = "<══════════════════".bright_black();
+    let sep = "═════════════════════".bright_black();
     let text = "⟦ INITIALIZING MAPPR ⟧".bright_green().bold();
-    let end = "══════════════════>".bright_black();
+    let end = "═════════════════════".bright_black();
     println!("{}{}{}", sep, text, end);
 }
 
@@ -112,7 +112,7 @@ pub fn print_status(msg: &str) {
 }
 
 pub fn end_of_program() {
-    println(format!("{}", "─".repeat(TOTAL_WIDTH).bright_black()).as_str());
+    println(format!("{}", "═".repeat(TOTAL_WIDTH).bright_black()).as_str());
 }
 
 pub fn println(msg: &str) {

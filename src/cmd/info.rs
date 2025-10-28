@@ -164,52 +164,49 @@ fn print_local_services(socket_maps: Vec<SocketMap>) -> anyhow::Result<()> {
             print::println(format!("{}", tcp_branch.bright_black()).as_str());
 
             for (i, process) in tcp_processes.iter().enumerate() {
-                let last: bool = i + 1 == tcp_processes.len();
-                let branch: ColoredString = if last { "└─".bright_black() } else { "├─".bright_black() };
-                let dashes: usize = GLOBAL_KEY_WIDTH.get() - process.name.len() - 5;
-                let ports: String = process.local_ports.iter()
-                    .map(|p| p.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                let output: String = format!(" {}   {branch} {}{}{}{}",
-                    vertical_branch.bright_black(),
-                    process.name.cyan(),
-                    ".".repeat(dashes).bright_black(),
-                    ": ".bright_black(),
-                    ports.truecolor(192, 192, 192)
-                );
-                print::println(&output);
+                print_process(i, process, vertical_branch, tcp_processes.len());
             }
         }
 
         // Print UDP Processes
         if has_udp {
             let udp_branch = " └─ UDP"; // UDP is always the last branch if it exists
-            let vertical_branch = " "; // No vertical line needed below UDP
+            let vertical_branch = " "; // No vertical (│) line needed below UDP
             print::println(format!("{}", udp_branch.bright_black()).as_str());
 
             for (i, process) in udp_processes.iter().enumerate() {
-                let last: bool = i + 1 == udp_processes.len();
-                let branch: ColoredString = if last { "└─".bright_black() } else { "├─".bright_black() };
-                let dashes: usize = GLOBAL_KEY_WIDTH.get() - process.name.len() - 5;
-                let ports: String = process.local_ports.iter()
-                    .map(|p| p.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                let output: String = format!(" {}   {branch} {}{}{}{}",
-                    vertical_branch.bright_black(), // Will be " "
-                    process.name.cyan(),
-                    ".".repeat(dashes).bright_black(),
-                    ": ".bright_black(),
-                    ports.truecolor(192, 192, 192)
-                );
-                print::println(&output);
+                print_process(i, process, vertical_branch, udp_processes.len())
             }
         }
 
         if idx + 1 != socket_maps.len() { print::println(""); }
     }
     Ok(())
+}
+
+fn print_process(idx: usize, process: &Process, vertical_branch: &str, processes_len: usize) {
+    let last: bool = idx + 1 == processes_len;
+    let branch: ColoredString = if last { "└─".bright_black() } else { "├─".bright_black() };
+    let dashes: usize = GLOBAL_KEY_WIDTH.get() - process.name.len() - 5;
+
+    let num_ports = process.local_ports.len();
+
+    let mut port_strings: Vec<String> = process.local_ports.iter()
+        .take(5)
+        .map(|p| p.to_string())
+        .collect();
+
+    if num_ports > 5 { port_strings.push("...".to_string()); }
+    let ports: String = port_strings.join(", ");
+
+    let output: String = format!(" {}   {branch} {}{}{}{}",
+        vertical_branch.bright_black(),
+        process.name.cyan(),
+        ".".repeat(dashes).bright_black(),
+        ": ".bright_black(),
+        ports.truecolor(192, 192, 192)
+    );
+    print::println(&output);
 }
 
 
