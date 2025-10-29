@@ -3,7 +3,7 @@ use colored::{ColoredString, Colorize};
 use mac_oui::Oui;
 use pnet::datalink::MacAddr;
 use once_cell::sync::Lazy;
-use crate::cmd::Target;
+use crate::{cmd::Target, utils::{colors, print}};
 
 static OUI_DB: Lazy<Oui> = Lazy::new(|| {
     Oui::default().expect("failed to load OUI database")
@@ -61,37 +61,46 @@ impl Host {
         self.mac_addr
     }
 
-    pub fn print_lan(&self, idx: u32) {
+    pub fn print_lan(&self, idx: usize, hosts_len: usize) {
         let vendor: ColoredString = self.vendor
             .as_deref()
             .unwrap_or("Unknown")
-            .red()
+            .color(colors::PRIMARY)
             .bold();
 
-        println!("\x1b[32m[{idx}] {vendor}");
+        let idx_str = format!("[{}]", idx.to_string().color(colors::ACCENT));
+        print::println(format!("{} {}", idx_str.color(colors::SEPARATOR), vendor).as_str());
 
         let mut lines: Vec<(&str, ColoredString)> = Vec::new();
 
         if let Some(ipv4) = self.ipv4 {
-            lines.push(("IPv4", ipv4.to_string().cyan()));
+            lines.push(("IPv4", ipv4.to_string().color(colors::IPV4_ADDR)));
         }
         if let Some(gua) = self.ipv6.iter().find(|&&x| x.to_string().starts_with('2')) {
-            lines.push(("GUA", gua.to_string().blue()));
+            lines.push(("GUA", gua.to_string().color(colors::IPV6_ADDR)));
         }
         if let Some(lla) = self.ipv6.iter().find(|&&x| x.to_string().starts_with("fe80")) {
-            lines.push(("LLA", lla.to_string().blue()));
+            lines.push(("LLA", lla.to_string().color(colors::IPV6_ADDR)));
         }
         if let Some(mac) = self.mac_addr {
-            lines.push(("MAC", mac.to_string().yellow()));
+            lines.push(("MAC", mac.to_string().color(colors::MAC_ADDR)));
         }
 
         for (i, (label, value)) in lines.iter().enumerate() {
             let last = i + 1 == lines.len();
             let branch = if last { "└─".bright_black() } else { "├─".bright_black() };
-            println!(" {branch} {label:<4} : {value}");
+            let label = label.color(colors::TEXT_DEFAULT);
+            let output: String = format!(" {} {}{}{} {}", 
+                branch,
+                label,
+                ".".repeat(5 - label.len()).color(colors::SEPARATOR),
+                ":".color(colors::SEPARATOR),
+                value
+            );
+            print::println(&output);
         }
 
-        println!("{}", "------------------------------------------------------------".bright_black());
+        if idx != hosts_len - 1 { print::println(""); }
     }
 
 }
@@ -101,8 +110,9 @@ pub fn print(mut hosts: Vec<Host>, target: Target) -> anyhow::Result<()> {
         Target::LAN => {
             merge_hosts(&mut hosts);
             sort_by_ipv4(&mut hosts);
+            let hosts_len = hosts.len();
             for (idx, h) in hosts.into_iter().enumerate() {
-                h.print_lan(idx as u32);
+                h.print_lan(idx, hosts_len);
             }
             Ok(())
         }

@@ -57,6 +57,8 @@ pub fn info() -> anyhow::Result<()>{
         print_about_the_tool();
         print_local_system()?;
         print_network_interfaces();
+        print::end_of_program();
+        SPINNER.finish_and_clear();
         return Ok(())
     }
     let (socket_maps, longest_name) = handle_local_services()?;
@@ -127,8 +129,8 @@ fn print_network_interfaces() {
         for(i, (key, value)) in lines.iter().enumerate() {
             let last = i + 1 == lines.len();
             let branch = if last { "└─".color(colors::SEPARATOR) } else { "├─".color(colors::SEPARATOR) };
-            let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() - key.len() - 1);
-            let colon = format!("{}{}", whitespace.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
+            let dots = ".".repeat(GLOBAL_KEY_WIDTH.get() - key.len() - 1);
+            let colon = format!("{}{}", dots.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
             let output = format!(" {branch} {}{} {}", key, colon, value);
             print::println(&output)
         }

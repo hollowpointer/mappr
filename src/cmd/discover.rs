@@ -28,6 +28,8 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     };
     print::separator("Network Discovery");
     host::print(hosts, target)?;
+    print::end_of_program();
+    SPINNER.finish_and_clear();
     Ok(())
 }
 

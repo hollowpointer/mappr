@@ -1,6 +1,6 @@
 use colored::*;
 use rand;
-use crate::SPINNER;
+use crate::{SPINNER, utils::colors};
 
 const TOTAL_WIDTH: usize = 64;
 
@@ -106,13 +106,13 @@ pub fn separator(msg: &str) {
 }
 
 pub fn print_status(msg: &str) {
-    let prefix = ">".bright_black();
-    let message = format!("{} {}", prefix, msg);
+    let prefix = ">".color(colors::SEPARATOR);
+    let message = format!("{} {}", prefix, msg.color(colors::TEXT_DEFAULT));
     SPINNER.println(message);
 }
 
 pub fn end_of_program() {
-    println(format!("{}", "═".repeat(TOTAL_WIDTH).bright_black()).as_str());
+    println(format!("{}", "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)).as_str());
 }
 
 pub fn println(msg: &str) {
