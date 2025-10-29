@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::collections::{HashMap, HashSet}; // <-- Added HashSet
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::net::IpAddr;
 use anyhow::{self};
@@ -34,11 +34,11 @@ impl SocketMap {
 struct Process {
     name: String,
     local_addr: IpAddr,
-    local_ports: Vec<u16>
+    local_ports: HashSet<u16>
 }
 
 impl Process {
-    fn new(name: String, local_addr: IpAddr, local_ports: Vec<u16>) -> Self {
+    fn new(name: String, local_addr: IpAddr, local_ports: HashSet<u16>) -> Self {
         Self {
             name,
             local_addr,
@@ -231,20 +231,20 @@ fn handle_local_services() -> anyhow::Result<(Vec<SocketMap>, usize)> {
                 if  process_name.len() > longest_name { longest_name = process_name.len() }
                 let local_addr: IpAddr = si.local_addr();
                 let local_port: u16 = si.local_port();
-                let local_ports: Vec<u16> = Vec::new();
+                let local_ports: HashSet<u16> = HashSet::new();
                 let new_process = Process::new(process_name.clone(), local_addr, local_ports);
                 match si.protocol_socket_info {
                     ProtocolSocketInfo::Tcp(_) => {
                         let tcp_process_entry = tcp_process_map
                             .entry((process_name, local_addr))
                             .or_insert_with(|| { new_process });
-                        tcp_process_entry.local_ports.push(local_port)
+                        tcp_process_entry.local_ports.insert(local_port);
                     },
                     ProtocolSocketInfo::Udp(_) => {
                         let udp_process_map = udp_process_map
                             .entry((process_name.clone(), local_addr))
                             .or_insert_with(|| { new_process });
-                        udp_process_map.local_ports.push(local_port)
+                        udp_process_map.local_ports.insert(local_port);
                     }
                 }
             }
