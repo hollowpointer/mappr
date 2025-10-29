@@ -8,7 +8,8 @@ use is_root::is_root;
 use netstat2::*;
 use sys_info;
 use sysinfo::{Pid, System};
-use crate::{print, SPINNER};
+
+use crate::{print, utils::colors, SPINNER};
 use crate::net::datalink::interface;
 
 thread_local! {
@@ -49,7 +50,7 @@ impl Process {
 
 pub fn info() -> anyhow::Result<()>{
     print::println(format!("{}",
-        "Mappr is a quick tool for mapping and exploring networks.".truecolor(192, 192, 192)).as_str());
+        "Mappr is a quick tool for mapping and exploring networks.".color(colors::TEXT_DEFAULT)).as_str());
     print::println("");
     GLOBAL_KEY_WIDTH.set(10);
     if !is_root() {
@@ -98,35 +99,36 @@ fn print_network_interfaces() {
         .expect("Failed to get interfaces");
 
     for (idx, intf) in interfaces.iter().enumerate() {
-        let mut lines: Vec<(&str, ColoredString)> = Vec::new();
-        print::println(format!("{} {}", format!("[{idx}]").green(), intf.name.green()).as_str());
+        let mut lines: Vec<(ColoredString, ColoredString)> = Vec::new();
+        print::println(format!("{} {}", format!("[{}]", idx.to_string().color(colors::ACCENT))
+            .color(colors::SEPARATOR), intf.name.color(colors::PRIMARY)).as_str());
 
         if let Ok(Some(ipv4_addr)) = interface::get_ipv4(intf) {
             if let Ok(Some(prefix)) = interface::get_prefix(intf) {
                 let value: ColoredString = ColoredString::from(
                  format!(
                     "{}{}{}",
-                    ipv4_addr.to_string().truecolor(83, 179, 203),
-                    "/".bright_black(),
-                    prefix.to_string().truecolor(58, 125, 142)
+                    ipv4_addr.to_string().color(colors::IPV4_ADDR),
+                    "/".color(colors::SEPARATOR),
+                    prefix.to_string().color(colors::IPV4_PREFIX)
                 ));
-                lines.push(("IPv4", value));
+                lines.push(("IPv4".color(colors::TEXT_DEFAULT), value));
             }
         }
 
         if let Some(lla) = interface::get_link_local_addr(intf) {
-            lines.push(("LLA", lla.to_string().magenta()));
+            lines.push(("LLA".color(colors::TEXT_DEFAULT), lla.to_string().color(colors::IPV6_ADDR)));
         }
 
         if let Some(mac) = intf.mac {
-            lines.push(("MAC", mac.to_string().truecolor(255, 176, 0)));
+            lines.push(("MAC".color(colors::TEXT_DEFAULT), mac.to_string().color(colors::MAC_ADDR)));
         }
         
         for(i, (key, value)) in lines.iter().enumerate() {
             let last = i + 1 == lines.len();
-            let branch = if last { "└─".bright_black() } else { "├─".bright_black() };
+            let branch = if last { "└─".color(colors::SEPARATOR) } else { "├─".color(colors::SEPARATOR) };
             let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() - key.len() - 1);
-            let colon = format!("{}{}", whitespace.bright_black(), ":".bright_black());
+            let colon = format!("{}{}", whitespace.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
             let output = format!(" {branch} {}{} {}", key, colon, value);
             print::println(&output)
         }
@@ -151,17 +153,17 @@ fn print_local_services(socket_maps: Vec<SocketMap>) -> anyhow::Result<()> {
 
         // Print IP Address Header
         let ip_addr_colored = if ip_addr.is_ipv4() {
-            ip_addr.to_string().truecolor(83, 179, 203)
+            ip_addr.to_string().color(colors::IPV4_ADDR)
         } else {
-            ip_addr.to_string().magenta()
+            ip_addr.to_string().color(colors::IPV6_ADDR)
         };
-        print::println(format!("{}", format!("[{}]", ip_addr_colored).bright_black()).as_str());
+        print::println(format!("{}", format!("[{}]", ip_addr_colored).color(colors::SEPARATOR)).as_str());
 
         // Print TCP Processes
         if has_tcp {
-            let tcp_branch = if has_udp { " ├─ TCP" } else { " └─ TCP" };
+            let tcp_branch = if has_udp { "├─" } else { "└─" };
             let vertical_branch = if has_udp { "│" } else { " " };
-            print::println(format!("{}", tcp_branch.bright_black()).as_str());
+            print::println(format!(" {} {}", tcp_branch.color(colors::SEPARATOR), "TCP".color(colors::PRIMARY)).as_str());
 
             for (i, process) in tcp_processes.iter().enumerate() {
                 print_process(i, process, vertical_branch, tcp_processes.len());
@@ -170,9 +172,9 @@ fn print_local_services(socket_maps: Vec<SocketMap>) -> anyhow::Result<()> {
 
         // Print UDP Processes
         if has_udp {
-            let udp_branch = " └─ UDP"; // UDP is always the last branch if it exists
+            let udp_branch = "└─"; // UDP is always the last branch if it exists
             let vertical_branch = " "; // No vertical (│) line needed below UDP
-            print::println(format!("{}", udp_branch.bright_black()).as_str());
+            print::println(format!(" {} {}", udp_branch.color(colors::SEPARATOR), "UDP".color(colors::PRIMARY)).as_str());
 
             for (i, process) in udp_processes.iter().enumerate() {
                 print_process(i, process, vertical_branch, udp_processes.len())
@@ -186,7 +188,7 @@ fn print_local_services(socket_maps: Vec<SocketMap>) -> anyhow::Result<()> {
 
 fn print_process(idx: usize, process: &Process, vertical_branch: &str, processes_len: usize) {
     let last: bool = idx + 1 == processes_len;
-    let branch: ColoredString = if last { "└─".bright_black() } else { "├─".bright_black() };
+    let branch: ColoredString = if last { "└─".color(colors::SEPARATOR) } else { "├─".color(colors::SEPARATOR) };
     let dashes: usize = GLOBAL_KEY_WIDTH.get() - process.name.len() - 5;
 
     let num_ports = process.local_ports.len();
@@ -200,11 +202,11 @@ fn print_process(idx: usize, process: &Process, vertical_branch: &str, processes
     let ports: String = port_strings.join(", ");
 
     let output: String = format!(" {}   {branch} {}{}{}{}",
-        vertical_branch.bright_black(),
-        process.name.cyan(),
-        ".".repeat(dashes).bright_black(),
-        ": ".bright_black(),
-        ports.truecolor(192, 192, 192)
+        vertical_branch.color(colors::SEPARATOR),
+        process.name.color(colors::SECONDARY),
+        ".".repeat(dashes).color(colors::SEPARATOR),
+        ": ".color(colors::SEPARATOR),
+        ports.color(colors::TEXT_DEFAULT)
     );
     print::println(&output);
 }
@@ -284,6 +286,6 @@ fn handle_local_services() -> anyhow::Result<(Vec<SocketMap>, usize)> {
 
 fn print_info_line(key: &str, value: &str) {
     let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() + 1 - key.len());
-    let colon = format!("{}{}", whitespace.bright_black(), ":".bright_black());
-    print::print_status(format!("{}{} {}", key.yellow(), colon, value.truecolor(192, 192, 192)).as_str());
+    let colon = format!("{}{}", whitespace.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
+    print::print_status(format!("{}{} {}", key.color(colors::PRIMARY), colon, value.color(colors::TEXT_DEFAULT)).as_str());
 }

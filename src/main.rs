@@ -3,10 +3,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
 use cmd::Commands;
 use cmd::{discover, listen, info, scan};
+use crate::utils::print;
 
 mod cmd;
 mod net;
-mod print;
+mod utils;
 mod host;
 
 pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
