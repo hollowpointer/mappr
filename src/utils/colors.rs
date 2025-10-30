@@ -1,8 +1,8 @@
 use colored::Color;
 
 // General Purpose
-pub const TEXT_DEFAULT: Color = Color::TrueColor { r: 192, g: 192, b: 192 }; // Very Light Gray
-pub const SEPARATOR: Color = Color::TrueColor { r: 140, g: 140, b: 140 }; // Mid-Gray
+pub const TEXT_DEFAULT: Color = Color::TrueColor { r: 212, g: 212, b: 212 }; // Very Light Gray
+pub const SEPARATOR: Color = Color::BrightBlack;
 pub const PRIMARY: Color = Color::TrueColor { r: 255, g: 204, b: 102 }; // Soft Gold/Amber
 pub const SECONDARY: Color = Color::TrueColor { r: 102, g: 204, b: 255 }; // Soft Sky Blue
 pub const ACCENT: Color = Color::TrueColor { r: 170, g: 170, b: 0 };
