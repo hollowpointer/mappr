@@ -26,7 +26,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
         },
         _ => { bail!("this target is currently unimplemented!") }
     };
-    print::separator("Network Discovery");
+    print::header("Network Discovery");
     host::print(hosts, target)?;
     print::end_of_program();
     SPINNER.finish_and_clear();

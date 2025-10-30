@@ -40,7 +40,7 @@ impl Service {
 }
 
 pub fn print_local_services(service_groups: Vec<IpServiceGroup>) -> anyhow::Result<()> {
-    print::separator("local services");
+    print::header("local services");
     
     for (idx, group) in service_groups.iter().enumerate() {
         let ip_addr = group.ip_addr;

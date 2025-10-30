@@ -1,5 +1,35 @@
+use anyhow;
+
+#[cfg(target_os = "linux")]
+pub fn print_firewall_status() -> anyhow::Result<()> {
+    use std::process::Command;
+
+    use crate::utils::print;
+
+    print::header("firewall status");
+
+    let ufw_output = Command::new("ufw")
+    .arg("status")
+    .output();
+
+    let ufw_value = match ufw_output {
+        Ok(_) => "active",
+        Err(_) => "inactive"
+    };
+
+    print::aligned_line("UFW", ufw_value);
 
 
-pub fn print_firewall_status() {
+    Ok(())
+}
 
+#[cfg(target_os = "macos")]
+pub fn print_firewall_status() -> anyhow::Result<()> {
+    Ok(())
+}
+
+
+#[cfg(target_os = "windows")]
+pub fn print_firewall_status() -> anyhow::Result<()> {
+    Ok(())
 }

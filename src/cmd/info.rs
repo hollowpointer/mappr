@@ -1,19 +1,15 @@
-use std::cell::Cell;
 use std::env;
 use anyhow::{self};
 use colored::*;
 use is_root::is_root;
 use sys_info;
 
+use crate::GLOBAL_KEY_WIDTH;
 use crate::{print, utils::colors, SPINNER};
 use crate::net::datalink::interface;
 
 mod services;
 mod firewall;
-
-thread_local! {
-    static GLOBAL_KEY_WIDTH: Cell<usize> = Cell::new(0);
-}
 
 pub fn info() -> anyhow::Result<()>{
     print::println(format!("{}",
@@ -35,7 +31,7 @@ pub fn info() -> anyhow::Result<()>{
     print_about_the_tool();
     print_local_system()?;
     services::print_local_services(service_groups)?;
-    firewall::print_firewall_status();
+    firewall::print_firewall_status()?;
     print_network_interfaces();
 
     print::end_of_program();
@@ -44,34 +40,28 @@ pub fn info() -> anyhow::Result<()>{
 }
 
 fn print_about_the_tool() {
-    print_aligned_info_line("Version", env!("CARGO_PKG_VERSION"));
-    print_aligned_info_line("Author", "hollowpointer");
-    print_aligned_info_line("E-Mail", "hollowpointer@pm.me");
-    print_aligned_info_line("License", "MIT");
-    print_aligned_info_line("Repository", "https://github.com/hollowpointer/mappr");
+    print::aligned_line("Version", env!("CARGO_PKG_VERSION"));
+    print::aligned_line("Author", "hollowpointer");
+    print::aligned_line("E-Mail", "hollowpointer@pm.me");
+    print::aligned_line("License", "MIT");
+    print::aligned_line("Repository", "https://github.com/hollowpointer/mappr");
 }
 
 fn print_local_system() -> anyhow::Result<()> {
-    print::separator("local system");
+    print::header("local system");
     let hostname: String = sys_info::hostname()?;
-    print_aligned_info_line("Hostname", &hostname);
+    print::aligned_line("Hostname", &hostname);
     let release = sys_info::os_release().unwrap_or_else(|_| { String::from("") });
     let os_name = sys_info::os_type()?;
-    print_aligned_info_line("OS", format!("{} {}", os_name, release).as_str());
+    print::aligned_line("OS", format!("{} {}", os_name, release).as_str());
     if let Ok(user) = env::var("USER").or_else(|_| env::var("USERNAME")) {
-        print_aligned_info_line("User", &user);
+        print::aligned_line("User", &user);
     }
     Ok(())
 }
 
-fn print_aligned_info_line(key: &str, value: &str) {
-    let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() + 1 - key.len());
-    let colon = format!("{}{}", whitespace.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
-    print::print_status(format!("{}{} {}", key.color(colors::PRIMARY), colon, value.color(colors::TEXT_DEFAULT)).as_str());
-}
-
 fn print_network_interfaces() {
-    print::separator("network interfaces");
+    print::header("network interfaces");
     let interfaces = interface::get_unique_interfaces(3)
         .expect("Failed to get interfaces");
 

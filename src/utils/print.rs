@@ -1,6 +1,6 @@
 use colored::*;
 use rand;
-use crate::{SPINNER, utils::colors};
+use crate::{GLOBAL_KEY_WIDTH, SPINNER, utils::colors};
 
 const TOTAL_WIDTH: usize = 64;
 
@@ -60,7 +60,7 @@ const BANNER_4: &str = r#"
                                            " ` "
 "#;
 
-pub fn print_header() {
+pub fn print_banner() {
     println!();
     initialize();
     let n: u8 = rand::random_range(0..=4);
@@ -85,7 +85,7 @@ fn banner(id: u8) {
     }
 }
 
-pub fn separator(msg: &str) {
+pub fn header(msg: &str) {
     let formatted = format!("⟦ {} ⟧", msg);
     let msg_len = formatted.chars().count();
 
@@ -103,6 +103,12 @@ pub fn separator(msg: &str) {
 
     let message = format!("{line}");
     SPINNER.println(message);
+}
+
+pub fn aligned_line(key: &str, value: &str) {
+    let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() + 1 - key.len());
+    let colon = format!("{}{}", whitespace.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
+    print_status(format!("{}{} {}", key.color(colors::PRIMARY), colon, value.color(colors::TEXT_DEFAULT)).as_str());
 }
 
 pub fn print_status(msg: &str) {
