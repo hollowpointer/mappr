@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
@@ -9,6 +10,10 @@ mod cmd;
 mod net;
 mod utils;
 mod host;
+
+thread_local! {
+    static GLOBAL_KEY_WIDTH: Cell<usize> = Cell::new(0);
+}
 
 pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
     let pb = ProgressBar::new_spinner();
@@ -32,22 +37,22 @@ pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let commands = cmd::CommandLine::parse_args();
-    print::print_header();
+    print::print_banner();
     match commands.command {
         Commands::Info => {
-            print::separator("about the tool");
+            print::header("about the tool");
             Ok(info::info()?)
         },
         Commands::Listen => {
-            print::separator("starting listener");
+            print::header("starting listener");
             Ok(listen::listen())
         },
         Commands::Discover { target } => {
-            print::separator("getting ready for discovery");
+            print::header("getting ready for discovery");
             discover::discover(target).await
         },
         Commands::Scan { target } => {
-            print::separator("starting scanner");
+            print::header("starting scanner");
             Ok(scan::scan(target))
         }
     }
