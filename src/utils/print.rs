@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use colored::*;
 use rand;
 use crate::{GLOBAL_KEY_WIDTH, SPINNER, utils::colors};
@@ -60,6 +62,28 @@ const BANNER_4: &str = r#"
                                            " ` "
 "#;
 
+pub trait WithDefaultColor {
+    fn with_default(self, default_color: Color) -> ColoredString;
+}
+
+impl<'a> WithDefaultColor for &'a str {
+    fn with_default(self, default_color: Color) -> ColoredString {
+        self.color(default_color)
+    }
+}
+
+impl<'a> WithDefaultColor for String {
+    fn with_default(self, default_color: Color) -> ColoredString {
+        self.color(default_color)
+    }
+}
+
+impl WithDefaultColor for ColoredString {
+    fn with_default(self, _default_color: Color) -> ColoredString {
+        self
+    }
+}
+
 pub fn print_banner() {
     println!();
     initialize();
@@ -105,10 +129,13 @@ pub fn header(msg: &str) {
     SPINNER.println(message);
 }
 
-pub fn aligned_line(key: &str, value: &str) {
+pub fn aligned_line<V>(key: &str, value: V)
+where V: Display + WithDefaultColor
+{
     let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() + 1 - key.len());
     let colon = format!("{}{}", whitespace.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
-    print_status(format!("{}{} {}", key.color(colors::PRIMARY), colon, value.color(colors::TEXT_DEFAULT)).as_str());
+    let value = value.with_default(colors::TEXT_DEFAULT);
+    print_status(format!("{}{} {}", key.color(colors::PRIMARY), colon, value).as_str());
 }
 
 pub fn print_status(msg: &str) {

@@ -50,12 +50,12 @@ fn print_about_the_tool() {
 fn print_local_system() -> anyhow::Result<()> {
     print::header("local system");
     let hostname: String = sys_info::hostname()?;
-    print::aligned_line("Hostname", &hostname);
+    print::aligned_line("Hostname", hostname);
     let release = sys_info::os_release().unwrap_or_else(|_| { String::from("") });
     let os_name = sys_info::os_type()?;
     print::aligned_line("OS", format!("{} {}", os_name, release).as_str());
     if let Ok(user) = env::var("USER").or_else(|_| env::var("USERNAME")) {
-        print::aligned_line("User", &user);
+        print::aligned_line("User", user);
     }
     Ok(())
 }
