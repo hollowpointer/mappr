@@ -62,7 +62,7 @@ fn print_local_system() -> anyhow::Result<()> {
 
 fn print_network_interfaces() {
     print::header("network interfaces");
-    let interfaces = interface::get_unique_interfaces(3)
+    let interfaces = interface::get_unique_interfaces(5)
         .expect("Failed to get interfaces");
 
     for (idx, intf) in interfaces.iter().enumerate() {
@@ -81,6 +81,14 @@ fn print_network_interfaces() {
                 ));
                 lines.push(("IPv4".color(colors::TEXT_DEFAULT), value));
             }
+        }
+
+        if let Some(loop_back) = interface::get_loop_back_addr(intf) {
+            lines.push(("IPv6".color(colors::TEXT_DEFAULT), loop_back.to_string().color(colors::IPV6_ADDR)));
+        }
+
+        if let Some(gua) = interface::get_global_unicast_addr(intf) {
+            lines.push(("GUA".color(colors::TEXT_DEFAULT), gua.to_string().color(colors::IPV6_ADDR)));
         }
 
         if let Some(lla) = interface::get_link_local_addr(intf) {

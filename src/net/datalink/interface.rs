@@ -39,6 +39,9 @@ pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<Option<u8>> {
 pub fn get_unique_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>> {
     let interfaces: Vec<NetworkInterface> = interfaces();
     let mut unique_interfaces: Vec<NetworkInterface> = Vec::with_capacity(max);
+    let loop_back_ref_option: Option<&NetworkInterface> = interfaces.iter()
+        .find(|i| i.is_loopback());
+    if let Some(loop_back_ref) = loop_back_ref_option { unique_interfaces.push(loop_back_ref.clone()); }
     let mut wired_iter: IntoIter<NetworkInterface> = get_all_wired(&interfaces)?.into_iter();
     let mut wireless_iter: IntoIter<NetworkInterface> = get_all_wireless(&interfaces)?.into_iter();
     let mut tunnel_iter: IntoIter<NetworkInterface> = get_all_tunnel(&interfaces)?.into_iter();
@@ -67,21 +70,42 @@ pub fn get_unique_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>
     Ok(unique_interfaces)
 }
 
+pub fn get_loop_back_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
+        interface.ips.iter().find_map(|ip_network| {
+        match ip_network {
+            IpNetwork::V6(ipv6_network) => {
+                let addr = ipv6_network.ip();
+                if addr.is_loopback() { Some(addr) } else { None }
+            }
+            _ => None,
+        }
+    })
+}
+
 pub fn get_link_local_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
     interface.ips.iter().find_map(|ip_network| {
         match ip_network {
-            // Get the specific IP address from the Ipv6Network using .ip()
             IpNetwork::V6(ipv6_network) => {
                 let addr = ipv6_network.ip();
-                // Check if that one address is link-local
-                if addr.is_unicast_link_local() {
-                    Some(addr)
-                } else {
-                    None
-                }
+                if addr.is_unicast_link_local() { Some(addr) } else { None }
             }
-            // Ignore IPv4 addresses
-            IpNetwork::V4(_) => None,
+            _ => None,
+        }
+    })
+}
+
+pub fn get_global_unicast_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
+    interface.ips.iter().find_map(|ip_network| {
+        match ip_network {
+            IpNetwork::V6(ipv6_network) => {
+                let addr: Ipv6Addr = ipv6_network.ip();
+                let is_global_unicast: bool = {
+                    let first_byte = addr.octets()[0];
+                    first_byte >= 0x20 && first_byte <= 0x3f
+                };
+                if is_global_unicast { Some(addr) } else { None }
+            }
+            _ => None,
         }
     })
 }
