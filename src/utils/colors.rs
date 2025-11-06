@@ -12,6 +12,6 @@ pub const IPV4_ADDR: Color = Color::TrueColor { r: 170, g: 255, b: 170 }; // Pal
 pub const IPV4_PREFIX: Color = Color::TrueColor { r: 190, g: 255, b: 190 }; // Lighter Pale Lime Green
 // Networking: IPv6 (Warm Pink Tones)
 pub const IPV6_ADDR: Color = Color::TrueColor { r: 255, g: 102, b: 178 }; // Soft Raspberry Pink
-//pub const IPV6_PREFIX: Color = Color::TrueColor { r: 255, g: 178, b: 217 }; // Pale Raspberry Pink
+pub const IPV6_PREFIX: Color = Color::TrueColor { r: 255, g: 178, b: 217 }; // Pale Raspberry Pink
 // Networking: Distinct
 pub const MAC_ADDR: Color = Color::TrueColor { r: 255, g: 165, b: 0 }; // Soft Orange

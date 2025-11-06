@@ -1,10 +1,12 @@
 use std::env;
-use anyhow::{self};
+use std::net::IpAddr;
+use anyhow;
 use colored::*;
 use is_root::is_root;
 use sys_info;
 
 use crate::GLOBAL_KEY_WIDTH;
+use crate::net::ip::{self, Ipv6AddressType};
 use crate::{print, utils::colors, SPINNER};
 use crate::net::datalink::interface;
 
@@ -64,39 +66,38 @@ fn print_network_interfaces() {
     print::header("network interfaces");
     let interfaces = interface::get_unique_interfaces(5)
         .expect("Failed to get interfaces");
-
     for (idx, intf) in interfaces.iter().enumerate() {
-        let mut lines: Vec<(ColoredString, ColoredString)> = Vec::new();
         print::println(format!("{} {}", format!("[{}]", idx.to_string().color(colors::ACCENT))
             .color(colors::SEPARATOR), intf.name.color(colors::PRIMARY)).as_str());
 
-        if let Ok(Some(ipv4_addr)) = interface::get_ipv4(intf) {
-            if let Ok(Some(prefix)) = interface::get_prefix(intf) {
-                let value: ColoredString = ColoredString::from(
-                 format!(
-                    "{}{}{}",
-                    ipv4_addr.to_string().color(colors::IPV4_ADDR),
-                    "/".color(colors::SEPARATOR),
-                    prefix.to_string().color(colors::IPV4_PREFIX)
-                ));
-                lines.push(("IPv4".color(colors::TEXT_DEFAULT), value));
-            }
+        let mut lines: Vec<(ColoredString, ColoredString)> = Vec::new();
+
+        for ipv4_addr in &intf.ipv4_addr {
+            let address: ColoredString = ipv4_addr.ip_addr.to_string().color(colors::IPV4_ADDR);
+            let prefix: ColoredString = ipv4_addr.prefix.to_string().color(colors::IPV4_PREFIX);
+            let result: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR); 
+            lines.push(("IPv4".color(colors::TEXT_DEFAULT), result));
         }
 
-        if let Some(loop_back) = interface::get_loop_back_addr(intf) {
-            lines.push(("IPv6".color(colors::TEXT_DEFAULT), loop_back.to_string().color(colors::IPV6_ADDR)));
+        for ipv6_addr in &intf.ipv6_addr {
+            let address: ColoredString = ipv6_addr.ip_addr.to_string().color(colors::IPV6_ADDR);
+            let prefix: ColoredString = ipv6_addr.prefix.to_string().color(colors::IPV6_PREFIX);
+            let result: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR);
+            let ipv6_type = match ipv6_addr.ip_addr {
+                IpAddr::V4(_) => panic!("This should never panic."),
+                IpAddr::V6(ipv6_addr) => ip::get_ipv6_type(&ipv6_addr),
+            };
+            let key = match ipv6_type {
+                Ipv6AddressType::GlobalUnicast  => "GUA",
+                Ipv6AddressType::LinkLocal      => "LLA",
+                Ipv6AddressType::UniqueLocal    => "ULA",
+                _                               => "IPv6"
+            };
+            lines.push((key.color(colors::TEXT_DEFAULT), result));
         }
 
-        if let Some(gua) = interface::get_global_unicast_addr(intf) {
-            lines.push(("GUA".color(colors::TEXT_DEFAULT), gua.to_string().color(colors::IPV6_ADDR)));
-        }
-
-        if let Some(lla) = interface::get_link_local_addr(intf) {
-            lines.push(("LLA".color(colors::TEXT_DEFAULT), lla.to_string().color(colors::IPV6_ADDR)));
-        }
-
-        if let Some(mac) = intf.mac {
-            lines.push(("MAC".color(colors::TEXT_DEFAULT), mac.to_string().color(colors::MAC_ADDR)));
+        if let Some(mac_addr) = intf.mac_addr {
+            lines.push(("MAC".color(colors::TEXT_DEFAULT), mac_addr.to_string().color(colors::MAC_ADDR)));
         }
         
         for(i, (key, value)) in lines.iter().enumerate() {

@@ -1,13 +1,46 @@
-use std::{net::{Ipv4Addr, Ipv6Addr}, vec::IntoIter};
-use pnet::datalink::{interfaces, NetworkInterface};
-use crate::{cmd::Target};
+use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr}, vec::IntoIter};
+use pnet::{datalink::{NetworkInterface, interfaces}, util::MacAddr};
 #[cfg(target_os = "linux")]
 use std::path::Path;
 #[cfg(target_os = "macos")]
 use std::process::Command;
 use anyhow::{anyhow, Ok};
 use pnet::ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
+use crate::{cmd::Target};
 use crate::print;
+use crate::net::ip::IpWithPrefix;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub enum InterfaceType {
+    Loopback,
+    Wired,
+    Wireless,
+    Tunnel,
+    Bridge,
+    #[default]
+    Unknown
+}
+
+#[derive(Clone)]
+pub struct Interface {
+    pub name: String,
+    pub mac_addr: Option<MacAddr>,
+    pub ipv4_addr: Vec<IpWithPrefix>,
+    pub ipv6_addr: Vec<IpWithPrefix>,
+    pub interface_type: InterfaceType
+}
+
+impl Default for Interface {
+    fn default() -> Self { 
+        Self { 
+            name: String::new(),
+            mac_addr: None,
+            ipv4_addr: Vec::new(),
+            ipv6_addr: Vec::new(), 
+            interface_type: InterfaceType::default() 
+        }
+    }
+}
 
 pub fn select(target: Target) -> NetworkInterface {
     print::print_status("Searching for a suitable network interface...");
@@ -36,109 +69,92 @@ pub fn get_prefix(interface: &NetworkInterface) -> anyhow::Result<Option<u8>> {
     } else { Ok(None) }
 }
 
-pub fn get_unique_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>> {
-    let interfaces: Vec<NetworkInterface> = interfaces();
-    let mut unique_interfaces: Vec<NetworkInterface> = Vec::with_capacity(max);
-    let loop_back_ref_option: Option<&NetworkInterface> = interfaces.iter()
-        .find(|i| i.is_loopback());
-    if let Some(loop_back_ref) = loop_back_ref_option { unique_interfaces.push(loop_back_ref.clone()); }
-    let mut wired_iter: IntoIter<NetworkInterface> = get_all_wired(&interfaces)?.into_iter();
-    let mut wireless_iter: IntoIter<NetworkInterface> = get_all_wireless(&interfaces)?.into_iter();
-    let mut tunnel_iter: IntoIter<NetworkInterface> = get_all_tunnel(&interfaces)?.into_iter();
-
+pub fn get_unique_interfaces(max: usize) -> anyhow::Result<Vec<Interface>> {
+    let interfaces: Vec<Interface> = identify_interfaces(interfaces())?;
+    let mut unique_interfaces: Vec<Interface> = Vec::with_capacity(max);
+    let mut loopback_interfaces: Vec<Interface> = Vec::new();
+    let mut wired_interfaces: Vec<Interface> = Vec::new();
+    let mut wireless_interfaces: Vec<Interface> = Vec::new();
+    let mut tunnel_interfaces: Vec<Interface> = Vec::new();
+    let mut bridge_interfaces: Vec<Interface> = Vec::new();
+    for interface in interfaces {
+        match interface.interface_type {
+            InterfaceType::Loopback => loopback_interfaces.push(interface),
+            InterfaceType::Wired    => wired_interfaces.push(interface),
+            InterfaceType::Wireless => wireless_interfaces.push(interface),
+            InterfaceType::Tunnel   => tunnel_interfaces.push(interface),
+            InterfaceType::Bridge   => bridge_interfaces.push(interface),
+            _                       => continue
+        }
+    }
+    let mut loopback_iter: IntoIter<Interface> = loopback_interfaces.into_iter();
+    let mut wired_iter: IntoIter<Interface> = wired_interfaces.into_iter();
+    let mut wireless_iter: IntoIter<Interface> = wireless_interfaces.into_iter();
+    let mut tunnel_iter: IntoIter<Interface> = tunnel_interfaces.into_iter();
+    let mut bridge_iter: IntoIter<Interface> = bridge_interfaces.into_iter();
     while unique_interfaces.len() < max {
-        let mut items_added_this_pass = 0;
+        let mut items_added_this_pass: bool = false;
+        if let Some(iface) = loopback_iter.next() {
+            unique_interfaces.push(iface);
+            items_added_this_pass = true;
+            if unique_interfaces.len() == max { break; }
+        }
         if let Some(iface) = wired_iter.next() {
             unique_interfaces.push(iface);
-            items_added_this_pass += 1;
+            items_added_this_pass = true;
             if unique_interfaces.len() == max { break; }
         }
         if let Some(iface) = wireless_iter.next() {
             unique_interfaces.push(iface);
-            items_added_this_pass += 1;
+            items_added_this_pass = true;
             if unique_interfaces.len() == max { break; }
         }
         if let Some(iface) = tunnel_iter.next() {
             unique_interfaces.push(iface);
-            items_added_this_pass += 1;
+            items_added_this_pass = true;
             if unique_interfaces.len() == max { break; }
         }
-        if items_added_this_pass == 0 {
+        if let Some(iface) = bridge_iter.next() {
+            unique_interfaces.push(iface);
+            items_added_this_pass = true;
+            if unique_interfaces.len() == max { break; }
+        }
+        if !items_added_this_pass {
             break;
         }
     }
     Ok(unique_interfaces)
 }
 
-pub fn get_loop_back_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
-        interface.ips.iter().find_map(|ip_network| {
-        match ip_network {
-            IpNetwork::V6(ipv6_network) => {
-                let addr = ipv6_network.ip();
-                if addr.is_loopback() { Some(addr) } else { None }
+fn identify_interfaces(interfaces: Vec<NetworkInterface>) -> anyhow::Result<Vec<Interface>> {
+    let mut identified_interfaces: Vec<Interface> = Vec::with_capacity(interfaces.len());
+    for interface in interfaces {
+        let mut new_interface: Interface = Interface::default();
+        new_interface.name = interface.name.clone();
+        if let Some(mac_addr) = interface.mac { new_interface.mac_addr = Some(mac_addr) }
+        new_interface.interface_type = match true {
+            _ if interface.is_loopback()    => InterfaceType::Loopback,
+            _ if is_wired(&interface)?      => InterfaceType::Wired,
+            _ if is_wireless(&interface)?   => InterfaceType::Wireless,
+            _ if is_tunnel(&interface)?     => InterfaceType::Tunnel,
+            _ if is_bridge(&interface)?     => InterfaceType::Bridge,
+            _                               => InterfaceType::Unknown,
+        };
+        for ip_network in interface.ips {
+            match ip_network {
+                IpNetwork::V4(ipv4) => { 
+                    let ip_addr: IpWithPrefix = IpWithPrefix::new(IpAddr::V4(ipv4.ip()), ipv4.prefix());
+                    new_interface.ipv4_addr.push(ip_addr);
+                },
+                IpNetwork::V6(ipv6) => {
+                    let ip_addr: IpWithPrefix = IpWithPrefix::new(IpAddr::V6(ipv6.ip()), ipv6.prefix());
+                    new_interface.ipv6_addr.push(ip_addr);
+                }
             }
-            _ => None,
         }
-    })
-}
-
-pub fn get_link_local_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
-    interface.ips.iter().find_map(|ip_network| {
-        match ip_network {
-            IpNetwork::V6(ipv6_network) => {
-                let addr = ipv6_network.ip();
-                if addr.is_unicast_link_local() { Some(addr) } else { None }
-            }
-            _ => None,
-        }
-    })
-}
-
-pub fn get_global_unicast_addr(interface: &NetworkInterface) -> Option<Ipv6Addr> {
-    interface.ips.iter().find_map(|ip_network| {
-        match ip_network {
-            IpNetwork::V6(ipv6_network) => {
-                let addr: Ipv6Addr = ipv6_network.ip();
-                let is_global_unicast: bool = {
-                    let first_byte = addr.octets()[0];
-                    first_byte >= 0x20 && first_byte <= 0x3f
-                };
-                if is_global_unicast { Some(addr) } else { None }
-            }
-            _ => None,
-        }
-    })
-}
-
-fn get_all_wired(interfaces: &[NetworkInterface]) -> anyhow::Result<Vec<NetworkInterface>> {
-    let mut res = Vec::with_capacity(interfaces.len());
-    for i in interfaces {
-        if is_physical(i)? && !is_wireless(i)? {
-            res.push(i.clone());
-        }
+        identified_interfaces.push(new_interface);
     }
-    Ok(res)
-}
-
-fn get_all_wireless(interfaces: &[NetworkInterface]) -> anyhow::Result<Vec<NetworkInterface>> {
-    let mut res = Vec::with_capacity(interfaces.len());
-    for i in interfaces {
-        if is_physical(i)? && is_wireless(i)? {
-            res.push(i.clone());
-        }
-    }
-    Ok(res)
-}
-
-// info: It will miss TAP-style tunnels since they are not point-to-point, needs refinement
-fn get_all_tunnel(interfaces: &Vec<NetworkInterface>) -> anyhow::Result<Vec<NetworkInterface>> {
-    let mut res = Vec::with_capacity(interfaces.len());
-    for i in interfaces {
-        if !is_physical(i)? && i.is_point_to_point() {
-            res.push(i.clone());
-        }
-    }
-    Ok(res)
+    Ok(identified_interfaces)
 }
 
 fn select_lan() -> NetworkInterface {
@@ -203,7 +219,28 @@ fn first_ipv6_net(interface: &NetworkInterface) -> anyhow::Result<Option<Ipv6Net
     Ok(Some(ipv6))
 }
 
+fn is_wired(interface: &NetworkInterface) -> anyhow::Result<bool> {
+    Ok(is_physical(interface)? && !is_wireless(interface)?)
+}
 
+// this check is shit and needs improvement
+fn is_tunnel(interface: &NetworkInterface) -> anyhow::Result<bool> {
+    if is_physical(interface)? || interface.is_loopback() {
+        return Ok(false);
+    }
+    let name = &interface.name;
+    Ok(name.contains("tun") ||
+       name.contains("tap") ||
+       name.contains("gre") ||
+       name.contains("ipip") ||
+       name.contains("sit") ||
+       name.contains("vti"))
+}
+
+// this one is shit too as you might tell
+fn is_bridge(interface: &NetworkInterface) -> anyhow::Result<bool> {
+    Ok(!is_physical(interface)? && !interface.is_loopback() && !is_tunnel(interface)?)
+}
 
 /***************************************
    OS dependent functions for PHYSICAL
