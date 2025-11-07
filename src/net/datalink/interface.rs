@@ -1,4 +1,5 @@
 use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr}, vec::IntoIter};
+use colored::{ColoredString, Colorize};
 use pnet::{datalink::{NetworkInterface, interfaces}, util::MacAddr};
 #[cfg(target_os = "linux")]
 use std::path::Path;
@@ -6,7 +7,7 @@ use std::path::Path;
 use std::process::Command;
 use anyhow::{anyhow, Ok};
 use pnet::ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
-use crate::{cmd::Target};
+use crate::{GLOBAL_KEY_WIDTH, cmd::Target, net::ip::{self, Ipv6AddressType}, utils::colors};
 use crate::print;
 use crate::net::ip::IpWithPrefix;
 
@@ -38,6 +39,52 @@ impl Default for Interface {
             ipv4_addr: Vec::new(),
             ipv6_addr: Vec::new(), 
             interface_type: InterfaceType::default() 
+        }
+    }
+}
+
+impl Interface {
+    pub fn print(self: &Self, idx: usize) {
+        print::println(format!("{} {}", format!("[{}]", idx.to_string().color(colors::ACCENT))
+            .color(colors::SEPARATOR), self.name.color(colors::PRIMARY)).as_str());
+
+        let mut lines: Vec<(ColoredString, ColoredString)> = Vec::new();
+
+        for ipv4_addr in &self.ipv4_addr {
+            let address: ColoredString = ipv4_addr.ip_addr.to_string().color(colors::IPV4_ADDR);
+            let prefix: ColoredString = ipv4_addr.prefix.to_string().color(colors::IPV4_PREFIX);
+            let result: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR); 
+            lines.push(("IPv4".color(colors::TEXT_DEFAULT), result));
+        }
+
+        for ipv6_addr in &self.ipv6_addr {
+            let address: ColoredString = ipv6_addr.ip_addr.to_string().color(colors::IPV6_ADDR);
+            let prefix: ColoredString = ipv6_addr.prefix.to_string().color(colors::IPV6_PREFIX);
+            let result: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR);
+            let ipv6_type = match ipv6_addr.ip_addr {
+                IpAddr::V4(_) => panic!("This should never panic."),
+                IpAddr::V6(ipv6_addr) => ip::get_ipv6_type(&ipv6_addr),
+            };
+            let key = match ipv6_type {
+                Ipv6AddressType::GlobalUnicast  => "GUA",
+                Ipv6AddressType::LinkLocal      => "LLA",
+                Ipv6AddressType::UniqueLocal    => "ULA",
+                _                               => "IPv6"
+            };
+            lines.push((key.color(colors::TEXT_DEFAULT), result));
+        }
+
+        if let Some(mac_addr) = self.mac_addr {
+            lines.push(("MAC".color(colors::TEXT_DEFAULT), mac_addr.to_string().color(colors::MAC_ADDR)));
+        }
+        
+        for(i, (key, value)) in lines.iter().enumerate() {
+            let last = i + 1 == lines.len();
+            let branch = if last { "└─".color(colors::SEPARATOR) } else { "├─".color(colors::SEPARATOR) };
+            let dots = ".".repeat(GLOBAL_KEY_WIDTH.get() - key.len() - 1);
+            let colon = format!("{}{}", dots.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
+            let output = format!(" {branch} {}{} {}", key, colon, value);
+            print::println(&output)
         }
     }
 }
