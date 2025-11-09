@@ -1,70 +1,59 @@
-use std::net::{Ipv4Addr, Ipv6Addr};
-use std::sync::Arc;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 use anyhow;
 use anyhow::{bail, Context};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use pnet::util::MacAddr;
-use crate::cmd::Target;
-use crate::net::packets::icmp;
+use crate::net::datalink::arp;
+use crate::net::datalink::interface::NetworkInterfaceExtension;
+use crate::net::packets;
 use crate::host::Host;
-use crate::net::{packets, range};
-use crate::net::datalink::{interface, arp};
 use crate::net::range::Ipv4Range;
 use crate::print;
 
-pub enum ProbeType {
-    Default
-}
+const PROBE_TIMEOUT_MS: u64 = 2000;
 
-pub struct SenderContext {
-    pub ipv4range: Arc<Ipv4Range>,
-    pub src_addr_v4: Ipv4Addr,
-    pub src_addr_v6: Ipv6Addr,
-    pub mac_addr: MacAddr,
-    pub tx: Box<dyn DataLinkSender>
-}
-
-impl SenderContext {
-    fn new(ipv4range: Arc<Ipv4Range>,
-           src_addr_v4: Ipv4Addr,
-           src_addr_v6: Ipv6Addr,
-           intf: Arc<NetworkInterface>,
-           tx: Box<dyn DataLinkSender>)
-     -> Self {
-        Self {
-            ipv4range,
-            src_addr_v4,
-            src_addr_v6,
-            mac_addr: intf.mac.unwrap(),
-            tx,
-        }
-    }
-}
-
-pub fn discover_on_eth_channel(ipv4range: Arc<Ipv4Range>,
-                               intf: Arc<NetworkInterface>,
-                               channel_cfg: Config,
-                               probe_type: ProbeType,
-                               duration_in_ms: Duration
+pub fn discover_via_eth(
+    interface: NetworkInterface,
+    src_addr_v4: Option<Ipv4Addr>,
+    ipv4_range: Option<Ipv4Range>,
+    link_local_addr: Option<Ipv6Addr>,
 ) -> anyhow::Result<Vec<Host>> {
-    let (tx, rx) = open_eth_channel(&intf, &channel_cfg)?;
-    let _ = range::ip_range(Target::LAN, &intf); // this shit is to suppress warnings
-    let src_addr_v4: Ipv4Addr = if let Some(ipv4) = 
-        interface::get_ipv4(&intf)? { ipv4 } 
-        else { anyhow::bail!("interface has no ipv4 address") };
-    let src_addr_v6: Ipv6Addr = if let Some(ipv6) = 
-        interface::get_ipv6(&intf)? { ipv6} 
-        else { anyhow::bail!("interface has no ipv6 address") };
-    let mut send_context: SenderContext = SenderContext::new(ipv4range, src_addr_v4, src_addr_v6, intf, tx);
-    match probe_type {
-        ProbeType::Default => {
-            arp::send_packets(&mut send_context)?;
-            icmp::send_echo_request_v6(&mut send_context)?;
-        },
-    }
+    let (mut tx, rx) = open_eth_channel(&interface, &get_config())?;
+    let duration_in_ms: Duration = Duration::from_millis(PROBE_TIMEOUT_MS);
+    let src_mac: MacAddr = interface.mac.unwrap(); // This is safe, a MAC addr is a requirement
+    let packets: Vec<Vec<u8>> = packets::create_packets(src_mac, src_addr_v4, ipv4_range, link_local_addr)?;
+    for packet in packets { tx.send_to(&packet, None); }
     Ok(listen_for_hosts(rx, duration_in_ms))
+}
+
+pub fn discover_via_ip_addr(
+    intf: NetworkInterface,
+    dst_addr: IpAddr,
+) -> anyhow::Result<Option<Host>> {
+    let (mut tx, rx) = open_eth_channel(&intf, &get_config())?;
+    let duration_in_ms: Duration = Duration::from_millis(PROBE_TIMEOUT_MS);
+    let src_mac: MacAddr = intf.mac.unwrap();
+    let packet: Vec<u8> = match dst_addr {
+        IpAddr::V4(dst_addr) => {
+            if let Some(ipv4_net) = intf.get_ipv4_net() {
+                let src_addr: Ipv4Addr = ipv4_net.ip();
+                let dst_mac: MacAddr = MacAddr::broadcast();
+                arp::create_packet(src_mac, dst_mac, src_addr, dst_addr)?
+            } else { anyhow::bail!("Cannot perform ipv4 host discovery: interface does not have a ipv4") }
+        },
+        IpAddr::V6(_) => {
+            if let Some(_) = intf.get_link_local_addr() {
+                anyhow::bail!("Ipv6 host discovery not possible as of now, please implement NDP")
+            } else { anyhow::bail!("Cannot perform ipv6 host discovery: interface does not have a ipv6") }
+        },
+    };
+    tx.send_to(&packet, None);
+    let host: Option<Host> = listen_for_hosts(rx, duration_in_ms)
+        .into_iter()
+        .find(|host| host.ips().contains(&dst_addr));
+    Ok(host)
 }
 
 fn open_eth_channel(intf: &NetworkInterface, cfg: &Config)
@@ -92,4 +81,11 @@ fn listen_for_hosts(mut rx: Box<dyn DataLinkReceiver>, duration_in_ms: Duration)
         }
     }
     hosts
+}
+
+fn get_config() -> Config {
+    Config {
+        read_timeout: Some(Duration::from_millis(50)),
+        ..Default::default()
+    }
 }

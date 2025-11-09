@@ -10,18 +10,6 @@ pub enum Ipv6AddressType {
     Unspecified
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IpWithPrefix {
-    pub ip_addr: IpAddr,
-    pub prefix: u8
-}
-
-impl IpWithPrefix {
-    pub fn new(ip_addr: IpAddr, prefix: u8) -> Self {
-        Self { ip_addr, prefix }
-    }
-}
-
 pub fn get_ipv6_type(ipv6_addr: &Ipv6Addr) -> Ipv6AddressType {
     match true {
         _ if is_global_unicast(&ipv6_addr)      => Ipv6AddressType::GlobalUnicast,
@@ -35,4 +23,11 @@ pub fn get_ipv6_type(ipv6_addr: &Ipv6Addr) -> Ipv6AddressType {
 pub fn is_global_unicast(ipv6_addr: &Ipv6Addr) -> bool {
     let first_byte = ipv6_addr.octets()[0];
     0x3F >= first_byte && first_byte >= 0x20
+}
+
+pub fn is_private(ip_addr: IpAddr) -> bool {
+    match ip_addr {
+        IpAddr::V4(ipv4) => ipv4.is_private(),
+        IpAddr::V6(ipv6) => { ipv6.is_unicast_link_local() || ipv6.is_unique_local() }
+    }
 }

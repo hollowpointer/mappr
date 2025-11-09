@@ -9,7 +9,7 @@ static OUI_DB: Lazy<Oui> = Lazy::new(|| {
     Oui::default().expect("failed to load OUI database")
 });
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Host {
     ipv4: Option<Ipv4Addr>,
     ipv6: Vec<Ipv6Addr>,
@@ -41,6 +41,12 @@ impl Host {
             None => None
         };
         Ok(Self { ipv4, ipv6, mac_addr, vendor })
+    }
+
+    pub fn ips(&self) -> Vec<IpAddr> {
+        let mut ips: Vec<IpAddr> = self.ipv6.iter().map(|&ip| IpAddr::V6(ip)).collect();
+        if let Some(ipv4_addr) = self.ipv4 { ips.push(IpAddr::V4(ipv4_addr)); }
+        ips
     }
 
     pub fn set_ipv4(&mut self, ipv4: Ipv4Addr) {

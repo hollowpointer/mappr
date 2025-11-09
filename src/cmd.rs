@@ -3,7 +3,7 @@ pub mod listen;
 pub mod info;
 pub mod scan;
 
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use clap::{Parser, Subcommand};
 
@@ -39,7 +39,7 @@ pub enum Commands {
 pub enum Target {
     LAN,
     CIDR { cidr: String },
-    Host { addr: Ipv4Addr },
+    Host { dst_addr: IpAddr },
     Range { start: Ipv4Addr, end: Ipv4Addr },
     VPN,
 }
@@ -58,8 +58,8 @@ impl FromStr for Target {
         if lower == "vpn" { return Ok(Target::VPN); }
 
         // host: 192.168.1.10
-        if let Ok(ip) = s.parse::<Ipv4Addr>() {
-            return Ok(Target::Host { addr: ip });
+        if let Ok(ip) = s.parse::<IpAddr>() {
+            return Ok(Target::Host { dst_addr: ip });
         }
 
         // range: 192.168.1.10-192.168.1.50

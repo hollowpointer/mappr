@@ -2,11 +2,12 @@ use std::env;
 use anyhow;
 use colored::*;
 use is_root::is_root;
+use pnet::datalink::NetworkInterface;
 use sys_info;
 
 use crate::GLOBAL_KEY_WIDTH;
+use crate::net::datalink::interface::{self, NetworkInterfaceExtension};
 use crate::{print, utils::colors, SPINNER};
-use crate::net::datalink::interface;
 
 mod services;
 mod firewall;
@@ -19,7 +20,7 @@ pub fn info() -> anyhow::Result<()>{
     if !is_root() {
         print_about_the_tool();
         print_local_system()?;
-        print_network_interfaces();
+        print_network_interfaces()?;
         print::end_of_program();
         SPINNER.finish_and_clear();
         return Ok(())
@@ -32,7 +33,7 @@ pub fn info() -> anyhow::Result<()>{
     print_local_system()?;
     firewall::print_firewall_status()?;
     services::print_local_services(service_groups)?;
-    print_network_interfaces();
+    print_network_interfaces()?;
 
     print::end_of_program();
     SPINNER.finish_and_clear();
@@ -60,12 +61,12 @@ fn print_local_system() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_network_interfaces() {
+fn print_network_interfaces() -> anyhow::Result<()> {
     print::header("network interfaces");
-    let interfaces = interface::get_unique_interfaces(5)
-        .expect("Failed to get interfaces");
+    let interfaces: Vec<NetworkInterface> = interface::get_prioritized_interfaces(5)?;
     for (idx, intf) in interfaces.iter().enumerate() {
-        intf.print(idx);
+        intf.print_details(idx);
         if idx + 1 != interfaces.len() { print::println(""); }
     }
+    Ok(())
 }

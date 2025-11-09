@@ -1,8 +1,8 @@
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use anyhow::{bail, Context, Result};
-use pnet::datalink::NetworkInterface;
+use pnet::ipnetwork::Ipv4Network;
+
 use crate::cmd::Target;
-use crate::net::datalink::interface;
 
 #[derive(Clone)]
 pub struct Ipv4Range {
@@ -26,30 +26,17 @@ pub struct IpRange {
     back: u32,
 }
 
-pub fn ip_iter(ipv4range: &Ipv4Range) -> IpRange {
-    IpRange::new(ipv4range.start_addr, ipv4range.end_addr)
+pub fn ip_iter(ipv4_range: &Ipv4Range) -> IpRange {
+    IpRange::new(ipv4_range.start_addr, ipv4_range.end_addr)
 }
 
-pub fn ip_range(target: Target, intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    match target {
-        Target::LAN | Target::VPN => interface_range_v4(intf),
-        Target::CIDR { cidr } => cidr_str_to_range(&cidr),
-        Target::Host { addr } => Ok((addr, addr)),
-        Target::Range { start, end } => Ok((start, end)),
-    }
+pub fn from_ipv4_net(ipv4_net: Option<Ipv4Network>) -> Option<Ipv4Range> {
+    if let Some(ipv4_net) = ipv4_net {
+        Some(Ipv4Range::from_tuple(cidr_range(ipv4_net.ip(), ipv4_net.prefix()).unwrap()))
+    } else { None }
 }
 
-pub fn interface_range_v4(intf: &NetworkInterface) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    let ip = if let Some(ipv4) = interface::get_ipv4(intf)? { ipv4 }
-        else { anyhow::bail!("provided interface does not have an ipv4 address") };
-
-    let prefix = if let Some(prefix) = interface::get_prefix(intf)? { prefix }
-        else { anyhow::bail!("provided interface does not have a prefix") };
-
-    cidr_range(ip, prefix)
-}
-
-fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Result<(Ipv4Addr, Ipv4Addr)> {
+pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Result<(Ipv4Addr, Ipv4Addr)> {
     if prefix > 32 { bail!("Not a valid prefix address"); }
     let ip_u32 = u32::from(ip);
     let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
