@@ -2,7 +2,8 @@
 
 A simple network mapping and discovery tool.
 
-<img width="745" height="1112" alt="mappr" src="https://github.com/user-attachments/assets/37fb5808-0c1e-47eb-ad2a-ce9c2ae7b9a7" />
+<img width="1200" height="720" alt="mappr_0" src="https://github.com/user-attachments/assets/e0d8ea2c-896c-40b8-b893-87256c0c5166" />
+
 
 ## ⚠️ Requirements
 
