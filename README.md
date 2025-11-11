@@ -15,7 +15,7 @@ At the moment, you must build `mappr` manually.
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/hollowpointer/mappr](https://github.com/hollowpointer/mappr)
+    git clone https://github.com/hollowpointer/mappr
     ```
 
 2.  **Navigate into the project directory:**
