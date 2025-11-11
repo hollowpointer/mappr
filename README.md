@@ -2,6 +2,8 @@
 
 A simple network mapping and discovery tool.
 
+<img width="745" height="1112" alt="mappr" src="https://github.com/user-attachments/assets/37fb5808-0c1e-47eb-ad2a-ce9c2ae7b9a7" />
+
 ## ⚠️ Requirements
 
 * **Operating System:** Currently, `mappr` only works on **Linux** and **macOS**.
