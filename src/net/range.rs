@@ -1,8 +1,6 @@
-use std::net::{IpAddr, Ipv4Addr};
-use anyhow::{bail, Context, Result};
+use std::net::Ipv4Addr;
+use anyhow::{bail, Result};
 use pnet::ipnetwork::Ipv4Network;
-
-use crate::cmd::Target;
 
 #[derive(Clone)]
 pub struct Ipv4Range {
@@ -47,21 +45,21 @@ pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Result<(Ipv4Addr, Ipv4Addr)> {
     Ok((Ipv4Addr::from(network+1) , Ipv4Addr::from(broadcast-1)))
 }
 
-fn cidr_str_to_range(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    let (ip_str, prefix_str) = cidr
-        .split_once('/')
-        .context("CIDR must contain '/'")?;
+// fn cidr_str_to_range(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr)> {
+//     let (ip_str, prefix_str) = cidr
+//         .split_once('/')
+//         .context("CIDR must contain '/'")?;
 
-    let ip: Ipv4Addr = ip_str
-        .parse()
-        .context("Invalid IPv4 address")?;
+//     let ip: Ipv4Addr = ip_str
+//         .parse()
+//         .context("Invalid IPv4 address")?;
 
-    let prefix: u8 = prefix_str
-        .parse()
-        .context("Invalid prefix")?;
+//     let prefix: u8 = prefix_str
+//         .parse()
+//         .context("Invalid prefix")?;
 
-    Ok(cidr_range(ip, prefix)?)
-}
+//     Ok(cidr_range(ip, prefix)?)
+// }
 
 impl IpRange {
     pub fn new(start: Ipv4Addr, end: Ipv4Addr) -> Self {
@@ -145,24 +143,24 @@ mod tests {
         assert_eq!(end,   ip);
     }
 
-    #[test]
-    fn cidr_str_to_range_parses_and_computes() {
-        let (start, end) = cidr_str_to_range("172.16.5.10/20").unwrap();
-        assert_eq!(start, Ipv4Addr::new(172, 16, 0, 0));
-        assert_eq!(end,   Ipv4Addr::new(172, 16, 15, 255));
-    }
+    // #[test]
+    // fn cidr_str_to_range_parses_and_computes() {
+    //     let (start, end) = cidr_str_to_range("172.16.5.10/20").unwrap();
+    //     assert_eq!(start, Ipv4Addr::new(172, 16, 0, 0));
+    //     assert_eq!(end,   Ipv4Addr::new(172, 16, 15, 255));
+    // }
 
-    #[test]
-    fn cidr_str_to_range_rejects_bad_ip() {
-        let res = cidr_str_to_range("999.1.2.3/24");
-        assert!(res.is_err());
-    }
+    // #[test]
+    // fn cidr_str_to_range_rejects_bad_ip() {
+    //     let res = cidr_str_to_range("999.1.2.3/24");
+    //     assert!(res.is_err());
+    // }
 
-    #[test]
-    fn cidr_str_to_range_rejects_bad_prefix() {
-        let res = cidr_str_to_range("192.168.0.1/33");
-        assert!(res.is_err());
-    }
+    // #[test]
+    // fn cidr_str_to_range_rejects_bad_prefix() {
+    //     let res = cidr_str_to_range("192.168.0.1/33");
+    //     assert!(res.is_err());
+    // }
 
     #[test]
     fn iter_forward_and_back() {

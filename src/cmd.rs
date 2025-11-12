@@ -3,7 +3,7 @@ pub mod listen;
 pub mod info;
 pub mod scan;
 
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::str::FromStr;
 use clap::{Parser, Subcommand};
 
@@ -38,9 +38,9 @@ pub enum Commands {
 #[derive(Clone, Debug)]
 pub enum Target {
     LAN,
-    CIDR { cidr: String },
+    // CIDR { cidr: String },
     Host { dst_addr: IpAddr },
-    Range { start: Ipv4Addr, end: Ipv4Addr },
+    // Range { start: Ipv4Addr, end: Ipv4Addr },
     VPN,
 }
 
@@ -63,17 +63,17 @@ impl FromStr for Target {
         }
 
         // range: 192.168.1.10-192.168.1.50
-        if let Some((a, b)) = s.split_once('-') {
-            let start = a.parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
-            let end   = b.parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
-            return Ok(Target::Range { start, end });
-        }
+        // if let Some((a, b)) = s.split_once('-') {
+        //     let start = a.parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
+        //     let end   = b.parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
+        //     return Ok(Target::Range { start, end });
+        // }
 
         // cidr: 10.0.0.0/24  (basic check)
-        if let Some((_, pfx)) = s.split_once('/') {
-            pfx.parse::<u8>().map_err(|e| e.to_string())?;
-            return Ok(Target::CIDR { cidr: s.to_string() });
-        }
+        // if let Some((_, pfx)) = s.split_once('/') {
+        //     pfx.parse::<u8>().map_err(|e| e.to_string())?;
+        //     return Ok(Target::CIDR { cidr: s.to_string() });
+        // }
 
         Err(format!("invalid target: {s}"))
     }

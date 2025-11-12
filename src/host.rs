@@ -1,174 +1,119 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use colored::{ColoredString, Colorize};
+use std::{collections::{BTreeSet, HashMap, hash_map}, net::IpAddr};
+use colored::*;
 use mac_oui::Oui;
 use pnet::datalink::MacAddr;
 use once_cell::sync::Lazy;
-use crate::{cmd::Target, utils::{colors, print}};
+use crate::{net::ip, utils::{colors, print}};
 
 static OUI_DB: Lazy<Oui> = Lazy::new(|| {
     Oui::default().expect("failed to load OUI database")
 });
 
+pub trait Host {
+    fn print_details(&self, idx: usize);
+    fn get_primary_ip(&self) -> Option<IpAddr>;
+}
+
 #[derive(Debug, Default, Clone)]
-pub struct Host {
-    ipv4: Option<Ipv4Addr>,
-    ipv6: Vec<Ipv6Addr>,
-    mac_addr: Option<MacAddr>,
-    vendor: Option<String>,
+pub struct InternalHost {
+    pub ips: BTreeSet<IpAddr>,
+    pub ports: BTreeSet<u16>,
+    pub mac_addr: MacAddr,
+    pub vendor: String,
 }
 
-impl From<IpAddr> for Host {
-    /// Creates a new Host from a single IP address.
-    fn from(ip_addr: IpAddr) -> Self {
-        match ip_addr {
-            IpAddr::V4(ip_v4) => Host {
-                ipv4: Some(ip_v4),
-                ..Default::default()
-            },
-            IpAddr::V6(ip_v6) => Host {
-                ipv6: vec![ip_v6],
-                ..Default::default()
-            },
+pub struct ExternalHost {
+    ips: BTreeSet<IpAddr>,
+    _ports: BTreeSet<u16>
+}
+
+impl From<MacAddr> for InternalHost {
+    fn from(mac_addr: MacAddr) -> Self {
+        Self {
+            ips: BTreeSet::new(),
+            ports: BTreeSet::new(),
+            mac_addr,
+            vendor: identify_vendor(mac_addr)
         }
     }
 }
 
-impl Host {
-    pub fn _new(ipv4: Option<Ipv4Addr>, ipv6: Vec<Ipv6Addr>, mac_addr: Option<MacAddr>)
-        -> anyhow::Result<Self> {
-        let vendor = match mac_addr {
-            Some(mac) => identify_vendor(mac)?,
-            None => None
-        };
-        Ok(Self { ipv4, ipv6, mac_addr, vendor })
-    }
-
-    pub fn ips(&self) -> Vec<IpAddr> {
-        let mut ips: Vec<IpAddr> = self.ipv6.iter().map(|&ip| IpAddr::V6(ip)).collect();
-        if let Some(ipv4_addr) = self.ipv4 { ips.push(IpAddr::V4(ipv4_addr)); }
-        ips
-    }
-
-    pub fn set_ipv4(&mut self, ipv4: Ipv4Addr) {
-        self.ipv4 = Some(ipv4)
-    }
-
-    pub fn add_ipv6(&mut self, ipv6: Ipv6Addr) {
-        if !self.ipv6.contains(&ipv6) { self.ipv6.push(ipv6) }
-    }
-
-    pub fn set_mac_addr(&mut self, mac_addr: MacAddr) -> anyhow::Result<()> {
-        self.mac_addr = Some(mac_addr);
-        self.vendor = identify_vendor(mac_addr)?;
-        Ok(())
-    }
-
-    pub fn get_mac_addr(&self) -> Option<MacAddr> {
-        self.mac_addr
-    }
-
-    pub fn print_lan(&self, idx: usize, hosts_len: usize) {
-        let vendor: ColoredString = self.vendor
-            .as_deref()
-            .unwrap_or("Unknown")
-            .color(colors::PRIMARY)
-            .bold();
-
-        let idx_str = format!("[{}]", idx.to_string().color(colors::ACCENT));
-        print::println(format!("{} {}", idx_str.color(colors::SEPARATOR), vendor).as_str());
-
-        let mut lines: Vec<(&str, ColoredString)> = Vec::new();
-
-        if let Some(ipv4) = self.ipv4 {
-            lines.push(("IPv4", ipv4.to_string().color(colors::IPV4_ADDR)));
+impl From<IpAddr> for ExternalHost {
+    fn from(ip: IpAddr) -> Self {
+        Self {
+            ips: BTreeSet::from([ip]), 
+            _ports: BTreeSet::new()
         }
-        if let Some(gua) = self.ipv6.iter().find(|&&x| x.to_string().starts_with('2')) {
-            lines.push(("GUA", gua.to_string().color(colors::IPV6_ADDR)));
-        }
-        if let Some(lla) = self.ipv6.iter().find(|&&x| x.to_string().starts_with("fe80")) {
-            lines.push(("LLA", lla.to_string().color(colors::IPV6_ADDR)));
-        }
-        if let Some(mac) = self.mac_addr {
-            lines.push(("MAC", mac.to_string().color(colors::MAC_ADDR)));
-        }
-
-        for (i, (label, value)) in lines.iter().enumerate() {
-            let last = i + 1 == lines.len();
-            let branch = if last { "└─".bright_black() } else { "├─".bright_black() };
-            let label = label.color(colors::TEXT_DEFAULT);
-            let output: String = format!(" {} {}{}{} {}", 
-                branch,
-                label,
-                ".".repeat(5 - label.len()).color(colors::SEPARATOR),
-                ":".color(colors::SEPARATOR),
-                value
-            );
-            print::println(&output);
-        }
-
-        if idx != hosts_len - 1 { print::println(""); }
     }
-
 }
 
-pub fn print(mut hosts: Vec<Host>, target: Target) -> anyhow::Result<()> {
-    match target {
-        Target::LAN => {
-            merge_hosts(&mut hosts);
-            sort_by_ipv4(&mut hosts);
-            let hosts_len = hosts.len();
-            for (idx, h) in hosts.into_iter().enumerate() {
-                h.print_lan(idx, hosts_len);
+impl Host for InternalHost {
+    fn print_details(&self, idx: usize) {
+        print::tree_head(idx, &self.vendor);
+        let mut key_value_pair: Vec<(String, ColoredString)> = ip::to_key_value_pair(&self.ips);
+        let mac_key_value: (String, ColoredString) = ("MAC".to_string(), self.mac_addr.to_string().color(colors::MAC_ADDR));
+        key_value_pair.push(mac_key_value);
+        print::as_tree_one_level(key_value_pair);
+    }
+    
+    fn get_primary_ip(&self) -> Option<IpAddr> {
+        self.ips.iter().next().cloned()
+    }
+}
+
+impl Host for ExternalHost {
+    fn print_details(&self, idx: usize) {
+        print::tree_head(idx, "Unknown");
+        let key_value_pair: Vec<(String, ColoredString)> = ip::to_key_value_pair(&self.ips);
+        print::as_tree_one_level(key_value_pair);
+    }
+    
+    fn get_primary_ip(&self) -> Option<IpAddr> {
+        self.ips.iter().next().cloned()
+    }
+}
+
+pub fn external_to_box(hosts: Vec<ExternalHost>) -> Vec<Box<dyn Host>> {
+    hosts.into_iter()
+        .map(|host| Box::new(host) as Box<dyn Host>)
+        .collect()
+}
+
+pub fn internal_to_box(hosts: Vec<InternalHost>) -> Vec<Box<dyn Host>> {
+    hosts.into_iter()
+        .map(|host| Box::new(host) as Box<dyn Host>)
+        .collect()
+}
+
+pub fn merge_by_mac(hosts: &mut Vec<InternalHost>) {
+    let mut merged: HashMap<MacAddr, InternalHost> = HashMap::with_capacity(hosts.len());
+    for host in hosts.drain(..) {
+        match merged.entry(host.mac_addr) {
+            hash_map::Entry::Occupied(mut occupied_entry) => {
+                let existing_host = occupied_entry.get_mut();
+                existing_host.ips.extend(host.ips);
+                existing_host.ports.extend(host.ports);
+                if existing_host.vendor.is_empty() && !host.vendor.is_empty() {
+                    existing_host.vendor = host.vendor;
+                }
             }
-            Ok(())
-        }
-        _ => anyhow::bail!("print implementation for given target not implemented!")
-    }
-}
-
-fn sort_by_ipv4(hosts: &mut Vec<Host>) {
-    hosts.sort_by(|a, b| a.ipv4.cmp(&b.ipv4));
-}
-
-fn merge_hosts(hosts: &mut Vec<Host>) {
-    let mut merged: Vec<Host> = Vec::new();
-    for mut host in hosts.drain(..) {
-        let mut found_match = false;
-        for existing_host in merged.iter_mut() {
-            let mac_match = host.mac_addr.is_some() && existing_host.mac_addr == host.mac_addr;
-            let ipv4_match = host.ipv4.is_some() && existing_host.ipv4 == host.ipv4;
-            let ipv6_match = host.ipv6.iter().any(|ipv6| existing_host.ipv6.contains(ipv6));
-            if mac_match || ipv4_match || ipv6_match {
-                if existing_host.ipv4.is_none() && host.ipv4.is_some() {
-                    existing_host.ipv4 = host.ipv4.take();
-                }
-                existing_host.ipv6.extend(&host.ipv6);
-                if existing_host.mac_addr.is_none() && host.mac_addr.is_some() {
-                    existing_host.mac_addr = host.mac_addr.take();
-                }
-                if existing_host.vendor.is_none() && host.vendor.is_some() {
-                    existing_host.vendor = host.vendor.take();
-                }
-                found_match = true;
-                break;
+            hash_map::Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(host);
             }
         }
-        if !found_match {
-            merged.push(host);
-        }
     }
-    *hosts = merged;
+    hosts.extend(merged.into_values());
 }
 
-fn identify_vendor(mac_addr: MacAddr) -> anyhow::Result<Option<String>> {
+fn identify_vendor(mac_addr: MacAddr) -> String {
     let oui_db = &*OUI_DB;
     let vendor: String = match oui_db.lookup_by_mac(&mac_addr.to_string()) {
         Ok(Some(entry)) => entry.company_name.clone(),
-        Ok(None)        => "Unknown".to_string(),
+        Ok(None) => "Unknown".to_string(),
         Err(e) => {
             eprintln!("OUI lookup failed: {e}");
             "Unknown".to_string()
         }
     };
-    Ok(Some(vendor))
+    vendor
 }

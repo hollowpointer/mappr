@@ -7,7 +7,7 @@ use colored::{ColoredString, Colorize};
 use pnet::{self, datalink::NetworkInterface, ipnetwork::Ipv4Network};
 use anyhow;
 use pnet::ipnetwork::IpNetwork;
-use crate::{GLOBAL_KEY_WIDTH, cmd::Target, net::{ip::{self, Ipv6AddressType}}, utils::colors};
+use crate::{GLOBAL_KEY_WIDTH, net::{ip::{self, Ipv6AddressType}}, utils::colors};
 use crate::print;
 
 pub trait NetworkInterfaceExtension {
@@ -78,15 +78,6 @@ impl NetworkInterfaceExtension for NetworkInterface {
 
 }
 
-pub fn select(target: Target) -> NetworkInterface {
-    print::print_status("Searching for a suitable network interface...");
-    let interfaces: Vec<NetworkInterface> = pnet::datalink::interfaces();
-    match target {
-        Target::LAN => select_lan(&interfaces),
-        _ => { panic!("Target currently unimplemented!") }
-    }
-}
-
 pub fn get_prioritized_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>> {
     let interfaces: Vec<NetworkInterface> = pnet::datalink::interfaces();
 
@@ -118,9 +109,10 @@ pub fn get_prioritized_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInter
     Ok(result_interfaces)
 }
 
-fn select_lan(interfaces: &Vec<NetworkInterface>) -> NetworkInterface {
+pub fn get_lan() -> NetworkInterface {
+    let interfaces: Vec<NetworkInterface> = pnet::datalink::interfaces();
     print::print_status(format!("Identified {} network interface(s)", interfaces.len()).as_str());
-    let candidates: Vec<&NetworkInterface> = interfaces
+    let candidates: Vec<NetworkInterface> = interfaces
         .into_iter()
         .filter(|interface| {
                 interface.is_up() &&
@@ -146,8 +138,8 @@ fn select_lan(interfaces: &Vec<NetworkInterface>) -> NetworkInterface {
             print::print_status("More than one candidate found, selecting best option...");
             candidates.iter()
                 .find(|&interface| is_wired(interface))
-                .map(|iface_ref_ref| *iface_ref_ref)
-                .unwrap_or(candidates[0])
+                .map(|iface_ref_ref| iface_ref_ref.clone())
+                .unwrap_or(candidates[0].clone())
                 .clone()
         }
     };

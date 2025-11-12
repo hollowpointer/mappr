@@ -1,14 +1,11 @@
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use anyhow::Context;
 use pnet::packet::ethernet::EthernetPacket;
 use pnet::packet::ip::IpNextHeaderProtocol;
 use pnet::packet::ipv4::{checksum, Ipv4Packet, MutableIpv4Packet};
 use pnet::packet::ipv6::{Ipv6Packet, MutableIpv6Packet};
 use pnet::packet::Packet;
-use crate::host::Host;
 use crate::net::utils::{ETH_HDR_LEN, ICMP_V6_ECHO_REQ_LEN, IP_V6_HDR_LEN};
-
-const ICMP_NEXT_HEADER_CODE: u8 = 58;
 
 pub fn create_ipv6_header(buf: &mut[u8], src_addr: Ipv6Addr, dst_addr: Ipv6Addr) -> anyhow::Result<()> {
     let mut pkt = MutableIpv6Packet::new(
@@ -53,20 +50,12 @@ pub fn _create_ipv4_header(buf: &mut[u8],
     Ok(())
 }
 
-pub fn handle_v6_packet(eth_packet: EthernetPacket) -> anyhow::Result<Option<Host>> {
+pub fn handle_v6_packet(eth_packet: EthernetPacket) -> anyhow::Result<IpAddr> {
     let ipv6_packet = Ipv6Packet::new(eth_packet.payload())
         .context(format!(
             "truncated or invalid IPv6 packet (payload len {})",
             eth_packet.payload().len()
         ))?;
-    let src_addr = ipv6_packet.get_source();
-    let host: Option<Host> = match ipv6_packet.get_next_header() {
-        IpNextHeaderProtocol(ICMP_NEXT_HEADER_CODE) => {
-            let mut host = Host::default();
-            host.add_ipv6(src_addr);
-            Some(host)
-        },
-        _ => { None }
-    };
-    Ok(host)
+    let src_addr: IpAddr = IpAddr::V6(ipv6_packet.get_source());
+    Ok(src_addr)
 }

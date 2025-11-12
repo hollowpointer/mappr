@@ -2,70 +2,107 @@ pub mod icmp;
 mod ip;
 pub mod tcp;
 
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::Ipv4Addr;
 use anyhow::{Context, Ok, bail};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::util::MacAddr;
-use crate::host::Host;
+use crate::host::InternalHost;
 use crate::net::datalink::arp;
+use crate::net::datalink::channel::SenderContext;
 use crate::net::range::{self, Ipv4Range};
 use crate::utils::print;
 
-pub fn create_packets(
-    src_mac: MacAddr,
-    src_addr_v4: Option<Ipv4Addr>,
-    ipv4_range: Option<Ipv4Range>,
-    link_local_addr: Option<Ipv6Addr>,
-) -> anyhow::Result<Vec<Vec<u8>>> {
-    match (src_addr_v4, ipv4_range, link_local_addr) {
-        // Case 1: Full IPv4 and IPv6 capabilities
-        (Some(src_addr_v4), Some(ipv4_range), Some(src_addr_v6)) => {
-            print::print_status("Root: Performing L2/L3 (IPv4 + IPv6) scan...");
-            let dst_mac: MacAddr = MacAddr::broadcast();
-            let mut packets: Vec<Vec<u8>> = range::ip_iter(&ipv4_range)
-            .map(|dst_addr| {
-                arp::create_packet(src_mac, dst_mac, src_addr_v4, dst_addr)
-            })
-            .collect::<Result<Vec<Vec<u8>>, _>>()?;
-            packets.extend(icmp::create_all_nodes_echo_request_v6(src_mac, src_addr_v6));
-            Ok(packets)
-        },
-        // Case 2: Only IPv4 capabilities
-        (Some(src_addr_v4), Some(ipv4_range), None) => {
-            print::print_status("Root: Performing L2/L3 (IPv4-only) scan...");
-            let dst_mac: MacAddr = MacAddr::broadcast();
-            let packets: Vec<Vec<u8>> = range::ip_iter(&ipv4_range)
-            .map(|dst_addr| {
-                arp::create_packet(src_mac, dst_mac, src_addr_v4, dst_addr)
-            })
-            .collect::<Result<Vec<Vec<u8>>, _>>()?;
-            Ok(packets)
-        },
+pub enum PacketType {
+    Arp,
+    Icmpv6,
+    Ndp
+}
 
-        // Case 3: Only IPv6 capabilities (e.g., IPv4 missing address or range)
-        // This arm catches (None, _, Some) and (Some, None, Some)
-        (_, _, Some(src_addr_v6)) => {
-            print::print_status("Performing L2/L3 (IPv6-only) scan...");
-            let packets: Vec<Vec<u8>> = vec![icmp::create_all_nodes_echo_request_v6(src_mac, src_addr_v6)?];
-            Ok(packets)
-        },
-        // Case 4: No usable addresses found
-        _ => {
-            anyhow::bail!("No usable IPv4 or IPv6 addresses found on interface.")
+pub fn create_single_packet(sender_context: &SenderContext, packet_type: PacketType) -> anyhow::Result<Vec<u8>> {
+    let packet: Vec<u8> = match packet_type {
+        PacketType::Arp     => create_arp_packet(sender_context)?,
+        PacketType::Ndp     => create_ndp_packet(sender_context)?,
+        PacketType::Icmpv6  => create_icmpv6_packet(sender_context)?
+    };
+    Ok(packet)
+}
+
+pub fn create_multiple_packets(sender_context: &SenderContext, packet_types: Vec<PacketType>) -> anyhow::Result<Vec<Vec<u8>>> {
+    let mut packets: Vec<Vec<u8>> = Vec::new();
+    for packet_type in packet_types {
+        match packet_type {
+            PacketType::Arp => packets.extend(create_arp_packets(sender_context)?),
+            PacketType::Icmpv6 => packets.extend(vec![create_icmpv6_packet(sender_context)?]),
+            PacketType::Ndp => packets.extend(vec![create_ndp_packet(sender_context)?])
         }
+    }
+    Ok(packets)
+}
+
+fn create_arp_packet(sender_context: &SenderContext) -> anyhow::Result<Vec<u8>> {
+    let (ipv4_net, dst_addr) = (sender_context.ipv4_net, sender_context.dst_addr_v4);
+    match (ipv4_net, dst_addr) {
+        (Some(ipv4_net), Some(dst_addr)) => {
+            let src_mac: MacAddr = sender_context.src_mac;
+            let dst_mac: MacAddr = MacAddr::broadcast();
+            let src_addr: Ipv4Addr = ipv4_net.ip();
+            let packet: Vec<u8> = arp::create_packet(src_mac, dst_mac, src_addr, dst_addr)?;
+            Ok(packet)
+        }
+        _ => {
+            print::print_status("Failed to create ARP packet: invalid sender context");
+            Ok(vec![])
+        },
     }
 }
 
-pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<Host>> {
+fn create_arp_packets(sender_context: &SenderContext) -> anyhow::Result<Vec<Vec<u8>>> {
+    if let Some(ipv4_net) = sender_context.ipv4_net {
+        print::print_status("Creating ARP packets for ipv4 discovery");
+        let src_mac: MacAddr = sender_context.src_mac;
+        let dst_mac: MacAddr = MacAddr::broadcast();
+        let src_addr: Ipv4Addr = ipv4_net.ip();
+        let ipv4_range: Ipv4Range = range::Ipv4Range::from_tuple(range::cidr_range(src_addr, ipv4_net.prefix())?);
+        let packets: Vec<Vec<u8>> = range::ip_iter(&ipv4_range)
+            .map(|dst_addr| {
+                arp::create_packet(src_mac, dst_mac, src_addr, dst_addr)
+            })
+            .collect::<Result<Vec<Vec<u8>>, _>>()?;
+        Ok(packets)
+    } else {
+        print::print_status("Failed to create ARP packets: No ipv4 found");
+        Ok(vec![])
+    }
+}
+
+fn create_icmpv6_packet(sender_context: &SenderContext) -> anyhow::Result<Vec<u8>> {
+    if let Some(link_local) = sender_context.link_local {
+        print::print_status("Creating ICMPv6 packets for ipv6 discovery");
+        let src_mac: MacAddr = sender_context.src_mac;
+        let packet: Vec<u8> = icmp::create_all_nodes_echo_request_v6(src_mac, link_local)?;
+        Ok(packet)
+    } else {
+        print::print_status("Failed to create ICMPv6 packets: No link local address");
+        Ok(vec![])
+    }
+}
+
+fn create_ndp_packet(_sender_context: &SenderContext) -> anyhow::Result<Vec<u8>> {
+    anyhow::bail!("Ndp packet creation not possible as of now");
+}
+
+pub fn handle_frame(frame: &[u8]) -> anyhow::Result<InternalHost> {
     let eth = EthernetPacket::new(frame)
         .context("truncated or invalid Ethernet frame")?;
-    let mac_addr = eth.get_source();
-    let host = match eth.get_ethertype() {
-        EtherTypes::Arp => { arp::handle_packet(eth)? },
-        EtherTypes::Ipv6 => { ip::handle_v6_packet(eth)? },
+    let mac_addr: MacAddr = eth.get_source();
+    let ip = match eth.get_ethertype() {
+        EtherTypes::Arp => arp::handle_packet(eth)?,
+        EtherTypes::Ipv6 => ip::handle_v6_packet(eth)?,
         other => bail!("unsupported ethertype: 0x{:04x}", other.0),
     };
-    if let Some(mut host) = host { host.set_mac_addr(mac_addr)?; Ok(Some(host)) } else { Ok(None) }
+    let mut host: InternalHost = InternalHost::from(mac_addr);
+    host.ips.insert(ip);
+    Ok(host)
 }
 
 // ╔════════════════════════════════════════════╗
