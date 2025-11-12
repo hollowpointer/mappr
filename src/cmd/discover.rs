@@ -64,7 +64,7 @@ async fn tcp_handshake_discovery(target: Target) -> anyhow::Result<Vec<Box<dyn H
 async fn tcp_handshake_discovery_lan() -> anyhow::Result<Vec<ExternalHost>>{
     let interface: NetworkInterface = interface::get_lan();
     if let Some(ipv4_range) = range::from_ipv4_net(interface.get_ipv4_net()) {
-        tcp::handshake_range_discovery(ipv4_range)
+        tcp::handshake_range_discovery(ipv4_range, tcp::handshake_probe)
             .await
             .context("handshake discovery failed (non-root)")
     } else {

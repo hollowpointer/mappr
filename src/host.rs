@@ -23,8 +23,8 @@ pub struct InternalHost {
 }
 
 pub struct ExternalHost {
-    ips: BTreeSet<IpAddr>,
-    _ports: BTreeSet<u16>
+    pub ips: BTreeSet<IpAddr>,
+    pub _ports: BTreeSet<u16>
 }
 
 impl From<MacAddr> for InternalHost {

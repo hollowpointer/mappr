@@ -42,7 +42,7 @@ pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Result<(Ipv4Addr, Ipv4Addr)> {
     let network = ip_u32 & mask;
     let broadcast = network | !mask;
 
-    Ok((Ipv4Addr::from(network+1) , Ipv4Addr::from(broadcast-1)))
+    Ok((Ipv4Addr::from(network) , Ipv4Addr::from(broadcast)))
 }
 
 // fn cidr_str_to_range(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr)> {
