@@ -7,7 +7,7 @@ use colored::{ColoredString, Colorize};
 use pnet::{self, datalink::NetworkInterface, ipnetwork::Ipv4Network};
 use anyhow;
 use pnet::ipnetwork::IpNetwork;
-use crate::{net::{ip::{self, Ipv6AddressType}}, utils::colors};
+use crate::{net::ip, utils::colors};
 use crate::print;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -34,36 +34,12 @@ pub trait NetworkInterfaceExtension {
 
 
 impl NetworkInterfaceExtension for NetworkInterface {
-
     fn print_details(self: &Self, idx: usize) {
         print::println(format!("{} {}", format!("[{}]", idx.to_string().color(colors::ACCENT))
             .color(colors::SEPARATOR), self.name.color(colors::PRIMARY)).as_str());
 
         let mut key_value_pair: Vec<(String, ColoredString)> = Vec::new();
-
-        for ip_network in &self.ips {
-            match ip_network {
-                IpNetwork::V4(ipv4_network) => {
-                    let address: ColoredString = ipv4_network.ip().to_string().color(colors::IPV4_ADDR);
-                    let prefix: ColoredString = ipv4_network.prefix().to_string().color(colors::IPV4_PREFIX);
-                    let result: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR); 
-                    key_value_pair.push(("IPv4".to_string(), result));
-                },
-                IpNetwork::V6(ipv6_network) => {
-                    let address: ColoredString = ipv6_network.ip().to_string().color(colors::IPV6_ADDR);
-                    let prefix: ColoredString = ipv6_network.prefix().to_string().color(colors::IPV6_PREFIX);
-                    let value: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR);
-                    let ipv6_type = ip::get_ipv6_type(&ipv6_network.ip());
-                    let key = match ipv6_type {
-                        Ipv6AddressType::GlobalUnicast  => "GUA",
-                        Ipv6AddressType::LinkLocal      => "LLA",
-                        Ipv6AddressType::UniqueLocal    => "ULA",
-                        _                               => "IPv6"
-                    };
-                    key_value_pair.push((key.to_string(), value));
-                },
-            }
-        }
+        key_value_pair.extend(ip::to_key_value_pair_net(&self.ips));
 
         if let Some(mac_addr) = self.mac {
             key_value_pair.push(("MAC".to_string(), mac_addr.to_string().color(colors::MAC_ADDR)));
@@ -487,4 +463,50 @@ mod tests {
         let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
         assert_eq!(result, Err(ViabilityError::IsPointToPoint))
     }
+
+    #[test]
+    fn select_best_lan_interface_selects_first_interface() {
+        let interface: NetworkInterface = create_mock_interface("wlan0", 
+            default_mac(), 
+            default_ips(), 
+            IFF_UP | IFF_BROADCAST
+        );
+        let is_wired = |interface: &NetworkInterface| -> bool {
+            interface.name == "eth0"
+        };
+        let result = select_best_lan_interface(vec![interface], is_wired);
+        assert!(result.is_some(), "Should have selected an interface");
+        assert_eq!(result.unwrap().name, "wlan0");        
+    }
+
+    #[test]
+    fn select_best_lan_interface_selects_wired_over_wireless() {
+        let wired_interface: NetworkInterface = create_mock_interface("eth0", 
+            default_mac(), 
+            default_ips(), 
+            IFF_UP | IFF_BROADCAST
+        );
+        let wireless_interface: NetworkInterface = create_mock_interface("wlan0", 
+            default_mac(), 
+            default_ips(), 
+            IFF_UP | IFF_BROADCAST
+        );
+        let is_wired = |interface: &NetworkInterface| -> bool {
+            interface.name == "eth0"
+        };
+        let interfaces: Vec<NetworkInterface> = vec![wireless_interface, wired_interface];
+        let result = select_best_lan_interface(interfaces, is_wired);
+        assert!(result.is_some(), "Should have selected an interface");
+        assert_eq!(result.unwrap().name, "eth0");        
+    }
+
+    #[test]
+    fn select_best_lan_interface_returns_none() {
+        let is_wired = |interface: &NetworkInterface| -> bool {
+            interface.name == "eth0"
+        };
+        let interfaces: Vec<NetworkInterface> = vec![];
+        let result = select_best_lan_interface(interfaces, is_wired);
+        assert!(result.is_none());
+    }    
 }
