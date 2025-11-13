@@ -35,7 +35,7 @@ impl From<&NetworkInterface> for SenderContext {
 }
 
 pub fn discover_via_eth() -> anyhow::Result<Vec<InternalHost>> {
-    let (interface, sender_context) = get_interface_and_sender_context();
+    let (interface, sender_context) = get_interface_and_sender_context()?;
     let (mut tx, rx) = open_eth_channel(&interface, &get_config(), datalink::channel)?;
     let duration_in_ms: Duration = Duration::from_millis(PROBE_TIMEOUT_MS);
     let packet_types: Vec<PacketType> = vec![PacketType::Arp, PacketType::Icmpv6];
@@ -47,7 +47,7 @@ pub fn discover_via_eth() -> anyhow::Result<Vec<InternalHost>> {
 }
 
 pub fn discover_via_ip_addr(dst_addr: IpAddr) -> anyhow::Result<Option<InternalHost>> {
-    let (interface, mut sender_context) = get_interface_and_sender_context();
+    let (interface, mut sender_context) = get_interface_and_sender_context()?;
     let (mut tx, rx) = open_eth_channel(&interface, &get_config(), datalink::channel)?;
     let duration_in_ms: Duration = Duration::from_millis(PROBE_TIMEOUT_MS);
     let packet: Vec<u8> = match dst_addr {
@@ -99,10 +99,10 @@ fn listen_for_hosts(mut rx: Box<dyn DataLinkReceiver>, duration_in_ms: Duration,
     hosts
 }
 
-fn get_interface_and_sender_context() -> (NetworkInterface, SenderContext) {
-    let interface: NetworkInterface = interface::get_lan();
+fn get_interface_and_sender_context() -> anyhow::Result<(NetworkInterface, SenderContext)> {
+    let interface: NetworkInterface = interface::get_lan()?;
     let sender_context: SenderContext = SenderContext::from(&interface);
-    (interface, sender_context)
+    Ok((interface, sender_context))
 }
 
 fn get_config() -> Config {

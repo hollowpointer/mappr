@@ -7,8 +7,24 @@ use colored::{ColoredString, Colorize};
 use pnet::{self, datalink::NetworkInterface, ipnetwork::Ipv4Network};
 use anyhow;
 use pnet::ipnetwork::IpNetwork;
-use crate::{GLOBAL_KEY_WIDTH, net::{ip::{self, Ipv6AddressType}}, utils::colors};
+use crate::{net::{ip::{self, Ipv6AddressType}}, utils::colors};
 use crate::print;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ViabilityError {
+    /// The interface is operationally down.
+    IsDown,
+    /// The interface was filtered out as "not physical" by the provided logic.
+    NotPhysical,
+    /// The interface does not have a MAC address.
+    NoMacAddress,
+    /// The interface does not support broadcast (required for ARP).
+    NotBroadcast,
+    /// The interface is a point-to-point link (e.g., a VPN).
+    IsPointToPoint,
+    /// The interface has no IPv4 address (for ARP) AND no IPv6 Link-Local (for NDP).
+    NoValidLanIp,
+}
 
 pub trait NetworkInterfaceExtension {
     fn print_details(&self, idx: usize);
@@ -16,13 +32,14 @@ pub trait NetworkInterfaceExtension {
     fn get_link_local_addr(&self) -> Option<Ipv6Addr>;
 }
 
+
 impl NetworkInterfaceExtension for NetworkInterface {
 
     fn print_details(self: &Self, idx: usize) {
         print::println(format!("{} {}", format!("[{}]", idx.to_string().color(colors::ACCENT))
             .color(colors::SEPARATOR), self.name.color(colors::PRIMARY)).as_str());
 
-        let mut lines: Vec<(ColoredString, ColoredString)> = Vec::new();
+        let mut key_value_pair: Vec<(String, ColoredString)> = Vec::new();
 
         for ip_network in &self.ips {
             match ip_network {
@@ -30,12 +47,12 @@ impl NetworkInterfaceExtension for NetworkInterface {
                     let address: ColoredString = ipv4_network.ip().to_string().color(colors::IPV4_ADDR);
                     let prefix: ColoredString = ipv4_network.prefix().to_string().color(colors::IPV4_PREFIX);
                     let result: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR); 
-                    lines.push(("IPv4".color(colors::TEXT_DEFAULT), result));
+                    key_value_pair.push(("IPv4".to_string(), result));
                 },
                 IpNetwork::V6(ipv6_network) => {
                     let address: ColoredString = ipv6_network.ip().to_string().color(colors::IPV6_ADDR);
                     let prefix: ColoredString = ipv6_network.prefix().to_string().color(colors::IPV6_PREFIX);
-                    let result: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR);
+                    let value: ColoredString = format!("{address}/{prefix}").color(colors::SEPARATOR);
                     let ipv6_type = ip::get_ipv6_type(&ipv6_network.ip());
                     let key = match ipv6_type {
                         Ipv6AddressType::GlobalUnicast  => "GUA",
@@ -43,23 +60,16 @@ impl NetworkInterfaceExtension for NetworkInterface {
                         Ipv6AddressType::UniqueLocal    => "ULA",
                         _                               => "IPv6"
                     };
-                    lines.push((key.color(colors::TEXT_DEFAULT), result));
+                    key_value_pair.push((key.to_string(), value));
                 },
             }
         }
 
         if let Some(mac_addr) = self.mac {
-            lines.push(("MAC".color(colors::TEXT_DEFAULT), mac_addr.to_string().color(colors::MAC_ADDR)));
+            key_value_pair.push(("MAC".to_string(), mac_addr.to_string().color(colors::MAC_ADDR)));
         }
-        
-        for(i, (key, value)) in lines.iter().enumerate() {
-            let last = i + 1 == lines.len();
-            let branch = if last { "└─".color(colors::SEPARATOR) } else { "├─".color(colors::SEPARATOR) };
-            let dots = ".".repeat(GLOBAL_KEY_WIDTH.get() - key.len() - 1);
-            let colon = format!("{}{}", dots.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
-            let output = format!(" {branch} {}{} {}", key, colon, value);
-            print::println(&output)
-        }
+
+        print::as_tree_one_level(key_value_pair);
     }
     
     fn get_ipv4_net(&self) -> Option<Ipv4Network> {
@@ -75,8 +85,8 @@ impl NetworkInterfaceExtension for NetworkInterface {
             _ => None,
         })
     }
-
 }
+
 
 pub fn get_prioritized_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>> {
     let interfaces: Vec<NetworkInterface> = pnet::datalink::interfaces();
@@ -109,51 +119,106 @@ pub fn get_prioritized_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInter
     Ok(result_interfaces)
 }
 
-pub fn get_lan() -> NetworkInterface {
+
+pub fn get_lan() -> anyhow::Result<NetworkInterface> {
     let interfaces: Vec<NetworkInterface> = pnet::datalink::interfaces();
     print::print_status(format!("Identified {} network interface(s)", interfaces.len()).as_str());
-    let candidates: Vec<NetworkInterface> = interfaces
-        .into_iter()
-        .filter(|interface| {
-                interface.is_up() &&
-                is_physical(interface) &&
-                interface.mac.is_some() &&
-                interface.is_broadcast() &&
-               !interface.is_point_to_point() &&
-                interface.ips.iter().any(|net| {
-                        net.is_ipv4() ||
-                        match net {
-                            IpNetwork::V4(_) => { false },
-                            IpNetwork::V6(ipv6) => ipv6.ip().is_unicast_link_local(),
-                        }
-                    }
-                )
+
+    let interfaces: Vec<NetworkInterface> = interfaces
+        .into_iter() 
+        .filter_map(|interface| {
+            match is_viable_lan_interface(&interface, is_physical) {
+                Ok(()) => { Some(interface) }
+                Err(_) => { None }
             }
-        )
-        .collect();
-    let interface = match candidates.len() {
-        0 => panic!("No suitable wired LAN interface found."),
-        1 => { candidates[0].clone() },
+    })
+    .collect();
+
+    let interface: NetworkInterface = if let Some(interface) = select_best_lan_interface(interfaces, is_wired) {
+        interface
+    } else {
+        anyhow::bail!("No interfaces available for LAN discovery");
+    };
+    print_lan_interface_info(&interface);
+    Ok(interface)
+}
+
+
+fn is_viable_lan_interface(
+    interface: &NetworkInterface,
+    is_physical: impl Fn(&NetworkInterface) -> bool,
+) -> Result<(), ViabilityError> {
+    
+    if !interface.is_up() {
+        return Err(ViabilityError::IsDown);
+    }
+    if !is_physical(interface) {
+        return Err(ViabilityError::NotPhysical);
+    }
+    if interface.is_loopback() {
+        return Err(ViabilityError::NotPhysical)   
+    }
+    if interface.mac.is_none() {
+        return Err(ViabilityError::NoMacAddress);
+    }
+    if !interface.is_broadcast() {
+        return Err(ViabilityError::NotBroadcast);
+    }
+    if interface.is_point_to_point() {
+        return Err(ViabilityError::IsPointToPoint);
+    }
+    let has_valid_ip = interface.ips.iter().any(|net| {
+        match net {
+            IpNetwork::V4(ipv4) => ipv4.ip().is_private(),
+            IpNetwork::V6(ipv6) => ipv6.ip().is_unicast_link_local(),
+        }
+    });
+    if !has_valid_ip {
+        return Err(ViabilityError::NoValidLanIp);
+    }
+
+    Ok(())
+}
+
+
+fn select_best_lan_interface(
+    interfaces: Vec<NetworkInterface>,
+    is_wired: impl Fn(&NetworkInterface) -> bool
+) -> Option<NetworkInterface> 
+{
+    match interfaces.len() {
+        0 => None,
+        1 => Some(interfaces[0].clone()),
         _ => {
             print::print_status("More than one candidate found, selecting best option...");
-            candidates.iter()
+            interfaces.iter()
                 .find(|&interface| is_wired(interface))
                 .map(|iface_ref_ref| iface_ref_ref.clone())
-                .unwrap_or(candidates[0].clone())
-                .clone()
+                .or(Some(interfaces[0].clone()))
         }
-    };
+    }
+}
+
+
+fn print_lan_interface_info(interface: &NetworkInterface) {
     if let Some(ipv4_net) = interface.get_ipv4_net() {
         let msg: &str = &format!("Selected {} with address {}", interface.name, ipv4_net.ip());
         print::print_status(msg);
+        return;
     }
-    interface
+    if let Some(link_local_addr) = interface.get_link_local_addr() {
+        let msg: &str = &format!("Selected {} with address {}", interface.name, link_local_addr);
+        print::print_status(msg);
+        return;
+    }
 }
+
 
 fn is_wired(interface: &NetworkInterface) -> bool {
     is_physical(interface) && 
    !is_wireless(interface)
 }
+
 
 // this check is shit and needs improvement
 fn is_tunnel(interface: &NetworkInterface) -> bool {
@@ -162,10 +227,12 @@ fn is_tunnel(interface: &NetworkInterface) -> bool {
     tunnel_names.iter().any(|tunnel_name| interface.name.contains(tunnel_name))
 }
 
+
 // this one is shit too as you might tell
 fn is_bridge(interface: &NetworkInterface) -> bool {
     !is_physical(interface) && !interface.is_loopback() && !is_tunnel(interface)
 }
+
 
 /***************************************
    OS dependent functions for PHYSICAL
@@ -174,6 +241,7 @@ fn is_bridge(interface: &NetworkInterface) -> bool {
 fn is_physical(interface: &NetworkInterface) -> bool {
     Path::new(&format!("/sys/class/net/{}/device", interface.name)).exists()
 }
+
 
 #[cfg(target_os = "macos")]
 fn is_physical(interface: &NetworkInterface) -> bool {
@@ -192,10 +260,12 @@ fn is_physical(interface: &NetworkInterface) -> bool {
     }
 }
 
+
 #[cfg(target_os = "windows")]
 fn is_physical(interface: &NetworkInterface) -> bool {
     true
 }
+
 
 /***************************************
    OS dependent functions for WIRELESS
@@ -204,6 +274,7 @@ fn is_physical(interface: &NetworkInterface) -> bool {
 fn is_wireless(interface: &NetworkInterface) -> bool {
     Path::new(&format!("sys/class/net/{}/wireless", interface.name)).exists()
 }
+
 
 #[cfg(target_os = "macos")]
 fn is_wireless(interface: &NetworkInterface) -> bool {
@@ -215,5 +286,205 @@ fn is_wireless(interface: &NetworkInterface) -> bool {
     match output {
         Ok(output) => output.status.success(),
         Err(_) => false,
+    }
+}
+
+
+
+// ╔════════════════════════════════════════════╗
+// ║ ████████╗███████╗███████╗████████╗███████╗ ║
+// ║ ╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██╔════╝ ║
+// ║    ██║   █████╗  ███████╗   ██║   ███████╗ ║
+// ║    ██║   ██╔══╝  ╚════██║   ██║   ╚════██║ ║
+// ║    ██║   ███████╗███████║   ██║   ███████║ ║
+// ║    ╚═╝   ╚══════╝╚══════╝   ╚═╝   ╚══════╝ ║
+// ╚════════════════════════════════════════════╝
+
+#[cfg(test)]
+mod tests {
+    use pnet::util::MacAddr;
+    use super::*;
+
+    const IFF_UP: u32 = 1;
+    const IFF_BROADCAST: u32 = 1 << 1;
+    const IFF_LOOPBACK: u32 = 1 << 3;
+    const IFF_POINTTOPOINT: u32 = 1 << 4;
+    //const IFF_RUNNING: u32 = 1 << 6;
+
+    fn create_mock_interface(name: &str, mac: Option<MacAddr>, ips: Vec<IpNetwork>, flags: u32) -> NetworkInterface {
+        NetworkInterface {
+            name: name.to_string(),
+            description: "An interface".to_string(),
+            index: 0,
+            mac,
+            ips,
+            flags,
+        }
+    }
+
+    fn default_mac() -> Option<MacAddr> {
+        Some(MacAddr(0x1, 0x2, 0x3, 0x4, 0x5, 0x6))
+    }
+
+    fn default_ips() -> Vec<IpNetwork> {
+        vec![
+            IpNetwork::V4("192.168.1.100".parse().unwrap())
+        ]
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_succeed() {
+        let interface: NetworkInterface = create_mock_interface(
+            "eth0", 
+            default_mac(), 
+            default_ips(),
+            IFF_UP | IFF_BROADCAST
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Ok(()))
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_succeed_with_ipv6_link_local() {
+        let ipv6_ips = vec![
+            IpNetwork::V6("fe80::1234:5678:abcd:ef01".parse().unwrap())
+        ];
+        let interface: NetworkInterface = create_mock_interface(
+            "eth0", 
+            default_mac(), 
+            ipv6_ips,
+            IFF_UP | IFF_BROADCAST
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_fail_with_invalid_ipv6() {
+        let invalid_ipv6_ips = vec![
+            IpNetwork::V6("2001:db8::1".parse().unwrap()) 
+        ];
+        let interface: NetworkInterface = create_mock_interface(
+            "eth0", 
+            default_mac(), 
+            invalid_ipv6_ips,
+            IFF_UP | IFF_BROADCAST
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Err(ViabilityError::NoValidLanIp));
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_fail_non_physical() {
+        let interface: NetworkInterface = create_mock_interface(
+            "eth1", 
+            default_mac(), 
+            default_ips(),
+            IFF_UP | IFF_BROADCAST
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            false
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Err(ViabilityError::NotPhysical))
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_fail_no_mac_addr() {
+        let interface: NetworkInterface = create_mock_interface(
+            "eth0", 
+            None, 
+            default_ips(),
+            IFF_UP | IFF_BROADCAST
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Err(ViabilityError::NoMacAddress))
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_fail_no_ips() {
+        let interface: NetworkInterface = create_mock_interface(
+            "eth8", 
+            default_mac(), 
+            vec![],
+            IFF_UP | IFF_BROADCAST
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Err(ViabilityError::NoValidLanIp))
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_fail_when_down() {
+        let interface: NetworkInterface = create_mock_interface(
+            "wlan0", 
+            default_mac(), 
+            default_ips(),
+            IFF_BROADCAST
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Err(ViabilityError::IsDown))
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_fail_loop_back() {
+        let interface: NetworkInterface = create_mock_interface(
+            "lo", 
+            default_mac(), 
+            default_ips(),
+            IFF_LOOPBACK | IFF_UP | IFF_BROADCAST
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Err(ViabilityError::NotPhysical))
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_fail_not_broadcast() {
+        let interface: NetworkInterface = create_mock_interface(
+            "eth0", 
+            default_mac(), 
+            default_ips(),
+            IFF_UP
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Err(ViabilityError::NotBroadcast));
+    }
+
+    #[test]
+    fn is_viable_lan_interface_should_fail_point_to_point() {
+        let interface: NetworkInterface = create_mock_interface(
+            "tun0", 
+            default_mac(), 
+            default_ips(),
+            IFF_BROADCAST | IFF_POINTTOPOINT | IFF_UP
+        );
+        let is_physical = |_: &NetworkInterface| -> bool {
+            true
+        };
+        let result: Result<(), ViabilityError> = is_viable_lan_interface(&interface, is_physical);
+        assert_eq!(result, Err(ViabilityError::IsPointToPoint))
     }
 }
