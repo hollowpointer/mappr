@@ -9,7 +9,8 @@ use pnet::util::MacAddr;
 use crate::net::datalink::interface;
 use crate::net::datalink::interface::NetworkInterfaceExtension;
 use crate::net::packets::{self, PacketType};
-use crate::host::InternalHost;
+use crate::host::{self, InternalHost};
+use crate::net::range::{self, Ipv4Range};
 use crate::print;
 
 const PROBE_TIMEOUT_MS: u64 = 2000;
@@ -17,10 +18,12 @@ const PROBE_TIMEOUT_MS: u64 = 2000;
 pub struct SenderContext {
     pub src_mac: MacAddr,
     pub ipv4_net: Option<Ipv4Network>,
+    pub ipv4_range: Option<Ipv4Range>,
     pub link_local: Option<Ipv6Addr>,
     pub dst_addr_v4: Option<Ipv4Addr>,
     pub dst_addr_v6: Option<Ipv6Addr>
 }
+
 
 impl From<&NetworkInterface> for SenderContext {
     fn from(interface: &NetworkInterface) -> Self {
@@ -28,11 +31,13 @@ impl From<&NetworkInterface> for SenderContext {
             src_mac: interface.mac.unwrap(), // This is safe!!
             ipv4_net: interface.get_ipv4_net(),
             link_local: interface.get_link_local_addr(),
+            ipv4_range: None,
             dst_addr_v4: None,
             dst_addr_v6: None
         }
     }
 }
+
 
 pub fn discover_via_eth() -> anyhow::Result<Vec<InternalHost>> {
     let (interface, sender_context) = get_interface_and_sender_context()?;
@@ -43,8 +48,9 @@ pub fn discover_via_eth() -> anyhow::Result<Vec<InternalHost>> {
     for packet in packets { 
         tx.send_to(&packet, None); 
     }
-    Ok(listen_for_hosts(rx, duration_in_ms, sender_context.src_mac))
+    Ok(listen_for_hosts(rx, duration_in_ms, &sender_context))
 }
+
 
 pub fn discover_via_ip_addr(dst_addr: IpAddr) -> anyhow::Result<Option<InternalHost>> {
     let (interface, mut sender_context) = get_interface_and_sender_context()?;
@@ -61,11 +67,26 @@ pub fn discover_via_ip_addr(dst_addr: IpAddr) -> anyhow::Result<Option<InternalH
         },
     };
     tx.send_to(&packet, None);
-    let host: Option<InternalHost> = listen_for_hosts(rx, duration_in_ms, sender_context.src_mac)
+    let host: Option<InternalHost> = listen_for_hosts(rx, duration_in_ms, &sender_context)
         .into_iter()
         .find(|host| host.ips.contains(&dst_addr));
     Ok(host)
 }
+
+
+pub fn discover_via_range(ipv4_range: Ipv4Range) -> anyhow::Result<Vec<InternalHost>> {
+    let (interface, mut sender_context) = get_interface_and_sender_context()?;
+    sender_context.ipv4_range = Some(ipv4_range);
+    let (mut tx, rx) = open_eth_channel(&interface, &get_config(), datalink::channel)?;
+    let duration_in_ms: Duration = Duration::from_millis(PROBE_TIMEOUT_MS);
+    let packet_types: Vec<PacketType> = vec![PacketType::Arp];
+    let packets: Vec<Vec<u8>> = packets::create_multiple_packets(&sender_context, packet_types)?;
+    for packet in packets { 
+        tx.send_to(&packet, None); 
+    }
+    Ok(listen_for_hosts(rx, duration_in_ms, &sender_context))
+}
+
 
 fn open_eth_channel<F>(intf: &NetworkInterface, cfg: &Config, channel_opener: F) 
     -> anyhow::Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>)> 
@@ -81,29 +102,31 @@ where F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>
     }
 }
 
-fn listen_for_hosts(mut rx: Box<dyn DataLinkReceiver>, duration_in_ms: Duration, src_mac: MacAddr) -> Vec<InternalHost> {
+
+fn listen_for_hosts(mut rx: Box<dyn DataLinkReceiver>, duration_in_ms: Duration, sender_context: &SenderContext) -> Vec<InternalHost> {
     let mut hosts: Vec<InternalHost> = Vec::new();
     let deadline = Instant::now() + duration_in_ms;
     while deadline > Instant::now() {
         match rx.next() {
             Ok(frame) => {
-                if let Some(host) = packets::handle_frame(&frame).ok() {
-                    if host.mac_addr != src_mac {
-                        hosts.push(host); 
-                    }
+                if let Ok(Some(host)) = packets::handle_frame(frame, sender_context) {
+                    hosts.push(host);
                 }
             },
             Err(_) => { }
         }
     }
+    host::merge_by_mac(&mut hosts);
     hosts
 }
+
 
 fn get_interface_and_sender_context() -> anyhow::Result<(NetworkInterface, SenderContext)> {
     let interface: NetworkInterface = interface::get_lan()?;
     let sender_context: SenderContext = SenderContext::from(&interface);
     Ok((interface, sender_context))
 }
+
 
 fn get_config() -> Config {
     Config {

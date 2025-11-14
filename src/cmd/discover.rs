@@ -1,14 +1,16 @@
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use anyhow::{self, Context, Ok};
 use is_root::is_root;
 use pnet::datalink::NetworkInterface;
-use crate::host::{self, ExternalHost, Host};
+use crate::host::{self, ExternalHost, Host, InternalHost};
 use crate::cmd::Target;
 use crate::net::datalink::interface::NetworkInterfaceExtension;
 use crate::net::datalink::{channel, interface};
+use crate::net::range::Ipv4Range;
 use crate::net::{ip, range};
 use crate::net::packets::tcp;
 use crate::{print, SPINNER};
+
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     SPINNER.set_message("Performing discovery...");
@@ -21,31 +23,44 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     
     print::print_status("Root privileges detected. Using advanced techniques...");
     let mut hosts: Vec<Box<dyn Host>> = match target {
-        Target::LAN => {
-            let mut hosts = channel::discover_via_eth()?;
-            host::merge_by_mac(&mut hosts);
-            host::internal_to_box(hosts)
-        },
+        Target::LAN => discover_lan()?,
         Target::Host { dst_addr } => discover_host(dst_addr).await?,
+        Target::CIDR { ipv4_addr, prefix } => discover_cidr(ipv4_addr, prefix).await?,
         _ => { anyhow::bail!("this target is currently unimplemented!") }
     };
 
     Ok(discovery_ends(&mut hosts))
 }
 
+
+fn discover_lan() -> anyhow::Result<Vec<Box<dyn Host>>> {
+    let hosts: Vec<InternalHost> = channel::discover_via_eth()?;
+    Ok(host::internal_to_box(hosts))
+}
+
+
 async fn discover_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Box<dyn Host>>> {
     if !ip::is_private(dst_addr) {
-        // Currently only handshake discovery for external hosts possible, more types will be added later
-        let hosts: Vec<Box<dyn Host>> = tcp_handshake_discovery(Target::Host { dst_addr }).await?;
-        return Ok(hosts)
+        return Ok(host::external_to_box(tcp_handshake_discovery_host(dst_addr).await?));
     }
-    let host: Vec<Box<dyn Host>> = if let Some(host) = channel::discover_via_ip_addr(dst_addr)? {
-        host::internal_to_box(vec![host])
+    let host: Vec<InternalHost> = if let Some(host) = channel::discover_via_ip_addr(dst_addr)? {
+        vec![host]
     } else { 
-        host::internal_to_box(vec![])
+        vec![]
     };
-    Ok(host)
+    Ok(host::internal_to_box(host))
 }
+
+
+async fn discover_cidr(ipv4_addr: Ipv4Addr, prefix: u8) -> anyhow::Result<Vec<Box<dyn Host>>> {
+    let ipv4_range: Ipv4Range = range::cidr_range(ipv4_addr, prefix);
+    if !ipv4_addr.is_private() {
+        let hosts: Vec<ExternalHost> = tcp::handshake_range_discovery(ipv4_range, tcp::handshake_probe).await?;
+        return Ok(host::external_to_box(hosts));
+    }
+    Ok(host::internal_to_box(channel::discover_via_range(ipv4_range)?))
+}
+
 
 async fn tcp_handshake_discovery(target: Target) -> anyhow::Result<Vec<Box<dyn Host>>> {
     print::print_status("No root privileges. Falling back to non-privileged TCP scan...");
@@ -61,6 +76,7 @@ async fn tcp_handshake_discovery(target: Target) -> anyhow::Result<Vec<Box<dyn H
     Ok(host::external_to_box(hosts))
 }
 
+
 async fn tcp_handshake_discovery_lan() -> anyhow::Result<Vec<ExternalHost>>{
     let interface: NetworkInterface = interface::get_lan()?;
     if let Some(ipv4_range) = range::from_ipv4_net(interface.get_ipv4_net()) {
@@ -71,6 +87,7 @@ async fn tcp_handshake_discovery_lan() -> anyhow::Result<Vec<ExternalHost>>{
         anyhow::bail!("No root privileges and failed to retrieve IPv4 range for TCP scan.")
     }
 }
+
 
 async fn tcp_handshake_discovery_host(dst_addr: IpAddr) -> anyhow::Result<Vec<ExternalHost>> {
     if let Some(host) = tcp::handshake_probe(dst_addr)
@@ -83,11 +100,12 @@ async fn tcp_handshake_discovery_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Ex
     }
 }
 
+
 fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) {
-    print::header("Network Discovery");
     if hosts.len() == 0 {
         return no_hosts_found();
     }
+    print::header("Network Discovery");
     hosts.sort_by_key(|host| host.get_primary_ip());
     for (idx, host) in hosts.iter().enumerate() {
         host.print_details(idx);
@@ -99,8 +117,10 @@ fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) {
     SPINNER.finish_and_clear();
 }
 
+
 fn no_hosts_found() {
-    // todo!
+    print::header("ZERO HOSTS DETECTED");
+    print::no_results();
     print::end_of_program();
     SPINNER.finish_and_clear();
 }

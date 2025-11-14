@@ -3,7 +3,7 @@ pub mod listen;
 pub mod info;
 pub mod scan;
 
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use clap::{Parser, Subcommand};
 
@@ -38,7 +38,7 @@ pub enum Commands {
 #[derive(Clone, Debug)]
 pub enum Target {
     LAN,
-    // CIDR { cidr: String },
+    CIDR { ipv4_addr: Ipv4Addr, prefix: u8 },
     Host { dst_addr: IpAddr },
     // Range { start: Ipv4Addr, end: Ipv4Addr },
     VPN,
@@ -70,10 +70,13 @@ impl FromStr for Target {
         // }
 
         // cidr: 10.0.0.0/24  (basic check)
-        // if let Some((_, pfx)) = s.split_once('/') {
-        //     pfx.parse::<u8>().map_err(|e| e.to_string())?;
-        //     return Ok(Target::CIDR { cidr: s.to_string() });
-        // }
+        if let Some((ip_str, prefix_str)) = s.split_once('/') {
+            let ip_result = ip_str.parse::<Ipv4Addr>();
+            let prefix_result = prefix_str.parse::<u8>();
+            if let (Ok(ipv4_addr), Ok(prefix)) = (ip_result, prefix_result) {
+                return Ok(Target::CIDR { ipv4_addr, prefix });
+            }
+        }
 
         Err(format!("invalid target: {s}"))
     }

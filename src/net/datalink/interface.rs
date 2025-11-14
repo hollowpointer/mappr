@@ -35,16 +35,11 @@ pub trait NetworkInterfaceExtension {
 
 impl NetworkInterfaceExtension for NetworkInterface {
     fn print_details(self: &Self, idx: usize) {
-        print::println(format!("{} {}", format!("[{}]", idx.to_string().color(colors::ACCENT))
-            .color(colors::SEPARATOR), self.name.color(colors::PRIMARY)).as_str());
-
-        let mut key_value_pair: Vec<(String, ColoredString)> = Vec::new();
-        key_value_pair.extend(ip::to_key_value_pair_net(&self.ips));
-
+        print::tree_head(idx, &self.name);
+        let mut key_value_pair: Vec<(String, ColoredString)> = ip::to_key_value_pair_net(&self.ips);
         if let Some(mac_addr) = self.mac {
             key_value_pair.push(("MAC".to_string(), mac_addr.to_string().color(colors::MAC_ADDR)));
         }
-
         print::as_tree_one_level(key_value_pair);
     }
     

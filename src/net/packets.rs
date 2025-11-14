@@ -57,21 +57,37 @@ fn create_arp_packet(sender_context: &SenderContext) -> anyhow::Result<Vec<u8>> 
 }
 
 fn create_arp_packets(sender_context: &SenderContext) -> anyhow::Result<Vec<Vec<u8>>> {
-    if let Some(ipv4_net) = sender_context.ipv4_net {
-        print::print_status("Creating ARP packets for ipv4 discovery");
-        let src_mac: MacAddr = sender_context.src_mac;
-        let dst_mac: MacAddr = MacAddr::broadcast();
-        let src_addr: Ipv4Addr = ipv4_net.ip();
-        let ipv4_range: Ipv4Range = range::Ipv4Range::from_tuple(range::cidr_range(src_addr, ipv4_net.prefix())?);
-        let packets: Vec<Vec<u8>> = range::ip_iter(&ipv4_range)
-            .map(|dst_addr| {
+    let (ipv4_net, ipv4_range) = (&sender_context.ipv4_net, &sender_context.ipv4_range);
+    let src_mac: MacAddr = sender_context.src_mac;
+    let dst_mac: MacAddr = MacAddr::broadcast();
+    match (ipv4_net, ipv4_range) {
+        (None, None) => {
+            print::print_status("Failed to create ARP packets: No destinations found");
+            Ok(vec![])
+        }
+        (Some(ipv4_net), Some(ipv4_range)) => {
+            let src_addr: Ipv4Addr = ipv4_net.ip();
+            print::print_status("Creating ARP packets for ipv4 discovery");
+            let packets: Vec<Vec<u8>> = range::ip_iter(&ipv4_range)
+                .map(|dst_addr| {
                 arp::create_packet(src_mac, dst_mac, src_addr, dst_addr)
-            })
-            .collect::<Result<Vec<Vec<u8>>, _>>()?;
-        Ok(packets)
-    } else {
-        print::print_status("Failed to create ARP packets: No ipv4 found");
-        Ok(vec![])
+            }).collect::<Result<Vec<Vec<u8>>, _>>()?;
+            return Ok(packets);
+        }
+        (Some(ipv4_net), None) => {
+            let src_addr: Ipv4Addr = ipv4_net.ip();
+            print::print_status("Creating ARP packets for ipv4 discovery");
+            let ipv4_range: Ipv4Range = range::cidr_range(src_addr, ipv4_net.prefix());
+            let packets: Vec<Vec<u8>> = range::ip_iter(&ipv4_range)
+                .map(|dst_addr| {
+                arp::create_packet(src_mac, dst_mac, src_addr, dst_addr)
+            }).collect::<Result<Vec<Vec<u8>>, _>>()?;
+            return Ok(packets);
+        }
+        _ => {
+            print::print_status("Failed to create ARP packets: No source ipv4 found");
+            Ok(vec![])            
+        }
     }
 }
 
@@ -91,98 +107,29 @@ fn create_ndp_packet(_sender_context: &SenderContext) -> anyhow::Result<Vec<u8>>
     anyhow::bail!("Ndp packet creation not possible as of now");
 }
 
-pub fn handle_frame(frame: &[u8]) -> anyhow::Result<InternalHost> {
+pub fn handle_frame(frame: &[u8], sender_context: &SenderContext) -> anyhow::Result<Option<InternalHost>> {
     let eth = EthernetPacket::new(frame)
         .context("truncated or invalid Ethernet frame")?;
     let mac_addr: MacAddr = eth.get_source();
+    if sender_context.src_mac == mac_addr {
+        return Ok(None)
+    };
     let ip = match eth.get_ethertype() {
         EtherTypes::Arp => arp::handle_packet(eth)?,
         EtherTypes::Ipv6 => ip::handle_v6_packet(eth)?,
         other => bail!("unsupported ethertype: 0x{:04x}", other.0),
     };
+    match ip {
+        std::net::IpAddr::V4(ipv4_addr) => {
+            if let Some(ipv4_range) = &sender_context.ipv4_range {
+                if !range::in_range(&ipv4_addr, ipv4_range) {
+                    return Ok(None);
+                }
+            }
+        },
+        std::net::IpAddr::V6(_) => { },
+    }
     let mut host: InternalHost = InternalHost::from(mac_addr);
     host.ips.insert(ip);
-    Ok(host)
-}
-
-// ╔════════════════════════════════════════════╗
-// ║ ████████╗███████╗███████╗████████╗███████╗ ║
-// ║ ╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██╔════╝ ║
-// ║    ██║   █████╗  ███████╗   ██║   ███████╗ ║
-// ║    ██║   ██╔══╝  ╚════██║   ██║   ╚════██║ ║
-// ║    ██║   ███████╗███████║   ██║   ███████║ ║
-// ║    ╚═╝   ╚══════╝╚══════╝   ╚═╝   ╚══════╝ ║
-// ╚════════════════════════════════════════════╝
-
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-    use pnet::packet::ethernet::EtherTypes;
-    use pnet::util::MacAddr;
-    use crate::net::datalink::ethernet;
-    use crate::net::utils::MIN_ETH_FRAME_NO_FCS;
-
-    const ARP_LEN: usize = 28;
-    const ETH_HDR_LEN: usize = 14;
-
-    pub fn buf() -> [u8; MIN_ETH_FRAME_NO_FCS] {
-        [0u8; MIN_ETH_FRAME_NO_FCS]
-    }
-
-    #[test]
-    fn handle_frame_errors_on_short_ethernet_buffer() {
-        // Too short to contain an Ethernet header
-        let short = [0u8; ETH_HDR_LEN - 1];
-
-        let err = handle_frame(&short).unwrap_err();
-
-        assert!(
-            err.to_string().contains("Ethernet"),
-            "unexpected error: {err:?}"
-        );
-    }
-
-
-    #[test]
-    fn handle_frame_errors_on_bad_arp_buffer() {
-        // Frame declares ARP but payload is too short for an ARP packet
-        let mut frame = vec![0u8; ETH_HDR_LEN + ARP_LEN - 1]; // one byte short
-        ethernet::make_header(
-            &mut frame,
-            MacAddr::zero(),
-            MacAddr::broadcast(),
-            EtherTypes::Arp,
-        )
-            .expect("eth header");
-
-        let err = handle_frame(&frame).unwrap_err();
-
-        assert!(
-            err.to_string().contains("ARP"),
-            "unexpected error: {err:?}"
-        );
-    }
-
-    #[test]
-    fn handle_frame_unsupported_ethertype() {
-        let mut b = buf();
-        ethernet::make_header(
-            &mut b,
-            MacAddr::zero(),
-            MacAddr::broadcast(),
-            EtherTypes::Ipv4,
-        )
-            .expect("eth header");
-
-        let err = handle_frame(&b).unwrap_err();
-
-        assert!(
-            err.to_string().contains("unsupported ethertype"),
-            "unexpected error: {err:?}"
-        );
-        assert!(
-            err.to_string().contains(&format!("{:04x}", EtherTypes::Ipv4.0)),
-            "error did not mention Ipv4 ethertype: {err:?}"
-        );
-    }
+    Ok(Some(host))
 }

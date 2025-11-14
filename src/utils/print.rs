@@ -173,6 +173,22 @@ pub fn println(msg: &str) {
     SPINNER.println(format!("{}", msg));
 }
 
+const NO_RESULTS_0: &str = r#"
+                       _  _    ___  _  _                 
+                      | || |  / _ \| || |                
+                      | || |_| | | | || |_               
+                      |__   _| |_| |__   _|              
+         _   _  ___ _____|_|__\___/__ |_|  _ _   _ ____  
+        | \ | |/ _ \_   _| |  ___/ _ \| | | | \ | |  _ \ 
+        |  \| | | | || |   | |_ | | | | | | |  \| | | | |
+        | |\  | |_| || |   |  _|| |_| | |_| | |\  | |_| |
+        |_| \_|\___/ |_|   |_|   \___/ \___/|_| \_|____/ 
+"#;
+
+pub fn no_results() {
+    println(format!("{}", NO_RESULTS_0.red().bold()).as_str());
+}
+
 pub fn end_of_program() {
     println(format!("{}", "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)).as_str());
 }

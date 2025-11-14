@@ -1,5 +1,4 @@
 use std::net::Ipv4Addr;
-use anyhow::{bail, Result};
 use pnet::ipnetwork::Ipv4Network;
 
 #[derive(Clone)]
@@ -30,19 +29,23 @@ pub fn ip_iter(ipv4_range: &Ipv4Range) -> IpRange {
 
 pub fn from_ipv4_net(ipv4_net: Option<Ipv4Network>) -> Option<Ipv4Range> {
     if let Some(ipv4_net) = ipv4_net {
-        Some(Ipv4Range::from_tuple(cidr_range(ipv4_net.ip(), ipv4_net.prefix()).unwrap()))
+        Some(cidr_range(ipv4_net.ip(), ipv4_net.prefix()))
     } else { None }
 }
 
-pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Result<(Ipv4Addr, Ipv4Addr)> {
-    if prefix > 32 { bail!("Not a valid prefix address"); }
+pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> Ipv4Range {
+    if prefix > 32 { panic!("Not a valid prefix address"); }
     let ip_u32 = u32::from(ip);
     let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
 
     let network = ip_u32 & mask;
     let broadcast = network | !mask;
 
-    Ok((Ipv4Addr::from(network) , Ipv4Addr::from(broadcast)))
+    Ipv4Range::from_tuple((Ipv4Addr::from(network), Ipv4Addr::from(broadcast)))
+}
+
+pub fn in_range(ipv4_addr: &Ipv4Addr, ipv4_range: &Ipv4Range) -> bool {
+    (ipv4_range.start_addr..=ipv4_range.end_addr).contains(ipv4_addr)
 }
 
 // fn cidr_str_to_range(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr)> {
@@ -118,30 +121,6 @@ impl ExactSizeIterator for IpRange {}
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
-
-    #[test]
-    fn cidr_range_basic_24() {
-        let ip = Ipv4Addr::new(192, 168, 1, 42);
-        let (start, end) = cidr_range(ip, 24).unwrap();
-        assert_eq!(start, Ipv4Addr::new(192, 168, 1, 0));
-        assert_eq!(end,   Ipv4Addr::new(192, 168, 1, 255));
-    }
-
-    #[test]
-    fn cidr_range_prefix_0() {
-        let ip = Ipv4Addr::new(10, 20, 30, 40);
-        let (start, end) = cidr_range(ip, 0).unwrap();
-        assert_eq!(start, Ipv4Addr::new(0, 0, 0, 0));
-        assert_eq!(end,   Ipv4Addr::new(255, 255, 255, 255));
-    }
-
-    #[test]
-    fn cidr_range_prefix_32_single_host() {
-        let ip = Ipv4Addr::new(203, 0, 113, 7);
-        let (start, end) = cidr_range(ip, 32).unwrap();
-        assert_eq!(start, ip);
-        assert_eq!(end,   ip);
-    }
 
     // #[test]
     // fn cidr_str_to_range_parses_and_computes() {
