@@ -1,7 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
-use anyhow;
-use anyhow::{bail, Context};
+use anyhow::{self, Context};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use pnet::ipnetwork::Ipv4Network;
@@ -15,7 +14,47 @@ use crate::print;
 
 const PROBE_TIMEOUT_MS: u64 = 2000;
 
+struct DiscoveryRunner<'a> {
+    tx: Box<dyn DataLinkSender>,
+    rx: Box<dyn DataLinkReceiver>,
+    duration: Duration,
+    sender_context: &'a SenderContext,
+}
 
+
+impl<'a> DiscoveryRunner<'a> {
+    pub fn new(interface: &datalink::NetworkInterface, sender_context: &'a SenderContext,) -> anyhow::Result<Self> {
+        let (tx, rx) = open_eth_channel(interface, &get_config(), datalink::channel)?;
+        let duration = Duration::from_millis(PROBE_TIMEOUT_MS);
+        Ok(Self {
+            tx,
+            rx,
+            duration,
+            sender_context,
+        })
+    }
+
+    pub fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
+        let packets = packets::create_discovery_packets(self.sender_context)?;
+        for packet in packets {
+            self.tx.send_to(&packet, None);
+        }
+        Ok(())
+    }
+
+    pub fn send_single_packet(&mut self, packet_type: PacketType) -> anyhow::Result<()> {
+        let packet = packets::create_single_packet(self.sender_context, packet_type)?;
+        self.tx.send_to(&packet, None);
+        Ok(())
+    }
+
+    pub fn listen(self) -> anyhow::Result<Vec<InternalHost>> {
+        listen_for_hosts(self.rx, self.duration, self.sender_context)
+    }
+}
+
+
+#[derive(Debug, Clone, Default)]
 pub struct SenderContext {
     pub src_mac: MacAddr,
     pub ipv4_net: Option<Ipv4Network>,
@@ -42,34 +81,30 @@ impl From<&NetworkInterface> for SenderContext {
 
 pub fn discover_via_eth() -> anyhow::Result<Vec<InternalHost>> {
     let (interface, sender_context) = get_interface_and_sender_context()?;
-    let (mut tx, rx) = open_eth_channel(&interface, &get_config(), datalink::channel)?;
-    let duration_in_ms: Duration = Duration::from_millis(PROBE_TIMEOUT_MS);
-    let packet_types: Vec<PacketType> = vec![PacketType::Arp, PacketType::Icmpv6];
-    let packets: Vec<Vec<u8>> = packets::create_multiple_packets(&sender_context, packet_types)?;
-    for packet in packets { 
-        tx.send_to(&packet, None); 
-    }
-    Ok(listen_for_hosts(rx, duration_in_ms, &sender_context)?)
+    let mut runner = DiscoveryRunner::new(&interface, &sender_context)?;
+    runner.send_discovery_packets()?;
+    runner.listen()
 }
 
 
 pub fn discover_via_ip_addr(dst_addr: IpAddr) -> anyhow::Result<Option<InternalHost>> {
     let (interface, mut sender_context) = get_interface_and_sender_context()?;
-    let (mut tx, rx) = open_eth_channel(&interface, &get_config(), datalink::channel)?;
-    let duration_in_ms: Duration = Duration::from_millis(PROBE_TIMEOUT_MS);
-    let packet: Vec<u8> = match dst_addr {
+    let packet_type = match dst_addr {
         IpAddr::V4(dst_addr_v4) => {
             sender_context.dst_addr_v4 = Some(dst_addr_v4);
-            packets::create_single_packet(&sender_context, PacketType::Arp)?
-        },
+            PacketType::Arp
+        }
         IpAddr::V6(dst_addr_v6) => {
             sender_context.dst_addr_v6 = Some(dst_addr_v6);
-            packets::create_single_packet(&sender_context, PacketType::Ndp)?
-        },
+            PacketType::Ndp
+        }
     };
-    tx.send_to(&packet, None);
-    let hosts: Vec<InternalHost> = listen_for_hosts(rx, duration_in_ms, &sender_context)?;
-    let host: Option<InternalHost> = hosts.into_iter().find(|host| host.ips.contains(&dst_addr));
+    let mut runner = DiscoveryRunner::new(&interface, &sender_context)?;
+    runner.send_single_packet(packet_type)?;
+    let hosts = runner.listen()?;
+    let host = hosts
+        .into_iter()
+        .find(|host| host.ips.contains(&dst_addr));
     Ok(host)
 }
 
@@ -77,14 +112,9 @@ pub fn discover_via_ip_addr(dst_addr: IpAddr) -> anyhow::Result<Option<InternalH
 pub fn discover_via_range(ipv4_range: Ipv4Range) -> anyhow::Result<Vec<InternalHost>> {
     let (interface, mut sender_context) = get_interface_and_sender_context()?;
     sender_context.ipv4_range = Some(ipv4_range);
-    let (mut tx, rx) = open_eth_channel(&interface, &get_config(), datalink::channel)?;
-    let duration_in_ms: Duration = Duration::from_millis(PROBE_TIMEOUT_MS);
-    let packet_types: Vec<PacketType> = vec![PacketType::Arp];
-    let packets: Vec<Vec<u8>> = packets::create_multiple_packets(&sender_context, packet_types)?;
-    for packet in packets { 
-        tx.send_to(&packet, None); 
-    }
-    Ok(listen_for_hosts(rx, duration_in_ms, &sender_context)?)
+    let mut runner = DiscoveryRunner::new(&interface, &sender_context)?;
+    runner.send_discovery_packets()?;
+    runner.listen()
 }
 
 
@@ -95,10 +125,10 @@ where F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>
     let ch: Channel = channel_opener(intf, *cfg).with_context(|| format!("opening on {}", intf.name))?;
     match ch {
         Channel::Ethernet(tx, rx) => {
-            print::print_status("Connection established successfully.");
+            print::print_status("Connection established successfully");
             Ok((tx, rx))
         },
-        _ => bail!("non-ethernet channel for {}", intf.name),
+        _ => anyhow::bail!("non-ethernet channel for {}", intf.name),
     }
 }
 
@@ -138,12 +168,10 @@ fn process_packet_for_host(
     if mac_addr == sender_context.src_mac {
         return None;
     }
-
     let is_valid = match ip_addr {
-        IpAddr::V4(ipv4_addr) => is_in_range_ipv4(&ipv4_addr, &sender_context.ipv4_range),
+        IpAddr::V4(ipv4_addr) => range::in_range_optional_range(&ipv4_addr, &sender_context.ipv4_range),
         IpAddr::V6(_) => true,
     };
-
     if is_valid {
         let mut host = host::InternalHost::from(mac_addr);
         host.ips.insert(ip_addr);
@@ -151,13 +179,6 @@ fn process_packet_for_host(
     } else {
         None
     }
-}
-
-
-fn is_in_range_ipv4(addr: &Ipv4Addr, range: &Option<Ipv4Range>) -> bool {
-    range
-        .as_ref()
-        .map_or(true, |ipv4_range: &Ipv4Range| range::in_range(addr, ipv4_range))
 }
 
 

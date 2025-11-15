@@ -48,6 +48,12 @@ pub fn in_range(ipv4_addr: &Ipv4Addr, ipv4_range: &Ipv4Range) -> bool {
     (ipv4_range.start_addr..=ipv4_range.end_addr).contains(ipv4_addr)
 }
 
+pub fn in_range_optional_range(addr: &Ipv4Addr, range: &Option<Ipv4Range>) -> bool {
+    range
+    .as_ref()
+    .map_or(true, |ipv4_range: &Ipv4Range| in_range(addr, ipv4_range))
+}
+
 // fn cidr_str_to_range(cidr: &str) -> Result<(Ipv4Addr, Ipv4Addr)> {
 //     let (ip_str, prefix_str) = cidr
 //         .split_once('/')
