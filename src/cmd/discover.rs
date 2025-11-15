@@ -26,6 +26,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
         Target::LAN => discover_lan()?,
         Target::Host { dst_addr } => discover_host(dst_addr).await?,
         Target::CIDR { ipv4_range } => discover_ipv4_range(ipv4_range).await?,
+        Target::Range { ipv4_range } => discover_ipv4_range(ipv4_range).await?,
         _ => { anyhow::bail!("this target is currently unimplemented!") }
     };
 

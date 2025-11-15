@@ -13,7 +13,6 @@ use crate::utils::print;
 
 pub enum PacketType {
     Arp,
-    Icmpv6,
     Ndp
 }
 
@@ -21,7 +20,6 @@ pub fn create_single_packet(sender_context: &SenderContext, packet_type: PacketT
     let packet: Vec<u8> = match packet_type {
         PacketType::Arp     => create_arp_packet(sender_context)?,
         PacketType::Ndp     => create_ndp_packet(sender_context)?,
-        PacketType::Icmpv6  => create_icmpv6_packet(sender_context)?
     };
     Ok(packet)
 }

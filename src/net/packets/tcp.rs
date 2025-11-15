@@ -53,7 +53,7 @@ mod tests {
 
     #[tokio::test]
     async fn handshake_range_discovery_should_collect_found_hosts() {
-        let range = Ipv4Range::_new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
+        let range = Ipv4Range::new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
         let mock_prober = |ip: IpAddr| async move {
             if ip == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)) {
                 Ok(Some(ExternalHost::from(ip)))
@@ -68,7 +68,7 @@ mod tests {
 
     #[tokio::test]
     async fn handshake_range_discovery_returns_empty_vec_when_none_found() {
-        let range = Ipv4Range::_new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
+        let range = Ipv4Range::new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
         let mock_prober = |_: IpAddr| async move {
             Ok(None)
         };
@@ -78,7 +78,7 @@ mod tests {
 
     #[tokio::test]
     async fn handshake_range_discovery_handles_empty_range() {
-        let range = Ipv4Range::_new(Ipv4Addr::new(10, 0, 0, 5), Ipv4Addr::new(10, 0, 0, 4));
+        let range = Ipv4Range::new(Ipv4Addr::new(10, 0, 0, 5), Ipv4Addr::new(10, 0, 0, 4));
         let mock_prober = |ip: IpAddr| async move {
             panic!("Prober should not be called for an empty range, but was called for {}", ip);
             #[allow(unreachable_code)]
@@ -90,7 +90,7 @@ mod tests {
 
     #[tokio::test]
     async fn handshake_range_discovery_propagates_prober_error() {
-        let range = Ipv4Range::_new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
+        let range = Ipv4Range::new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
         let mock_prober = |_: IpAddr| async move {
             Err(anyhow::anyhow!("Network subsystem failure!"))
         };

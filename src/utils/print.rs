@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use colored::*;
 use rand;
+use unicode_width::UnicodeWidthStr;
 use crate::{GLOBAL_KEY_WIDTH, SPINNER, utils::colors};
 
 const TOTAL_WIDTH: usize = 64;
@@ -92,10 +93,11 @@ pub fn print_banner() {
 }
 
 fn initialize() {
-    let sep = "═════════════════════".bright_black();
-    let text = "⟦ INITIALIZING MAPPR ⟧".bright_green().bold();
-    let end = "═════════════════════".bright_black();
-    println!("{}{}{}", sep, text, end);
+    let text_content = format!("⟦ INITIALIZING MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
+    let text_width = UnicodeWidthStr::width(text_content.as_str());
+    let text: ColoredString = text_content.bright_green().bold();
+    let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
+    println!("{}{}{}", sep, text, sep);
 }
 
 fn banner(id: u8) {

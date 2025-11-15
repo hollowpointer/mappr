@@ -42,7 +42,7 @@ pub enum Target {
     LAN,
     CIDR { ipv4_range: Ipv4Range },
     Host { dst_addr: IpAddr },
-    // Range { start: Ipv4Addr, end: Ipv4Addr },
+    Range { ipv4_range: Ipv4Range },
     VPN,
 }
 
@@ -64,12 +64,37 @@ impl FromStr for Target {
             return Ok(Target::Host { dst_addr: ip });
         }
 
-        // range: 192.168.1.10-192.168.1.50
-        // if let Some((a, b)) = s.split_once('-') {
-        //     let start = a.parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
-        //     let end   = b.parse::<Ipv4Addr>().map_err(|e| e.to_string())?;
-        //     return Ok(Target::Range { start, end });
-        // }
+        // range: 192.168.1.10-192.168.1.50 or 192.168.0.1-2.66
+        if let Some((a, b)) = s.split_once('-') {
+            let start_addr: Ipv4Addr = a.parse::<Ipv4Addr>().map_err(|e| e.to_string())?;            
+            let end_addr: Ipv4Addr = match b.parse::<Ipv4Addr>() {
+                Ok(full_addr) => {
+                    full_addr
+                }
+                Err(_) => {
+                    let mut end_octets = start_addr.octets();             
+                    let partial_octets: Vec<u8> = b.split('.')
+                        .map(|octet_str| octet_str.parse::<u8>())
+                        .collect::<Result<Vec<u8>, _>>()
+                        .map_err(|e| format!("Invalid end range '{b}': {e}"))?;
+
+                    if partial_octets.is_empty() {
+                        return Err(format!("End range cannot be empty: {s}"));
+                    }
+                    if partial_octets.len() > 4 {
+                        return Err(format!("End range has too many octets: {b}"));
+                    }
+                    let partial_len = partial_octets.len();
+                    let start_index = 4 - partial_len;
+                    end_octets[start_index..].copy_from_slice(&partial_octets);
+                    Ipv4Addr::from(end_octets)
+                }
+            };
+            
+            // 3. Create the range (no change here)
+            let ipv4_range: Ipv4Range = Ipv4Range::new(start_addr, end_addr);
+            return Ok(Target::Range { ipv4_range });
+        }
 
         // cidr: 10.0.0.0/24  (basic check)
         if let Some((ip_str, prefix_str)) = s.split_once('/') {
