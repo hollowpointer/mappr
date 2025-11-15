@@ -85,10 +85,10 @@ fn create_arp_packets(sender_context: &SenderContext) -> anyhow::Result<Vec<Vec<
             explicit_range.clone()
         }
         None => {
-            range::cidr_range(src_addr, src_net.prefix())
+            range::cidr_range(src_addr, src_net.prefix())?
         }
     };
-    let packets: Vec<Vec<u8>> = range::ip_iter(&target_range)
+    let packets: Vec<Vec<u8>> = target_range.iter()
         .map(|dst_addr| {
             arp::create_packet(src_mac, dst_mac, src_addr, dst_addr)
         })

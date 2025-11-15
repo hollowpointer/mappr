@@ -3,7 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use tokio::time::timeout;
 use crate::host::ExternalHost;
-use crate::net::range::{ip_iter, Ipv4Range};
+use crate::net::range::Ipv4Range;
 use std::future::Future;
 
 pub async fn handshake_range_discovery<F, Fut>( 
@@ -15,7 +15,7 @@ where
     Fut: Future<Output = anyhow::Result<Option<ExternalHost>>>
 {
     let mut result: Vec<ExternalHost> = Vec::new();
-    for ip in ip_iter(&ipv4_range) {
+    for ip in ipv4_range.iter() {
         if let Some(found) = prober(IpAddr::V4(ip)).await? { 
             result.push(found); 
         }

@@ -169,7 +169,7 @@ fn process_packet_for_host(
         return None;
     }
     let is_valid = match ip_addr {
-        IpAddr::V4(ipv4_addr) => range::in_range_optional_range(&ipv4_addr, &sender_context.ipv4_range),
+        IpAddr::V4(ipv4_addr) => range::in_optional_range(&ipv4_addr, &sender_context.ipv4_range),
         IpAddr::V6(_) => true,
     };
     if is_valid {

@@ -1,11 +1,32 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 
 use colored::*;
+use indicatif::{ProgressBar, ProgressStyle};
 use rand;
 use unicode_width::UnicodeWidthStr;
-use crate::{GLOBAL_KEY_WIDTH, SPINNER, utils::colors};
+use crate::{GLOBAL_KEY_WIDTH, utils::colors};
+use once_cell::sync::Lazy;
 
 const TOTAL_WIDTH: usize = 64;
+
+pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
+    let pb = ProgressBar::new_spinner();
+    let style = ProgressStyle::with_template("{spinner:.blue} {msg}")
+        .unwrap()
+        .tick_strings(
+            &["▁▁▁▁▁",
+                "▁▂▂▂▁",
+                "▁▄▂▄▁",
+                "▂▄▆▄▂",
+                "▄▆█▆▄",
+                "▂▄▆▄▂",
+                "▁▄▂▄▁",
+                "▁▂▂▂▁"]
+        );
+    pb.set_style(style);
+    pb.enable_steady_tick(Duration::from_millis(100));
+    pb
+});
 
 const BANNER_0: &str =  r#"
          ███▄ ▄███▓ ▄▄▄       ██▓███   ██▓███   ██▀███

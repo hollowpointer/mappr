@@ -9,7 +9,7 @@ use crate::net::datalink::{channel, interface};
 use crate::net::range::Ipv4Range;
 use crate::net::{ip, range};
 use crate::net::packets::tcp;
-use crate::{print, SPINNER};
+use crate::print::{self, SPINNER};
 
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
@@ -25,7 +25,6 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     let mut hosts: Vec<Box<dyn Host>> = match target {
         Target::LAN => discover_lan()?,
         Target::Host { dst_addr } => discover_host(dst_addr).await?,
-        Target::CIDR { ipv4_range } => discover_ipv4_range(ipv4_range).await?,
         Target::Range { ipv4_range } => discover_ipv4_range(ipv4_range).await?,
         _ => { anyhow::bail!("this target is currently unimplemented!") }
     };
@@ -47,7 +46,7 @@ async fn discover_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Box<dyn Host>>> {
     let host: Vec<InternalHost> = if let Some(host) = channel::discover_via_ip_addr(dst_addr)? {
         vec![host]
     } else { 
-        vec![]
+        return Err(anyhow::anyhow!("Failed to discover the host"))
     };
     Ok(host::internal_to_box(host))
 }
@@ -72,6 +71,9 @@ async fn tcp_handshake_discovery(target: Target) -> anyhow::Result<Vec<Box<dyn H
         Target::Host { dst_addr } => {
             tcp_handshake_discovery_host(dst_addr).await?
         },
+        Target::Range { ipv4_range } => {
+            tcp::handshake_range_discovery(ipv4_range, tcp::handshake_probe).await?
+        }
         _ => anyhow::bail!("Handshake discovery for this target not implemented!")
     };
     Ok(host::external_to_box(hosts))
@@ -97,7 +99,7 @@ async fn tcp_handshake_discovery_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Ex
     {
         Ok(vec![host])
     } else {
-        Ok(vec![])
+        Err(anyhow::anyhow!("Failed to discover any hosts with a full tcp handshake"))
     }
 }
 

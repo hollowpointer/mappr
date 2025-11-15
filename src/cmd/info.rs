@@ -7,7 +7,7 @@ use sys_info;
 
 use crate::GLOBAL_KEY_WIDTH;
 use crate::net::datalink::interface::{self, NetworkInterfaceExtension};
-use crate::{print, utils::colors, SPINNER};
+use crate::{print::{self, SPINNER}, utils::colors};
 
 mod services;
 mod firewall;
