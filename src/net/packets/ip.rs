@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use anyhow::Context;
 use pnet::packet::ethernet::EthernetPacket;
-use pnet::packet::ip::IpNextHeaderProtocol;
+use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet::packet::ipv4::{checksum, Ipv4Packet, MutableIpv4Packet};
 use pnet::packet::ipv6::{Ipv6Packet, MutableIpv6Packet};
 use pnet::packet::Packet;
@@ -50,12 +50,15 @@ pub fn _create_ipv4_header(buf: &mut[u8],
     Ok(())
 }
 
-pub fn handle_v6_packet(eth_packet: EthernetPacket) -> anyhow::Result<IpAddr> {
-    let ipv6_packet = Ipv6Packet::new(eth_packet.payload())
+pub fn extract_source_addr_if_icmpv6(eth_packet: EthernetPacket) -> anyhow::Result<Option<IpAddr>> {
+    let ipv6_packet: Ipv6Packet = Ipv6Packet::new(eth_packet.payload())
         .context(format!(
             "truncated or invalid IPv6 packet (payload len {})",
             eth_packet.payload().len()
         ))?;
-    let src_addr: IpAddr = IpAddr::V6(ipv6_packet.get_source());
-    Ok(src_addr)
+    if ipv6_packet.get_next_header() == IpNextHeaderProtocols::Icmpv6 {
+        let src_addr: IpAddr = IpAddr::V6(ipv6_packet.get_source());
+        return Ok(Some(src_addr));
+    }
+    Ok(None)
 }

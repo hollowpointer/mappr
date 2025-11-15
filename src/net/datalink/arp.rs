@@ -25,12 +25,11 @@ pub fn create_packet(src_mac: MacAddr, dst_mac: MacAddr, src_addr: Ipv4Addr, dst
     Ok(Vec::from(buffer))
 }
 
-pub fn handle_packet(ethernet_packet: EthernetPacket) -> anyhow::Result<IpAddr> {
+pub fn get_ip_addr(ethernet_packet: EthernetPacket) -> anyhow::Result<IpAddr> {
     let arp_packet = ArpPacket::new(ethernet_packet.payload())
         .context(format!(
             "truncated or invalid ARP packet (payload len {})",
             ethernet_packet.payload().len()
         ))?;
-    let src_addr: IpAddr = IpAddr::V4(arp_packet.get_sender_proto_addr());
-    Ok(src_addr)
+    Ok(IpAddr::V4(arp_packet.get_sender_proto_addr()))
 }

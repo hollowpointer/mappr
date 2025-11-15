@@ -7,6 +7,8 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use clap::{Parser, Subcommand};
 
+use crate::net::range::{self, Ipv4Range};
+
 #[derive(Parser)]
 #[command(name = "mappr")]
 #[command(about = "A modern network mapper.")]
@@ -38,7 +40,7 @@ pub enum Commands {
 #[derive(Clone, Debug)]
 pub enum Target {
     LAN,
-    CIDR { ipv4_addr: Ipv4Addr, prefix: u8 },
+    CIDR { ipv4_range: Ipv4Range },
     Host { dst_addr: IpAddr },
     // Range { start: Ipv4Addr, end: Ipv4Addr },
     VPN,
@@ -74,7 +76,8 @@ impl FromStr for Target {
             let ip_result = ip_str.parse::<Ipv4Addr>();
             let prefix_result = prefix_str.parse::<u8>();
             if let (Ok(ipv4_addr), Ok(prefix)) = (ip_result, prefix_result) {
-                return Ok(Target::CIDR { ipv4_addr, prefix });
+                let ipv4_range: Ipv4Range = range::cidr_range(ipv4_addr, prefix);
+                return Ok(Target::CIDR { ipv4_range });
             }
         }
 

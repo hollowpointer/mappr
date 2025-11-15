@@ -15,6 +15,7 @@ use crate::print;
 
 const PROBE_TIMEOUT_MS: u64 = 2000;
 
+
 pub struct SenderContext {
     pub src_mac: MacAddr,
     pub ipv4_net: Option<Ipv4Network>,
@@ -48,7 +49,7 @@ pub fn discover_via_eth() -> anyhow::Result<Vec<InternalHost>> {
     for packet in packets { 
         tx.send_to(&packet, None); 
     }
-    Ok(listen_for_hosts(rx, duration_in_ms, &sender_context))
+    Ok(listen_for_hosts(rx, duration_in_ms, &sender_context)?)
 }
 
 
@@ -67,9 +68,8 @@ pub fn discover_via_ip_addr(dst_addr: IpAddr) -> anyhow::Result<Option<InternalH
         },
     };
     tx.send_to(&packet, None);
-    let host: Option<InternalHost> = listen_for_hosts(rx, duration_in_ms, &sender_context)
-        .into_iter()
-        .find(|host| host.ips.contains(&dst_addr));
+    let hosts: Vec<InternalHost> = listen_for_hosts(rx, duration_in_ms, &sender_context)?;
+    let host: Option<InternalHost> = hosts.into_iter().find(|host| host.ips.contains(&dst_addr));
     Ok(host)
 }
 
@@ -84,7 +84,7 @@ pub fn discover_via_range(ipv4_range: Ipv4Range) -> anyhow::Result<Vec<InternalH
     for packet in packets { 
         tx.send_to(&packet, None); 
     }
-    Ok(listen_for_hosts(rx, duration_in_ms, &sender_context))
+    Ok(listen_for_hosts(rx, duration_in_ms, &sender_context)?)
 }
 
 
@@ -103,21 +103,61 @@ where F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>
 }
 
 
-fn listen_for_hosts(mut rx: Box<dyn DataLinkReceiver>, duration_in_ms: Duration, sender_context: &SenderContext) -> Vec<InternalHost> {
+fn listen_for_hosts(
+    mut rx: Box<dyn DataLinkReceiver>,
+    duration_in_ms: Duration,
+    sender_context: &SenderContext,
+) -> anyhow::Result<Vec<InternalHost>> {
     let mut hosts: Vec<InternalHost> = Vec::new();
     let deadline = Instant::now() + duration_in_ms;
     while deadline > Instant::now() {
-        match rx.next() {
-            Ok(frame) => {
-                if let Ok(Some(host)) = packets::handle_frame(frame, sender_context) {
-                    hosts.push(host);
-                }
-            },
-            Err(_) => { }
+        let frame = match rx.next() {
+            Ok(frame) => frame,
+            Err(_) => continue,
+        };
+        let (mac_addr, ip_addr) =
+            if let Ok(Some((mac_addr, ip_addr))) = packets::handle_frame(frame) {
+                (mac_addr, ip_addr)
+            } else {
+                continue;
+            };
+        if let Some(host) = process_packet_for_host(mac_addr, ip_addr, sender_context) {
+            hosts.push(host);
         }
     }
     host::merge_by_mac(&mut hosts);
-    hosts
+    Ok(hosts)
+}
+
+
+fn process_packet_for_host(
+    mac_addr: MacAddr,
+    ip_addr: IpAddr,
+    sender_context: &SenderContext,
+) -> Option<InternalHost> {
+    if mac_addr == sender_context.src_mac {
+        return None;
+    }
+
+    let is_valid = match ip_addr {
+        IpAddr::V4(ipv4_addr) => is_in_range_ipv4(&ipv4_addr, &sender_context.ipv4_range),
+        IpAddr::V6(_) => true,
+    };
+
+    if is_valid {
+        let mut host = host::InternalHost::from(mac_addr);
+        host.ips.insert(ip_addr);
+        Some(host)
+    } else {
+        None
+    }
+}
+
+
+fn is_in_range_ipv4(addr: &Ipv4Addr, range: &Option<Ipv4Range>) -> bool {
+    range
+        .as_ref()
+        .map_or(true, |ipv4_range: &Ipv4Range| range::in_range(addr, ipv4_range))
 }
 
 

@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 use pnet::ipnetwork::Ipv4Network;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Ipv4Range {
     pub start_addr: Ipv4Addr,
     pub end_addr: Ipv4Addr

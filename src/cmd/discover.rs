@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use anyhow::{self, Context, Ok};
 use is_root::is_root;
 use pnet::datalink::NetworkInterface;
@@ -25,7 +25,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     let mut hosts: Vec<Box<dyn Host>> = match target {
         Target::LAN => discover_lan()?,
         Target::Host { dst_addr } => discover_host(dst_addr).await?,
-        Target::CIDR { ipv4_addr, prefix } => discover_cidr(ipv4_addr, prefix).await?,
+        Target::CIDR { ipv4_range } => discover_ipv4_range(ipv4_range).await?,
         _ => { anyhow::bail!("this target is currently unimplemented!") }
     };
 
@@ -52,9 +52,9 @@ async fn discover_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Box<dyn Host>>> {
 }
 
 
-async fn discover_cidr(ipv4_addr: Ipv4Addr, prefix: u8) -> anyhow::Result<Vec<Box<dyn Host>>> {
-    let ipv4_range: Ipv4Range = range::cidr_range(ipv4_addr, prefix);
-    if !ipv4_addr.is_private() {
+async fn discover_ipv4_range(ipv4_range: Ipv4Range) -> anyhow::Result<Vec<Box<dyn Host>>> {
+    print::print_status(&format!("Discovering from {} to {}", ipv4_range.start_addr, ipv4_range.end_addr).to_string());
+    if !ipv4_range.start_addr.is_private() {
         let hosts: Vec<ExternalHost> = tcp::handshake_range_discovery(ipv4_range, tcp::handshake_probe).await?;
         return Ok(host::external_to_box(hosts));
     }

@@ -2,11 +2,10 @@ pub mod icmp;
 mod ip;
 pub mod tcp;
 
-use std::net::Ipv4Addr;
-use anyhow::{Context, Ok, bail};
+use std::net::{IpAddr, Ipv4Addr};
+use anyhow::{Context, Ok};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::util::MacAddr;
-use crate::host::InternalHost;
 use crate::net::datalink::arp;
 use crate::net::datalink::channel::SenderContext;
 use crate::net::range::{self, Ipv4Range};
@@ -107,29 +106,77 @@ fn create_ndp_packet(_sender_context: &SenderContext) -> anyhow::Result<Vec<u8>>
     anyhow::bail!("Ndp packet creation not possible as of now");
 }
 
-pub fn handle_frame(frame: &[u8], sender_context: &SenderContext) -> anyhow::Result<Option<InternalHost>> {
+pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<(MacAddr, IpAddr)>> {
     let eth = EthernetPacket::new(frame)
         .context("truncated or invalid Ethernet frame")?;
     let mac_addr: MacAddr = eth.get_source();
-    if sender_context.src_mac == mac_addr {
-        return Ok(None)
+    let ip: Option<IpAddr> = match eth.get_ethertype() {
+        EtherTypes::Arp => Some(arp::get_ip_addr(eth)?),
+        EtherTypes::Ipv6 => ip::extract_source_addr_if_icmpv6(eth)?,
+        _ => None,
     };
-    let ip = match eth.get_ethertype() {
-        EtherTypes::Arp => arp::handle_packet(eth)?,
-        EtherTypes::Ipv6 => ip::handle_v6_packet(eth)?,
-        other => bail!("unsupported ethertype: 0x{:04x}", other.0),
-    };
-    match ip {
-        std::net::IpAddr::V4(ipv4_addr) => {
-            if let Some(ipv4_range) = &sender_context.ipv4_range {
-                if !range::in_range(&ipv4_addr, ipv4_range) {
-                    return Ok(None);
-                }
-            }
-        },
-        std::net::IpAddr::V6(_) => { },
+    if let Some(ip) = ip {
+        return Ok(Some((mac_addr, ip)));
     }
-    let mut host: InternalHost = InternalHost::from(mac_addr);
-    host.ips.insert(ip);
-    Ok(Some(host))
+    Ok(None)
+}
+
+
+// ╔════════════════════════════════════════════╗
+// ║ ████████╗███████╗███████╗████████╗███████╗ ║
+// ║ ╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██╔════╝ ║
+// ║    ██║   █████╗  ███████╗   ██║   ███████╗ ║
+// ║    ██║   ██╔══╝  ╚════██║   ██║   ╚════██║ ║
+// ║    ██║   ███████╗███████║   ██║   ███████║ ║
+// ║    ╚═╝   ╚══════╝╚══════╝   ╚═╝   ╚══════╝ ║
+// ╚════════════════════════════════════════════╝
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use pnet::packet::ethernet::EtherTypes;
+    use pnet::util::MacAddr;
+    use crate::net::datalink::ethernet;
+    use crate::net::utils::MIN_ETH_FRAME_NO_FCS;
+
+    const ARP_LEN: usize = 28;
+    const ETH_HDR_LEN: usize = 14;
+
+    pub fn buf() -> [u8; MIN_ETH_FRAME_NO_FCS] {
+        [0u8; MIN_ETH_FRAME_NO_FCS]
+    }
+
+    #[test]
+    fn handle_frame_errors_on_short_ethernet_buffer() {
+        // Too short to contain an Ethernet header
+        let short = [0u8; ETH_HDR_LEN - 1];
+
+        let err = handle_frame(&short).unwrap_err();
+
+        assert!(
+            err.to_string().contains("Ethernet"),
+            "unexpected error: {err:?}"
+        );
+    }
+
+
+    #[test]
+    fn handle_frame_errors_on_bad_arp_buffer() {
+        // Frame declares ARP but payload is too short for an ARP packet
+        let mut frame = vec![0u8; ETH_HDR_LEN + ARP_LEN - 1]; // one byte short
+        ethernet::make_header(
+            &mut frame,
+            MacAddr::zero(),
+            MacAddr::broadcast(),
+            EtherTypes::Arp,
+        )
+            .expect("eth header");
+
+        let err = handle_frame(&frame).unwrap_err();
+
+        assert!(
+            err.to_string().contains("ARP"),
+            "unexpected error: {err:?}"
+        );
+    }
 }
