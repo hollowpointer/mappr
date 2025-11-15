@@ -1,8 +1,9 @@
 # mappr 🗺️
 
-A simple network mapping and discovery tool.
+Easy to use network mapping and discovery tool.
 
-<img width="1200" height="720" alt="mappr" src="https://github.com/user-attachments/assets/5e075852-3aae-4cf7-b70c-ab999840bb1a" />
+<img width="1200" height="720" alt="mappr" src="https://github.com/user-attachments/assets/05722b01-cf9f-4820-9fd0-7c53f22928ee" />
+
 
 ## ⚠️ Requirements
 
@@ -35,35 +36,79 @@ At the moment, you must build `mappr` manually.
     ```bash
     cd target/release
     ```
-
+    
 ---
 
 ## 🚀 Usage
 
-You will likely need `sudo` (root privileges) for network discovery operations.
+> **Heads-Up:** Network discovery operations (`discover`) typically require root privileges. You will likely need to prefix these commands with `sudo`.
 
-### Discover LAN
+### Core Commands
 
-Scans the local area network.
+Here's a quick overview of the main commands (much more will be added soon):
 
-* **Command:**
+| Command | Alias | Description |
+| :--- | :--- | :--- |
+| `mappr discover <target>`| `mappr d <target>` | Scans a specific, user-defined target or range (see below). |
+| `mappr info` | `mappr i` | Displays info about your local network interfaces. |
+
+---
+
+### Host Discovery
+
+You can discover hosts in two main ways.
+
+**1. Automatic LAN Scan**
+
+  * Automatically finds and scans your local network based on your computer's current IP address and subnet.
+  * **Command:**
     ```bash
-    (sudo) ./mappr discover lan
+    mappr d lan
     ```
-* **Short alias:**
-    ```bash
-    (sudo) ./mappr d lan
-    ```
+
+**2. Specific Target Scan**
+
+  * Manually define a specific target or range to scan. This is accepted in three flexible formats:
+
+      * **CIDR Notation:** Scans the entire subnet.
+
+        ```bash
+        mappr d 10.0.0.0/24
+        ```
+
+      * **Full IP Range:** Scans all IPs between the two addresses.
+
+        ```bash
+        mappr d 172.16.0.1-172.16.0.254
+        ```
+
+      * **Partial Octet Range (Shorthand):** A convenient shortcut where `mappr` fills in the blanks from the first IP.
+
+        *Example 1 (Last octet):*
+
+        ```bash
+        # Expands to 192.168.0.1-192.168.0.50
+        mappr d 192.168.0.1-50
+        ```
+
+        *Example 2 (Multiple octets):*
+
+        ```bash
+        # Expands to 10.0.0.1-10.1.2.3
+        mappr d 10.0.0.1-1.2.3
+        ```
+
+---
 
 ### Show Info
 
-Displays information about your local network interfaces.
+Displays information about your network configuration.
 
 * **Command:**
     ```bash
-    (sudo) ./mappr info
+    mappr info
     ```
 * **Short alias:**
     ```bash
-    (sudo) ./mappr i
+    mappr i
     ```
