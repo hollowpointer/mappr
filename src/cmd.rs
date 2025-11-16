@@ -1,11 +1,11 @@
 pub mod discover;
-pub mod listen;
 pub mod info;
+pub mod listen;
 pub mod scan;
 
+use clap::{Parser, Subcommand};
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
-use clap::{Parser, Subcommand};
 
 use crate::net::range::{self, Ipv4Range};
 
@@ -27,14 +27,10 @@ pub enum Commands {
     Listen,
     /// Discover hosts in a given network
     #[command(alias = "d")]
-    Discover {
-        target: Target,
-    },
+    Discover { target: Target },
     /// Scan one or more hosts
     #[command(alias = "s")]
-    Scan {
-        target: Target,
-    }
+    Scan { target: Target },
 }
 
 #[derive(Clone, Debug)]
@@ -46,7 +42,9 @@ pub enum Target {
 }
 
 impl CommandLine {
-    pub fn parse_args() -> Self { Self::parse() }
+    pub fn parse_args() -> Self {
+        Self::parse()
+    }
 }
 
 impl FromStr for Target {
@@ -74,7 +72,6 @@ impl FromStr for Target {
     }
 }
 
-
 fn parse_keyword(s_lower: &str) -> Option<Target> {
     match s_lower {
         "lan" => Some(Target::LAN),
@@ -83,13 +80,11 @@ fn parse_keyword(s_lower: &str) -> Option<Target> {
     }
 }
 
-
 fn parse_host(s: &str) -> Option<Target> {
     s.parse::<IpAddr>()
         .ok()
         .map(|dst_addr| Target::Host { dst_addr })
 }
-
 
 fn parse_ip_range(s: &str) -> Result<Option<Target>, String> {
     let Some((start_str, end_str)) = s.split_once('-') else {
@@ -105,7 +100,6 @@ fn parse_ip_range(s: &str) -> Result<Option<Target>, String> {
     let ipv4_range = Ipv4Range::new(start_addr, end_addr);
     Ok(Some(Target::Range { ipv4_range }))
 }
-
 
 fn parse_range_end_addr(
     end_str: &str,
@@ -137,7 +131,6 @@ fn parse_range_end_addr(
     Ok(Ipv4Addr::from(end_octets))
 }
 
-
 fn parse_cidr_range(s: &str) -> Result<Option<Target>, String> {
     let Some((ip_str, prefix_str)) = s.split_once('/') else {
         return Ok(None);
@@ -151,13 +144,10 @@ fn parse_cidr_range(s: &str) -> Result<Option<Target>, String> {
         .parse::<u8>()
         .map_err(|e| format!("Invalid prefix in CIDR '{prefix_str}': {e}"))?;
 
-    let ipv4_range = range::cidr_range(ipv4_addr, prefix)
-        .map_err(|e| e.to_string())?;
+    let ipv4_range = range::cidr_range(ipv4_addr, prefix).map_err(|e| e.to_string())?;
 
     Ok(Some(Target::Range { ipv4_range }))
 }
-
-
 
 // ╔════════════════════════════════════════════╗
 // ║ ████████╗███████╗███████╗████████╗███████╗ ║
@@ -201,7 +191,7 @@ mod tests {
             parse_range_end_addr("10.2.1", &start, s),
             Ok(Ipv4Addr::new(192, 10, 2, 1))
         );
-        
+
         // Test partial 4-octet end (same as full)
         assert_eq!(
             parse_range_end_addr("10.20.30.40", &start, s),
@@ -209,15 +199,15 @@ mod tests {
         );
 
         // --- Error Cases ---
-        
+
         // Invalid octet
         let err_s = "192.168.1.10-2.256";
         assert!(parse_range_end_addr("2.256", &start, err_s).is_err());
-        
+
         // Too many octets
         let err_s = "192.168.1.10-1.2.3.4.5";
         assert!(parse_range_end_addr("1.2.3.4.5", &start, err_s).is_err());
-        
+
         // Empty octets
         let err_s = "192.168.1.10-";
         assert!(parse_range_end_addr("", &start, err_s).is_err());
@@ -230,18 +220,33 @@ mod tests {
         assert!(matches!(Target::from_str("VPN"), Ok(Target::VPN)));
 
         // Test host
-        assert!(matches!(Target::from_str("1.1.1.1"), Ok(Target::Host { .. })));
+        assert!(matches!(
+            Target::from_str("1.1.1.1"),
+            Ok(Target::Host { .. })
+        ));
         assert!(matches!(Target::from_str("::1"), Ok(Target::Host { .. })));
-        
+
         // Test full range
-        assert!(matches!(Target::from_str("10.0.0.1-10.0.0.255"), Ok(Target::Range { .. })));
-        
+        assert!(matches!(
+            Target::from_str("10.0.0.1-10.0.0.255"),
+            Ok(Target::Range { .. })
+        ));
+
         // Test partial range
-        assert!(matches!(Target::from_str("192.168.1.1-255"), Ok(Target::Range { .. })));
-        assert!(matches!(Target::from_str("192.168.1.1-2.255"), Ok(Target::Range { .. })));
-        
+        assert!(matches!(
+            Target::from_str("192.168.1.1-255"),
+            Ok(Target::Range { .. })
+        ));
+        assert!(matches!(
+            Target::from_str("192.168.1.1-2.255"),
+            Ok(Target::Range { .. })
+        ));
+
         // Test CIDR
-        assert!(matches!(Target::from_str("10.0.0.0/24"), Ok(Target::Range { .. })));
+        assert!(matches!(
+            Target::from_str("10.0.0.0/24"),
+            Ok(Target::Range { .. })
+        ));
 
         // Test invalid
         assert!(Target::from_str("not-an-ip").is_err());

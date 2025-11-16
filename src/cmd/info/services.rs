@@ -1,16 +1,21 @@
-use std::{collections::{HashMap, HashSet}, net::IpAddr};
+use std::{
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+};
 
+use colored::*;
 use netstat2::{AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, get_sockets_info};
 use sysinfo::{Pid, System};
-use colored::*;
 
-use crate::{cmd::info::GLOBAL_KEY_WIDTH, utils::{colors, print}};
-
+use crate::{
+    cmd::info::GLOBAL_KEY_WIDTH,
+    utils::{colors, print},
+};
 
 pub struct IpServiceGroup {
     ip_addr: IpAddr,
     tcp_services: Vec<Service>,
-    udp_services: Vec<Service>
+    udp_services: Vec<Service>,
 }
 
 impl IpServiceGroup {
@@ -18,7 +23,7 @@ impl IpServiceGroup {
         Self {
             ip_addr,
             tcp_services,
-            udp_services
+            udp_services,
         }
     }
 }
@@ -26,7 +31,7 @@ impl IpServiceGroup {
 struct Service {
     name: String,
     local_addr: IpAddr,
-    local_ports: HashSet<u16>
+    local_ports: HashSet<u16>,
 }
 
 impl Service {
@@ -41,7 +46,7 @@ impl Service {
 
 pub fn print_local_services(service_groups: Vec<IpServiceGroup>) -> anyhow::Result<()> {
     print::header("local services");
-    
+
     for (idx, group) in service_groups.iter().enumerate() {
         let ip_addr = group.ip_addr;
         let tcp_services = &group.tcp_services;
@@ -60,13 +65,26 @@ pub fn print_local_services(service_groups: Vec<IpServiceGroup>) -> anyhow::Resu
         } else {
             ip_addr.to_string().color(colors::IPV6_ADDR)
         };
-        print::println(format!("{}", format!("[{}]", ip_addr_colored).color(colors::SEPARATOR)).as_str());
+        print::println(
+            format!(
+                "{}",
+                format!("[{}]", ip_addr_colored).color(colors::SEPARATOR)
+            )
+            .as_str(),
+        );
 
         // Print TCP Services
         if has_tcp {
             let tcp_branch = if has_udp { "├─" } else { "└─" };
             let vertical_branch = if has_udp { "│" } else { " " };
-            print::println(format!(" {} {}", tcp_branch.color(colors::SEPARATOR), "TCP".color(colors::PRIMARY)).as_str());
+            print::println(
+                format!(
+                    " {} {}",
+                    tcp_branch.color(colors::SEPARATOR),
+                    "TCP".color(colors::PRIMARY)
+                )
+                .as_str(),
+            );
 
             for (i, service) in tcp_services.iter().enumerate() {
                 print_service_line(i, service, vertical_branch, tcp_services.len());
@@ -77,34 +95,52 @@ pub fn print_local_services(service_groups: Vec<IpServiceGroup>) -> anyhow::Resu
         if has_udp {
             let udp_branch = "└─"; // UDP is always the last branch if it exists
             let vertical_branch = " "; // No vertical (│) line needed below UDP
-            print::println(format!(" {} {}", udp_branch.color(colors::SEPARATOR), "UDP".color(colors::PRIMARY)).as_str());
+            print::println(
+                format!(
+                    " {} {}",
+                    udp_branch.color(colors::SEPARATOR),
+                    "UDP".color(colors::PRIMARY)
+                )
+                .as_str(),
+            );
 
             for (i, service) in udp_services.iter().enumerate() {
                 print_service_line(i, service, vertical_branch, udp_services.len())
             }
         }
 
-        if idx + 1 != service_groups.len() { print::println(""); }
+        if idx + 1 != service_groups.len() {
+            print::println("");
+        }
     }
     Ok(())
 }
 
 fn print_service_line(idx: usize, service: &Service, vertical_branch: &str, services_len: usize) {
     let last: bool = idx + 1 == services_len;
-    let branch: ColoredString = if last { "└─".color(colors::SEPARATOR) } else { "├─".color(colors::SEPARATOR) };
+    let branch: ColoredString = if last {
+        "└─".color(colors::SEPARATOR)
+    } else {
+        "├─".color(colors::SEPARATOR)
+    };
     let dashes: usize = GLOBAL_KEY_WIDTH.get() - service.name.len() - 5;
 
     let num_ports = service.local_ports.len();
 
-    let mut port_strings: Vec<String> = service.local_ports.iter()
+    let mut port_strings: Vec<String> = service
+        .local_ports
+        .iter()
         .take(5)
         .map(|p| p.to_string())
         .collect();
 
-    if num_ports > 5 { port_strings.push("...".to_string()); }
+    if num_ports > 5 {
+        port_strings.push("...".to_string());
+    }
     let ports: String = port_strings.join(", ");
 
-    let output: String = format!(" {}   {branch} {}{}{}{}",
+    let output: String = format!(
+        " {}   {branch} {}{}{}{}",
         vertical_branch.color(colors::SEPARATOR),
         service.name.color(colors::SECONDARY),
         ".".repeat(dashes).color(colors::SEPARATOR),
@@ -121,14 +157,16 @@ pub fn build_socket_maps() -> anyhow::Result<(Vec<IpServiceGroup>, usize)> {
     let sys = System::new_all();
     let mut longest_name: usize = 0;
 
-    let mut tcp_service_map: HashMap<(String, IpAddr), Service> = HashMap::new(); 
+    let mut tcp_service_map: HashMap<(String, IpAddr), Service> = HashMap::new();
     let mut udp_service_map: HashMap<(String, IpAddr), Service> = HashMap::new();
 
     for si in sockets_info {
         if let Some(&pid) = si.associated_pids.get(0) {
             if let Some(process) = sys.process(Pid::from_u32(pid)) {
                 let process_name = process.name().to_string_lossy().to_string();
-                if  process_name.len() > longest_name { longest_name = process_name.len() }
+                if process_name.len() > longest_name {
+                    longest_name = process_name.len()
+                }
                 let local_addr: IpAddr = si.local_addr();
                 let local_port: u16 = si.local_port();
                 let local_ports: HashSet<u16> = HashSet::new();
@@ -137,13 +175,13 @@ pub fn build_socket_maps() -> anyhow::Result<(Vec<IpServiceGroup>, usize)> {
                     ProtocolSocketInfo::Tcp(_) => {
                         let tcp_service_entry = tcp_service_map
                             .entry((process_name, local_addr))
-                            .or_insert_with(|| { new_service });
+                            .or_insert_with(|| new_service);
                         tcp_service_entry.local_ports.insert(local_port);
-                    },
+                    }
                     ProtocolSocketInfo::Udp(_) => {
                         let udp_service_entry = udp_service_map
                             .entry((process_name.clone(), local_addr))
-                            .or_insert_with(|| { new_service });
+                            .or_insert_with(|| new_service);
                         udp_service_entry.local_ports.insert(local_port);
                     }
                 }

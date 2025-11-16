@@ -18,7 +18,6 @@ pub fn make_header(
     Ok(())
 }
 
-
 // ╔════════════════════════════════════════════╗
 // ║ ████████╗███████╗███████╗████████╗███████╗ ║
 // ║ ╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██╔════╝ ║
@@ -31,9 +30,9 @@ pub fn make_header(
 #[cfg(test)]
 mod tests {
     const ETH_HDR_LEN: usize = 14;
+    use crate::net::datalink::ethernet::make_header;
     use pnet::datalink::MacAddr;
     use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
-    use crate::net::datalink::ethernet::make_header;
 
     #[test]
     fn ethernet_header_sets_fields() {
@@ -53,13 +52,12 @@ mod tests {
     fn ethernet_header_errors_when_buffer_too_small() {
         let mut tiny: [u8; 0] = [];
 
-        let err = make_header(&mut tiny, MacAddr::zero(), MacAddr::zero(), EtherTypes::Arp)
-            .unwrap_err();
+        let err =
+            make_header(&mut tiny, MacAddr::zero(), MacAddr::zero(), EtherTypes::Arp).unwrap_err();
 
         assert!(
             err.to_string().contains("Ethernet"),
             "unexpected error: {err:?}"
         );
     }
-
 }

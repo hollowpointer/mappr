@@ -10,7 +10,6 @@ pub struct Ipv4Range {
     pub end_addr: Ipv4Addr,
 }
 
-
 impl Ipv4Range {
     pub fn new(start_addr: Ipv4Addr, end_addr: Ipv4Addr) -> Self {
         Self {
@@ -30,11 +29,9 @@ impl Ipv4Range {
     }
 }
 
-
 pub fn from_ipv4_net(ipv4_net: Option<Ipv4Network>) -> Option<Ipv4Range> {
     ipv4_net.and_then(|net| cidr_range(net.ip(), net.prefix()).ok())
 }
-
 
 pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<Ipv4Range> {
     if prefix > 32 {
@@ -48,9 +45,11 @@ pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<Ipv4Range> {
     };
     let network = ip_u32 & mask;
     let broadcast = network | !mask;
-    Ok(Ipv4Range::new(Ipv4Addr::from(network),Ipv4Addr::from(broadcast)))
+    Ok(Ipv4Range::new(
+        Ipv4Addr::from(network),
+        Ipv4Addr::from(broadcast),
+    ))
 }
-
 
 pub fn _from_cidr_str(cidr: &str) -> anyhow::Result<Ipv4Range> {
     if !cidr.contains('/') {
@@ -61,14 +60,11 @@ pub fn _from_cidr_str(cidr: &str) -> anyhow::Result<Ipv4Range> {
     cidr_range(net.ip(), net.prefix())
 }
 
-
 pub fn in_optional_range(addr: &Ipv4Addr, range: &Option<Ipv4Range>) -> bool {
     range
         .as_ref()
         .map_or(true, |ipv4_range| ipv4_range.contains(addr))
 }
-
-
 
 // ╔════════════════════════════════════════════╗
 // ║ ████████╗███████╗███████╗████████╗███████╗ ║
@@ -98,7 +94,7 @@ mod tests {
         let start = Ipv4Addr::new(10, 0, 0, 1);
         let end = Ipv4Addr::new(10, 0, 0, 3);
         let range = Ipv4Range::new(start, end);
-        
+
         let mut iter = range.iter();
         assert_eq!(iter.next(), Some(Ipv4Addr::new(10, 0, 0, 1)));
         assert_eq!(iter.next(), Some(Ipv4Addr::new(10, 0, 0, 2)));
@@ -138,7 +134,7 @@ mod tests {
         let start = Ipv4Addr::new(10, 0, 0, 1);
         let end = Ipv4Addr::new(10, 0, 0, 3);
         let range = Ipv4Range::new(start, end);
-        
+
         let mut iter = range.iter();
         assert_eq!(iter.next_back(), Some(Ipv4Addr::new(10, 0, 0, 3)));
         assert_eq!(iter.next(), Some(Ipv4Addr::new(10, 0, 0, 1)));
@@ -156,7 +152,7 @@ mod tests {
         assert!(range.contains(&Ipv4Addr::new(192, 168, 1, 10)));
         assert!(range.contains(&Ipv4Addr::new(192, 168, 1, 15)));
         assert!(range.contains(&Ipv4Addr::new(192, 168, 1, 20)));
-        
+
         assert!(!range.contains(&Ipv4Addr::new(192, 168, 1, 9)));
         assert!(!range.contains(&Ipv4Addr::new(192, 168, 1, 21)));
         assert!(!range.contains(&Ipv4Addr::new(192, 168, 0, 15)));
@@ -167,10 +163,10 @@ mod tests {
         let ip = Ipv4Addr::new(192, 168, 1, 100);
         let prefix = 24;
         let range = cidr_range(ip, prefix).unwrap();
-        
+
         let expected_start = Ipv4Addr::new(192, 168, 1, 0);
         let expected_end = Ipv4Addr::new(192, 168, 1, 255);
-        
+
         assert_eq!(range.start_addr, expected_start);
         assert_eq!(range.end_addr, expected_end);
         assert_eq!(range, Ipv4Range::new(expected_start, expected_end));
@@ -194,7 +190,7 @@ mod tests {
         let ip = Ipv4Addr::new(172, 16, 0, 1);
         let prefix = 32;
         let range = cidr_range(ip, prefix).unwrap();
-        
+
         assert_eq!(range.start_addr, ip);
         assert_eq!(range.end_addr, ip);
     }
@@ -204,7 +200,7 @@ mod tests {
         let ip = Ipv4Addr::new(192, 168, 1, 1);
         let prefix = 33;
         let result = cidr_range(ip, prefix);
-        
+
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "Invalid prefix: 33 > 32");
     }
@@ -213,10 +209,10 @@ mod tests {
     fn test_from_cidr_str() {
         let cidr = "10.0.0.0/8";
         let range = _from_cidr_str(cidr).unwrap();
-        
+
         let expected_start = Ipv4Addr::new(10, 0, 0, 0);
         let expected_end = Ipv4Addr::new(10, 255, 255, 255);
-        
+
         assert_eq!(range, Ipv4Range::new(expected_start, expected_end));
     }
 
@@ -236,7 +232,7 @@ mod tests {
 
         let expected = _from_cidr_str(cidr).unwrap();
         assert_eq!(range, expected);
-        
+
         assert!(from_ipv4_net(None).is_none());
     }
 
@@ -245,18 +241,18 @@ mod tests {
         let start = Ipv4Addr::new(10, 0, 0, 10);
         let end = Ipv4Addr::new(10, 0, 0, 20);
         let range = Ipv4Range::new(start, end);
-        
+
         let in_addr = Ipv4Addr::new(10, 0, 0, 15);
         let out_addr = Ipv4Addr::new(10, 0, 0, 5);
-        
+
         let some_range = Some(range);
         let none_range: Option<Ipv4Range> = None;
-        
+
         // `Some` range, address is in
         assert!(in_optional_range(&in_addr, &some_range));
         // `Some` range, address is out
         assert!(!in_optional_range(&out_addr, &some_range));
-        
+
         // `None` range, address is in
         assert!(in_optional_range(&in_addr, &none_range));
         // `None` range, address is out

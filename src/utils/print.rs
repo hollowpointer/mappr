@@ -1,11 +1,11 @@
 use std::{fmt::Display, time::Duration};
 
+use crate::{GLOBAL_KEY_WIDTH, utils::colors};
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
+use once_cell::sync::Lazy;
 use rand;
 use unicode_width::UnicodeWidthStr;
-use crate::{GLOBAL_KEY_WIDTH, utils::colors};
-use once_cell::sync::Lazy;
 
 const TOTAL_WIDTH: usize = 64;
 
@@ -13,22 +13,22 @@ pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
     let pb = ProgressBar::new_spinner();
     let style = ProgressStyle::with_template("{spinner:.blue} {msg}")
         .unwrap()
-        .tick_strings(
-            &["▁▁▁▁▁",
-                "▁▂▂▂▁",
-                "▁▄▂▄▁",
-                "▂▄▆▄▂",
-                "▄▆█▆▄",
-                "▂▄▆▄▂",
-                "▁▄▂▄▁",
-                "▁▂▂▂▁"]
-        );
+        .tick_strings(&[
+            "▁▁▁▁▁",
+            "▁▂▂▂▁",
+            "▁▄▂▄▁",
+            "▂▄▆▄▂",
+            "▄▆█▆▄",
+            "▂▄▆▄▂",
+            "▁▄▂▄▁",
+            "▁▂▂▂▁",
+        ]);
     pb.set_style(style);
     pb.enable_steady_tick(Duration::from_millis(100));
     pb
 });
 
-const BANNER_0: &str =  r#"
+const BANNER_0: &str = r#"
          ███▄ ▄███▓ ▄▄▄       ██▓███   ██▓███   ██▀███
         ▓██▒▀█▀ ██▒▒████▄    ▓██░  ██▒▓██░  ██▒▓██ ▒ ██▒
         ▓██    ▓██░▒██  ▀█▄  ▓██░ ██▓▒▓██░ ██▓▒▓██ ░▄█ ▒
@@ -128,7 +128,7 @@ fn banner(id: u8) {
         2 => println!("{}", BANNER_2.green()),
         3 => println!("{}", BANNER_3.blue()),
         4 => println!("{}", BANNER_4.truecolor(80, 80, 100)),
-        _ => { },
+        _ => {}
     }
 }
 
@@ -146,16 +146,21 @@ pub fn header(msg: &str) {
         formatted.to_uppercase().bright_green(),
         "─".repeat(right)
     )
-        .bright_black();
+    .bright_black();
 
     SPINNER.println(format!("{line}").as_str());
 }
 
 pub fn aligned_line<V>(key: &str, value: V)
-where V: Display + WithDefaultColor
+where
+    V: Display + WithDefaultColor,
 {
     let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() + 1 - key.len());
-    let colon = format!("{}{}", whitespace.color(colors::SEPARATOR), ":".color(colors::SEPARATOR));
+    let colon = format!(
+        "{}{}",
+        whitespace.color(colors::SEPARATOR),
+        ":".color(colors::SEPARATOR)
+    );
     let value = value.with_default(colors::TEXT_DEFAULT);
     print_status(format!("{}{} {}", key.color(colors::PRIMARY), colon, value).as_str());
 }
@@ -168,20 +173,25 @@ pub fn print_status(msg: &str) {
 
 pub fn tree_head(idx: usize, name: &str) {
     let idx_str: String = format!("[{}]", idx.to_string().color(colors::ACCENT));
-    let output: String = format!("{} {}", idx_str.color(colors::SEPARATOR), name.color(colors::PRIMARY));
+    let output: String = format!(
+        "{} {}",
+        idx_str.color(colors::SEPARATOR),
+        name.color(colors::PRIMARY)
+    );
     println(&output);
 }
 
 pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
     for (i, (key, value)) in key_value_pair.iter().enumerate() {
         let last = i + 1 == key_value_pair.len();
-        let branch = if !last { 
+        let branch = if !last {
             "├─".bright_black()
-        } else { 
-            "└─".bright_black() 
+        } else {
+            "└─".bright_black()
         };
         let key = key.color(colors::TEXT_DEFAULT);
-        let output: String = format!(" {} {}{}{} {}", 
+        let output: String = format!(
+            " {} {}{}{} {}",
             branch,
             key,
             ".".repeat(5 - key.len()).color(colors::SEPARATOR), // 5 what? bananas?
