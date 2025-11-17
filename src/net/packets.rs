@@ -1,6 +1,5 @@
 pub mod icmp;
 mod ip;
-pub mod tcp;
 
 use crate::net::datalink::arp;
 use crate::net::datalink::channel::SenderContext;

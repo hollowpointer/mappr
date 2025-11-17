@@ -2,7 +2,7 @@ use crate::cmd::Target;
 use crate::host::{self, ExternalHost, Host, InternalHost};
 use crate::net::datalink::interface::NetworkInterfaceExtension;
 use crate::net::datalink::{channel, interface};
-use crate::net::packets::tcp;
+use crate::net::tcp_connect;
 use crate::net::range::Ipv4Range;
 use crate::net::{ip, range};
 use crate::print::{self, SPINNER};
@@ -62,7 +62,7 @@ async fn discover_ipv4_range(ipv4_range: Ipv4Range) -> anyhow::Result<Vec<Box<dy
     );
     if !ipv4_range.start_addr.is_private() {
         let hosts: Vec<ExternalHost> =
-            tcp::handshake_range_discovery(ipv4_range, tcp::handshake_probe).await?;
+            tcp_connect::handshake_range_discovery(ipv4_range, tcp_connect::handshake_probe).await?;
         return Ok(host::external_to_box(hosts));
     }
     Ok(host::internal_to_box(channel::discover_via_range(
@@ -76,7 +76,7 @@ async fn tcp_handshake_discovery(target: Target) -> anyhow::Result<Vec<Box<dyn H
         Target::LAN => tcp_handshake_discovery_lan().await?,
         Target::Host { dst_addr } => tcp_handshake_discovery_host(dst_addr).await?,
         Target::Range { ipv4_range } => {
-            tcp::handshake_range_discovery(ipv4_range, tcp::handshake_probe).await?
+            tcp_connect::handshake_range_discovery(ipv4_range, tcp_connect::handshake_probe).await?
         }
         _ => anyhow::bail!("Handshake discovery for this target not implemented!"),
     };
@@ -86,7 +86,7 @@ async fn tcp_handshake_discovery(target: Target) -> anyhow::Result<Vec<Box<dyn H
 async fn tcp_handshake_discovery_lan() -> anyhow::Result<Vec<ExternalHost>> {
     let interface: NetworkInterface = interface::get_lan()?;
     if let Some(ipv4_range) = range::from_ipv4_net(interface.get_ipv4_net()) {
-        tcp::handshake_range_discovery(ipv4_range, tcp::handshake_probe)
+        tcp_connect::handshake_range_discovery(ipv4_range, tcp_connect::handshake_probe)
             .await
             .context("handshake discovery failed (non-root)")
     } else {
@@ -95,7 +95,7 @@ async fn tcp_handshake_discovery_lan() -> anyhow::Result<Vec<ExternalHost>> {
 }
 
 async fn tcp_handshake_discovery_host(dst_addr: IpAddr) -> anyhow::Result<Vec<ExternalHost>> {
-    if let Some(host) = tcp::handshake_probe(dst_addr)
+    if let Some(host) = tcp_connect::handshake_probe(dst_addr)
         .await
         .context("handshake discovery failed (non-root)")?
     {
