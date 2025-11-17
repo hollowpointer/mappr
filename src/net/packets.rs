@@ -120,7 +120,7 @@ pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<(MacAddr, IpAddr)>> {
     let mac_addr: MacAddr = eth.get_source();
     let ip: Option<IpAddr> = match eth.get_ethertype() {
         EtherTypes::Arp => Some(arp::get_ip_addr(eth)?),
-        EtherTypes::Ipv6 => ip::extract_source_addr_if_icmpv6(eth)?,
+        EtherTypes::Ipv6 => ip::extract_addr_if_icmpv6(eth)?,
         _ => None,
     };
     if let Some(ip) = ip {
