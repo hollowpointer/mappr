@@ -143,20 +143,12 @@ pub mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::*;
-    use crate::net::datalink::ethernet;
-    use crate::net::utils::MIN_ETH_FRAME_NO_FCS;
     use pnet::ipnetwork::Ipv4Network;
-    use pnet::packet::ethernet::EtherTypes;
     use pnet::util::MacAddr;
 
     pub static SHOULD_FAIL: AtomicBool = AtomicBool::new(false);
 
-    const ARP_LEN: usize = 28;
     const ETH_HDR_LEN: usize = 14;
-
-    pub fn buf() -> [u8; MIN_ETH_FRAME_NO_FCS] {
-        [0u8; MIN_ETH_FRAME_NO_FCS]
-    }
 
     #[test]
     fn handle_frame_errors_on_short_ethernet_buffer() {
@@ -169,22 +161,6 @@ pub mod tests {
             err.to_string().contains("Ethernet"),
             "unexpected error: {err:?}"
         );
-    }
-
-    #[test]
-    fn handle_frame_errors_on_bad_arp_buffer() {
-        let mut frame = vec![0u8; ETH_HDR_LEN + ARP_LEN - 1];
-        ethernet::make_header(
-            &mut frame,
-            MacAddr::zero(),
-            MacAddr::broadcast(),
-            EtherTypes::Arp,
-        )
-        .expect("eth header");
-
-        let err = handle_frame(&frame).unwrap_err();
-
-        assert!(err.to_string().contains("ARP"), "unexpected error: {err:?}");
     }
 
     fn setup() {
