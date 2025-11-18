@@ -2,7 +2,7 @@ use crate::cmd::Target;
 use crate::host::{self, ExternalHost, Host, InternalHost};
 use crate::net::datalink::interface::NetworkInterfaceExtension;
 use crate::net::datalink::{channel, interface};
-use crate::net::tcp_connect;
+use crate::net::{tcp_connect, transport};
 use crate::net::range::Ipv4Range;
 use crate::net::{ip, range};
 use crate::print::{self, SPINNER};
@@ -107,9 +107,12 @@ async fn tcp_handshake_discovery_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Ex
     }
 }
 
-fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) {
+fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>)  {
     if hosts.len() == 0 {
         return no_hosts_found();
+    }
+    if let Err(e) = transport::try_dns_reverse_lookup(hosts) {
+        eprintln!("DNS lookup failed: {}", e);
     }
     print::header("Network Discovery");
     hosts.sort_by_key(|host| host.get_primary_ip());

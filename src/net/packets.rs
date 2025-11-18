@@ -1,5 +1,5 @@
 pub mod icmp;
-mod dns;
+pub mod dns;
 mod ip;
 
 use crate::net::datalink::arp;
