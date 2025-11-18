@@ -5,7 +5,7 @@ use pnet::{
     packet::{
         Packet, 
         dns::DnsPacket, 
-        ip::IpNextHeaderProtocols
+        ip::IpNextHeaderProtocols, udp::UdpPacket
     }, 
     transport::{
         self, 
@@ -15,8 +15,9 @@ use pnet::{
         TransportSender
     }
 };
+use rand::random_range;
 
-use crate::{host::Host, net::packets::dns};
+use crate::{host::Host, net::packets::{dns, udp}};
 
 const TRANSPORT_BUFFER_SIZE: usize = 4096;
 const CHANNEL_TYPE_UDP: TransportChannelType = TransportChannelType::Layer4(
@@ -45,9 +46,12 @@ pub fn try_dns_reverse_lookup(hosts: &mut [Box<dyn Host>]) -> anyhow::Result<()>
     let destination: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)); // Proper implementation will come later
     let ips: Vec<IpAddr> = hosts.iter().filter_map(|host| host.get_primary_ip()).collect();
     for ip in ips {
-        let dns_packet: Vec<u8> = dns::create_ptr_packet(ip)?;
-        let dns_packet: DnsPacket = DnsPacket::new(&dns_packet).context("creating dns packet")?;
-        runner.send_packets(dns_packet, destination)?;
+        let payload: Vec<u8> = dns::create_ptr_packet(ip)?;
+        let src_port: u16 = random_range(50_000..u16::max_value());
+        let dst_port: u16 = 53;
+        let udp_packet: Vec<u8> = udp::create_packet(src_port, dst_port, payload)?;
+        let udp_packet: UdpPacket = UdpPacket::new(&udp_packet).context("creating udp packet")?;
+        runner.send_packets(udp_packet, destination)?;
     }
     Ok(())
 }

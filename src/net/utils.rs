@@ -1,5 +1,5 @@
 // Application Layer
-pub const DNS_HDR_LEN: usize = 96;
+pub const DNS_HDR_LEN: usize = 12;
 // Network Layer
 pub const ICMP_V6_ECHO_REQ_LEN: usize = 8;
 pub const IP_V4_HDR_LEN: usize = 20;
