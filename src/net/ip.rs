@@ -3,7 +3,7 @@ use colored::*;
 use pnet::ipnetwork::IpNetwork;
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 #[derive(Debug, Default)]
@@ -35,6 +35,22 @@ pub fn is_private(ip_addr: IpAddr) -> bool {
     match ip_addr {
         IpAddr::V4(ipv4) => ipv4.is_private(),
         IpAddr::V6(ipv6) => ipv6.is_unicast_link_local() || ipv6.is_unique_local(),
+    }
+}
+
+// Used for reverse dns lookups
+pub fn reverse_address(ip_addr: IpAddr) -> IpAddr {
+    match ip_addr {
+        IpAddr::V4(ipv4_addr) => {
+            let mut octets: [u8; 4] = ipv4_addr.octets();
+            octets.reverse();
+            IpAddr::V4(Ipv4Addr::from(octets))
+        },
+        IpAddr::V6(ipv6_addr) => {
+            let mut octets: [u8; 16] = ipv6_addr.octets();
+            octets.reverse();
+            IpAddr::V6(Ipv6Addr::from(octets))
+        },
     }
 }
 
