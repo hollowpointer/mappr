@@ -38,18 +38,29 @@ pub fn is_private(ip_addr: IpAddr) -> bool {
     }
 }
 
-// Used for reverse dns lookups
-pub fn reverse_address(ip_addr: IpAddr) -> IpAddr {
+pub fn reverse_address_to_ptr(ip_addr: IpAddr) -> String {
     match ip_addr {
         IpAddr::V4(ipv4_addr) => {
-            let mut octets: [u8; 4] = ipv4_addr.octets();
-            octets.reverse();
-            IpAddr::V4(Ipv4Addr::from(octets))
+            let octets: [u8; 4] = ipv4_addr.octets();
+            format!(
+                "{}.{}.{}.{}.in-addr.arpa",
+                octets[3], octets[2], octets[1], octets[0]
+            )
         },
         IpAddr::V6(ipv6_addr) => {
-            let mut octets: [u8; 16] = ipv6_addr.octets();
-            octets.reverse();
-            IpAddr::V6(Ipv6Addr::from(octets))
+            let octets: [u8; 16] = ipv6_addr.octets();
+            let mut ret: String = String::with_capacity(72);
+
+            for byte in octets.iter().rev() {
+                let low: u8 = byte & 0x0F;
+                let high: u8 = byte >> 4;
+
+                use std::fmt::Write;
+                write!(ret, "{:x}.{:x}.", low, high).unwrap();
+            }
+            
+            ret.push_str("ip6.arpa");
+            ret
         },
     }
 }
@@ -103,4 +114,18 @@ pub fn to_key_value_pair_net(ip_net: &[IpNetwork]) -> Vec<(String, ColoredString
             }
         })
         .collect()
+}
+
+pub fn derive_u16_id(ip: &IpAddr) -> u16 {
+    let octets: [u8; 2] = match ip {
+        IpAddr::V4(v4) => {
+            let bytes = v4.octets();
+            [bytes[3], bytes[2]]
+        },
+        IpAddr::V6(v6) => {
+            let bytes = v6.octets();
+            [bytes[15], bytes[14]] 
+        },
+    };
+    u16::from_be_bytes(octets)
 }

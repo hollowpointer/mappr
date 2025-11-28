@@ -6,7 +6,7 @@ use crate::net::{tcp_connect, transport};
 use crate::net::range::Ipv4Range;
 use crate::net::{ip, range};
 use crate::print::{self, SPINNER};
-use anyhow::{self, Context, Ok};
+use anyhow::{self, Context};
 use is_root::is_root;
 use pnet::datalink::NetworkInterface;
 use std::net::IpAddr;
@@ -111,9 +111,7 @@ fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>)  {
     if hosts.len() == 0 {
         return no_hosts_found();
     }
-    if let Err(e) = transport::try_dns_reverse_lookup(hosts) {
-        eprintln!("DNS lookup failed: {}", e);
-    }
+    transport::try_dns_reverse_lookup(hosts);
     print::header("Network Discovery");
     hosts.sort_by_key(|host| host.get_primary_ip());
     for (idx, host) in hosts.iter().enumerate() {
