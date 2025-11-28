@@ -3,6 +3,7 @@ use crate::net::datalink::interface;
 use crate::net::datalink::interface::NetworkInterfaceExtension;
 use crate::net::packets::{self, PacketType};
 use crate::net::range::{self, Ipv4Range};
+use crate::net::transport;
 use crate::print;
 use anyhow::{self, Context};
 use pnet::datalink;
@@ -10,6 +11,8 @@ use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkI
 use pnet::ipnetwork::Ipv4Network;
 use pnet::util::MacAddr;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 const PROBE_TIMEOUT_MS: u64 = 2000;
@@ -132,27 +135,36 @@ where
 }
 
 fn listen_for_hosts(
-    mut rx: Box<dyn DataLinkReceiver>,
+    mut rx_datalink: Box<dyn DataLinkReceiver>,
     duration_in_ms: Duration,
     sender_context: &SenderContext,
-) -> anyhow::Result<Vec<InternalHost>> {
-    let mut hosts: Vec<InternalHost> = Vec::new();
-    let deadline = Instant::now() + duration_in_ms;
-    while deadline > Instant::now() {
-        let frame = match rx.next() {
+) -> anyhow::Result<Vec<InternalHost>> {  
+    let (tx, rx) = mpsc::channel();
+    let deadline: Instant = Instant::now() + duration_in_ms;
+
+    while Instant::now() < deadline {
+        let frame: &[u8] = match rx_datalink.next() {
             Ok(frame) => frame,
             Err(_) => continue,
         };
+
         let (mac_addr, ip_addr) =
-            if let Ok(Some((mac_addr, ip_addr))) = packets::handle_frame(frame) {
-                (mac_addr, ip_addr)
+            if let Ok(Some((mac, ip))) = packets::handle_frame(frame) {
+                (mac, ip)
             } else {
                 continue;
             };
-        if let Some(host) = process_packet_for_host(mac_addr, ip_addr, sender_context) {
-            hosts.push(host);
+
+        if let Some(mut host) = process_packet_for_host(mac_addr, ip_addr, sender_context) {
+            let tx_inner: mpsc::Sender<InternalHost> = tx.clone();
+            thread::spawn(move || {
+                let _ = transport::try_dns_reverse_lookup(&mut host);
+                tx_inner.send(host).unwrap(); 
+            });
         }
     }
+    drop(tx);
+    let mut hosts: Vec<InternalHost> = rx.iter().collect();
     host::merge_by_mac(&mut hosts);
     Ok(hosts)
 }
@@ -165,12 +177,12 @@ fn process_packet_for_host(
     if mac_addr == sender_context.src_mac {
         return None;
     }
-    let is_valid = match ip_addr {
+    let is_valid: bool = match ip_addr {
         IpAddr::V4(ipv4_addr) => range::in_optional_range(&ipv4_addr, &sender_context.ipv4_range),
         IpAddr::V6(_) => true,
     };
     if is_valid {
-        let mut host = host::InternalHost::from(mac_addr);
+        let mut host: InternalHost = host::InternalHost::from(mac_addr);
         host.ips.insert(ip_addr);
         Some(host)
     } else {

@@ -3,7 +3,7 @@ use colored::*;
 use pnet::ipnetwork::IpNetwork;
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv6Addr},
 };
 
 #[derive(Debug, Default)]

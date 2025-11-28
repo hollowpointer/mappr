@@ -12,7 +12,7 @@ pub fn get_hostname(payload: &[u8]) -> anyhow::Result<Option<(u16, String)>> {
         .iter()
         .find_map(|response| {
             if response.rtype == DnsTypes::PTR {
-                let hostname: String= decode_dns_name(&response.data)?;
+                let hostname: String = decode_dns_name(&response.data)?;
                 let transaction_id: u16 = u16::from_be_bytes([payload[0], payload[1]]);
                 Some((transaction_id, hostname))
             } else {

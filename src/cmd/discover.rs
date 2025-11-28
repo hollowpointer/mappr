@@ -2,7 +2,7 @@ use crate::cmd::Target;
 use crate::host::{self, ExternalHost, Host, InternalHost};
 use crate::net::datalink::interface::NetworkInterfaceExtension;
 use crate::net::datalink::{channel, interface};
-use crate::net::{tcp_connect, transport};
+use crate::net::tcp_connect;
 use crate::net::range::Ipv4Range;
 use crate::net::{ip, range};
 use crate::print::{self, SPINNER};
@@ -17,7 +17,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
 
     if !is_root() {
         let mut hosts: Vec<Box<dyn Host>> = tcp_handshake_discovery(target).await?;
-        return Ok(discovery_ends(&mut hosts));
+        return Ok(discovery_ends(&mut hosts)?);
     }
 
     print::print_status("Root privileges detected. Using advanced techniques...");
@@ -30,7 +30,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
         }
     };
 
-    Ok(discovery_ends(&mut hosts))
+    Ok(discovery_ends(&mut hosts)?)
 }
 
 fn discover_lan() -> anyhow::Result<Vec<Box<dyn Host>>> {
@@ -107,11 +107,10 @@ async fn tcp_handshake_discovery_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Ex
     }
 }
 
-fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>)  {
+fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) -> anyhow::Result<()>  {
     if hosts.len() == 0 {
-        return no_hosts_found();
+        return Ok(no_hosts_found());
     }
-    transport::try_dns_reverse_lookup(hosts);
     print::header("Network Discovery");
     hosts.sort_by_key(|host| host.get_primary_ip());
     for (idx, host) in hosts.iter().enumerate() {
@@ -122,6 +121,7 @@ fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>)  {
     }
     print::end_of_program();
     SPINNER.finish_and_clear();
+    Ok(())
 }
 
 fn no_hosts_found() {
