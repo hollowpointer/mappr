@@ -3,7 +3,7 @@ use colored::*;
 use pnet::ipnetwork::IpNetwork;
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 #[derive(Debug, Default)]
@@ -31,14 +31,14 @@ pub fn is_global_unicast(ipv6_addr: &Ipv6Addr) -> bool {
     0x3F >= first_byte && first_byte >= 0x20
 }
 
-pub fn is_private(ip_addr: IpAddr) -> bool {
+pub fn is_private(ip_addr: &IpAddr) -> bool {
     match ip_addr {
         IpAddr::V4(ipv4) => ipv4.is_private(),
         IpAddr::V6(ipv6) => ipv6.is_unicast_link_local() || ipv6.is_unique_local(),
     }
 }
 
-pub fn reverse_address_to_ptr(ip_addr: IpAddr) -> String {
+pub fn reverse_address_to_ptr(ip_addr: &IpAddr) -> String {
     match ip_addr {
         IpAddr::V4(ipv4_addr) => {
             let octets: [u8; 4] = ipv4_addr.octets();
@@ -128,4 +128,8 @@ pub fn derive_u16_id(ip: &IpAddr) -> u16 {
         },
     };
     u16::from_be_bytes(octets)
+}
+
+pub fn get_gateway_addr(_ip_addr: &IpAddr) -> IpAddr {
+    IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1))
 }

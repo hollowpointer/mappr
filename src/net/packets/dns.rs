@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 
 use anyhow::Context;
 use pnet::packet::dns::{DnsClass, DnsPacket, DnsQuery, DnsTypes, MutableDnsPacket, Opcode, Retcode};
@@ -23,7 +23,17 @@ pub fn get_hostname(payload: &[u8]) -> anyhow::Result<Option<(u16, String)>> {
     Ok(Some((transaction_id, hostname_res)))
 }
 
-pub fn create_ptr_packet(ip_addr: IpAddr) -> anyhow::Result<Vec<u8>> {
+pub fn get_dns_server_socket_addr(ip_addr: &IpAddr) -> anyhow::Result<(IpAddr, u16)> {
+    let dst_port: u16 = 53; // Needs improvement
+    if ip::is_private(&ip_addr) {
+        let gateway_addr: IpAddr = ip::get_gateway_addr(&ip_addr);
+        return Ok((gateway_addr, dst_port))
+    }
+    let dst_addr: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+    return Ok((dst_addr, dst_port))
+}
+
+pub fn create_ptr_packet(ip_addr: &IpAddr) -> anyhow::Result<Vec<u8>> {
     let query: DnsQuery = create_ptr_query(ip_addr)?;
     let q_fixed_len: usize = 4;
     let qlen: usize = query.qname.len() + q_fixed_len;
@@ -65,7 +75,7 @@ pub fn create_ptr_packet(ip_addr: IpAddr) -> anyhow::Result<Vec<u8>> {
     Ok(Vec::from(buffer))
 }
 
-fn create_ptr_query(ip_addr: IpAddr) -> anyhow::Result<DnsQuery> {
+fn create_ptr_query(ip_addr: &IpAddr) -> anyhow::Result<DnsQuery> {
     let ptr_string: String = ip::reverse_address_to_ptr(ip_addr);
     let qname: Vec<u8> = encode_dns_name(&ptr_string);
     let query: DnsQuery = DnsQuery { 

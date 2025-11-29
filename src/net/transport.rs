@@ -1,4 +1,4 @@
-use std::{net::{IpAddr, Ipv4Addr}, time::{Duration, Instant}};
+use std::{net::IpAddr, time::{Duration, Instant}};
 
 use anyhow::Context;
 use pnet::{
@@ -37,9 +37,9 @@ impl TransportRunner {
         Ok(Self { tx, rx, timeout })
     }
 
-    fn send_packets<P>(&mut self, packet: P, destination: IpAddr) -> anyhow::Result<()>
+    fn send_packets<P>(&mut self, packet: P, dst_addr: IpAddr) -> anyhow::Result<()>
     where P: Packet {
-        self.tx.send_to(packet, destination)?;
+        self.tx.send_to(packet, dst_addr)?;
         Ok(())
     }
 
@@ -65,17 +65,16 @@ impl TransportRunner {
 }
 
 pub fn try_dns_reverse_lookup(host: &mut dyn Host) -> anyhow::Result<()> {
+    let host_addr: IpAddr = host.get_primary_ip().ok_or_else(|| anyhow::anyhow!("No Primary IP"))?;
     let mut runner: TransportRunner = TransportRunner::new_layer4_udp()?;
-    let destination: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)); 
-    let ip: IpAddr = host.get_primary_ip().ok_or_else(|| anyhow::anyhow!("No Primary IP"))?;
-    let id: u16 = ip::derive_u16_id(&ip);
-    let payload: Vec<u8> = dns::create_ptr_packet(ip)?;
+    let id: u16 = ip::derive_u16_id(&host_addr);
+    let payload: Vec<u8> = dns::create_ptr_packet(&host_addr)?;
     let src_port: u16 = random_range(50_000..u16::max_value());
-    let dst_port: u16 = 53;
+    let (dst_addr, dst_port) = dns::get_dns_server_socket_addr(&host_addr)?;
     let udp_payload: Vec<u8> = udp::create_packet(src_port, dst_port, payload)?;
     let udp_packet: UdpPacket = UdpPacket::new(&udp_payload).context("creating udp packet")?;
     
-    runner.send_packets(udp_packet, destination)?;
+    runner.send_packets(udp_packet, dst_addr)?;
 
     if let Some(hostname) = runner.listen_for_dns_responses(src_port, id)? {
         host.set_hostname(hostname);

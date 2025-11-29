@@ -10,8 +10,8 @@ use unicode_width::UnicodeWidthStr;
 const TOTAL_WIDTH: usize = 64;
 
 pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
-    let pb = ProgressBar::new_spinner();
-    let style = ProgressStyle::with_template("{spinner:.blue} {msg}")
+    let pb: ProgressBar = ProgressBar::new_spinner();
+    let style: ProgressStyle = ProgressStyle::with_template("{spinner:.blue} {msg}")
         .unwrap()
         .tick_strings(&[
             "▁▁▁▁▁",
@@ -114,8 +114,8 @@ pub fn print_banner() {
 }
 
 fn initialize() {
-    let text_content = format!("⟦ INITIALIZING MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
-    let text_width = UnicodeWidthStr::width(text_content.as_str());
+    let text_content: String = format!("⟦ INITIALIZING MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
+    let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
     let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
     println!("{}{}{}", sep, text, sep);
@@ -133,14 +133,14 @@ fn banner(id: u8) {
 }
 
 pub fn header(msg: &str) {
-    let formatted = format!("⟦ {} ⟧", msg);
-    let msg_len = formatted.chars().count();
+    let formatted: String = format!("⟦ {} ⟧", msg);
+    let msg_len: usize = formatted.chars().count();
 
-    let dash_count = TOTAL_WIDTH.saturating_sub(msg_len);
-    let left = dash_count / 2;
-    let right = dash_count - left;
+    let dash_count: usize = TOTAL_WIDTH.saturating_sub(msg_len);
+    let left: usize = dash_count / 2;
+    let right: usize = dash_count - left;
 
-    let line = format!(
+    let line: ColoredString = format!(
         "{}{}{}",
         "─".repeat(left),
         formatted.to_uppercase().bright_green(),
@@ -148,26 +148,26 @@ pub fn header(msg: &str) {
     )
     .bright_black();
 
-    SPINNER.println(format!("{line}").as_str());
+    SPINNER.println(&format!("{line}"));
 }
 
 pub fn aligned_line<V>(key: &str, value: V)
 where
     V: Display + WithDefaultColor,
 {
-    let whitespace = ".".repeat(GLOBAL_KEY_WIDTH.get() + 1 - key.len());
-    let colon = format!(
+    let whitespace: String = ".".repeat(GLOBAL_KEY_WIDTH.get() + 1 - key.len());
+    let colon: String = format!(
         "{}{}",
         whitespace.color(colors::SEPARATOR),
         ":".color(colors::SEPARATOR)
     );
-    let value = value.with_default(colors::TEXT_DEFAULT);
-    print_status(format!("{}{} {}", key.color(colors::PRIMARY), colon, value).as_str());
+    let value: ColoredString = value.with_default(colors::TEXT_DEFAULT);
+    print_status(format!("{}{} {}", key.color(colors::PRIMARY), colon, value));
 }
 
-pub fn print_status(msg: &str) {
-    let prefix = ">".color(colors::SEPARATOR);
-    let message = format!("{} {}", prefix, msg.color(colors::TEXT_DEFAULT));
+pub fn print_status<T: AsRef<str>>(msg: T) {
+    let prefix: ColoredString = ">".color(colors::SEPARATOR);
+    let message: String = format!("{} {}", prefix, msg.as_ref().color(colors::TEXT_DEFAULT));
     SPINNER.println(message);
 }
 
@@ -183,13 +183,13 @@ pub fn tree_head(idx: usize, name: &str) {
 
 pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
     for (i, (key, value)) in key_value_pair.iter().enumerate() {
-        let last = i + 1 == key_value_pair.len();
-        let branch = if !last {
+        let last: bool = i + 1 == key_value_pair.len();
+        let branch: ColoredString = if !last {
             "├─".bright_black()
         } else {
             "└─".bright_black()
         };
-        let key = key.color(colors::TEXT_DEFAULT);
+        let key: ColoredString = key.color(colors::TEXT_DEFAULT);
         let output: String = format!(
             " {} {}{}{} {}",
             branch,
@@ -219,7 +219,7 @@ const NO_RESULTS_0: &str = r#"
 "#;
 
 pub fn no_results() {
-    println(format!("{}", NO_RESULTS_0.red().bold()).as_str());
+    println(&format!("{}", NO_RESULTS_0.red().bold()));
 }
 
 pub fn end_of_program() {

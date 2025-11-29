@@ -11,9 +11,10 @@ use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkI
 use pnet::ipnetwork::Ipv4Network;
 use pnet::util::MacAddr;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
+use threadpool::ThreadPool;
 
 const PROBE_TIMEOUT_MS: u64 = 2000;
 
@@ -71,7 +72,7 @@ pub struct SenderContext {
 impl From<&NetworkInterface> for SenderContext {
     fn from(interface: &NetworkInterface) -> Self {
         Self {
-            src_mac: interface.mac.unwrap(), // This is safe!!
+            src_mac: interface.mac.expect("Caller must verify interface has MAC"),
             ipv4_net: interface.get_ipv4_net(),
             link_local: interface.get_link_local_addr(),
             ipv4_range: None,
@@ -83,14 +84,14 @@ impl From<&NetworkInterface> for SenderContext {
 
 pub fn discover_via_eth() -> anyhow::Result<Vec<InternalHost>> {
     let (interface, sender_context) = get_interface_and_sender_context()?;
-    let mut runner = ChannelRunner::new(&interface, &sender_context)?;
+    let mut runner: ChannelRunner = ChannelRunner::new(&interface, &sender_context)?;
     runner.send_discovery_packets()?;
     runner.listen()
 }
 
 pub fn discover_via_ip_addr(dst_addr: IpAddr) -> anyhow::Result<Option<InternalHost>> {
     let (interface, mut sender_context) = get_interface_and_sender_context()?;
-    let packet_type = match dst_addr {
+    let packet_type: PacketType = match dst_addr {
         IpAddr::V4(dst_addr_v4) => {
             sender_context.dst_addr_v4 = Some(dst_addr_v4);
             PacketType::Arp
@@ -100,17 +101,17 @@ pub fn discover_via_ip_addr(dst_addr: IpAddr) -> anyhow::Result<Option<InternalH
             PacketType::Ndp
         }
     };
-    let mut runner = ChannelRunner::new(&interface, &sender_context)?;
+    let mut runner: ChannelRunner<'_> = ChannelRunner::new(&interface, &sender_context)?;
     runner.send_single_packet(packet_type)?;
-    let hosts = runner.listen()?;
-    let host = hosts.into_iter().find(|host| host.ips.contains(&dst_addr));
+    let hosts: Vec<InternalHost> = runner.listen()?;
+    let host: Option<InternalHost> = hosts.into_iter().find(|host| host.ips.contains(&dst_addr));
     Ok(host)
 }
 
 pub fn discover_via_range(ipv4_range: Ipv4Range) -> anyhow::Result<Vec<InternalHost>> {
     let (interface, mut sender_context) = get_interface_and_sender_context()?;
     sender_context.ipv4_range = Some(ipv4_range);
-    let mut runner = ChannelRunner::new(&interface, &sender_context)?;
+    let mut runner: ChannelRunner = ChannelRunner::new(&interface, &sender_context)?;
     runner.send_discovery_packets()?;
     runner.listen()
 }
@@ -135,13 +136,26 @@ where
 }
 
 fn listen_for_hosts(
-    mut rx_datalink: Box<dyn DataLinkReceiver>,
+    rx_datalink: Box<dyn DataLinkReceiver>,
     duration_in_ms: Duration,
     sender_context: &SenderContext,
 ) -> anyhow::Result<Vec<InternalHost>> {  
     let (tx, rx) = mpsc::channel();
-    let deadline: Instant = Instant::now() + duration_in_ms;
+    sniff_and_dispatch(rx_datalink, &tx, duration_in_ms, sender_context);
+    drop(tx);
+    let mut hosts: Vec<InternalHost> = rx.iter().collect();
+    host::merge_by_mac(&mut hosts);
+    Ok(hosts)
+}
 
+fn sniff_and_dispatch(
+    mut rx_datalink: Box<dyn DataLinkReceiver>,
+    tx: &Sender<InternalHost>,
+    duration_in_ms: Duration,
+    sender_context: &SenderContext,
+) {
+    let deadline: Instant = Instant::now() + duration_in_ms;
+    let thread_pool: ThreadPool = ThreadPool::new(50);
     while Instant::now() < deadline {
         let frame: &[u8] = match rx_datalink.next() {
             Ok(frame) => frame,
@@ -157,16 +171,15 @@ fn listen_for_hosts(
 
         if let Some(mut host) = process_packet_for_host(mac_addr, ip_addr, sender_context) {
             let tx_inner: mpsc::Sender<InternalHost> = tx.clone();
-            thread::spawn(move || {
-                let _ = transport::try_dns_reverse_lookup(&mut host);
-                tx_inner.send(host).unwrap(); 
+            thread_pool.execute(move || {
+                thread::spawn(move || {
+                    let _ = transport::try_dns_reverse_lookup(&mut host);
+                    tx_inner.send(host).unwrap(); 
+                });
             });
         }
     }
-    drop(tx);
-    let mut hosts: Vec<InternalHost> = rx.iter().collect();
-    host::merge_by_mac(&mut hosts);
-    Ok(hosts)
+    thread_pool.join();
 }
 
 fn process_packet_for_host(

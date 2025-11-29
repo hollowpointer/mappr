@@ -39,7 +39,7 @@ fn discover_lan() -> anyhow::Result<Vec<Box<dyn Host>>> {
 }
 
 async fn discover_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Box<dyn Host>>> {
-    if !ip::is_private(dst_addr) {
+    if !ip::is_private(&dst_addr) {
         return Ok(host::external_to_box(
             tcp_handshake_discovery_host(dst_addr).await?,
         ));
