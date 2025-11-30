@@ -2,7 +2,7 @@ use crate::print;
 use crate::{net::ip, utils::colors};
 use anyhow;
 use colored::{ColoredString, Colorize};
-use pnet::ipnetwork::IpNetwork;
+use pnet::ipnetwork::{IpNetwork, Ipv6Network};
 use pnet::{self, datalink::NetworkInterface, ipnetwork::Ipv4Network};
 use std::net::Ipv6Addr;
 #[cfg(target_os = "linux")]
@@ -29,6 +29,7 @@ pub enum ViabilityError {
 pub trait NetworkInterfaceExtension {
     fn print_details(&self, idx: usize);
     fn get_ipv4_net(&self) -> Option<Ipv4Network>;
+    fn get_ipv6_net(&self) -> Option<Ipv6Network>;
     fn get_link_local_addr(&self) -> Option<Ipv6Addr>;
 }
 
@@ -52,12 +53,20 @@ impl NetworkInterfaceExtension for NetworkInterface {
         })
     }
 
+    fn get_ipv6_net(&self) -> Option<Ipv6Network> {
+        self.ips.iter().find_map(|&ip| match ip {
+            IpNetwork::V6(net) => Some(net),
+            _ => None,
+        })
+    }
+
     fn get_link_local_addr(&self) -> Option<Ipv6Addr> {
         self.ips.iter().find_map(|ip| match ip {
             IpNetwork::V6(net) if net.ip().is_unicast_link_local() => Some(net.ip()),
             _ => None,
         })
     }
+    
 }
 
 pub fn get_prioritized_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>> {
