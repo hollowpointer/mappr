@@ -19,8 +19,8 @@ impl Ipv4Range {
     }
 
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = Ipv4Addr> + Clone {
-        let start = u32::from(self.start_addr);
-        let end = u32::from(self.end_addr);
+        let start: u32 = u32::from(self.start_addr);
+        let end: u32 = u32::from(self.end_addr);
         (start..=end).map(Ipv4Addr::from)
     }
 
@@ -29,8 +29,8 @@ impl Ipv4Range {
     }
 }
 
-pub fn from_ipv4_net(ipv4_net: Option<Ipv4Network>) -> Option<Ipv4Range> {
-    ipv4_net.and_then(|net| cidr_range(net.ip(), net.prefix()).ok())
+pub fn from_ipv4_net(ipv4_net: Ipv4Network) -> anyhow::Result<Ipv4Range> {
+    Ok(cidr_range(ipv4_net.ip(), ipv4_net.prefix())?)
 }
 
 pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<Ipv4Range> {
@@ -201,17 +201,5 @@ mod tests {
         assert!(_from_cidr_str("10.0.0.0").is_err());
         assert!(_from_cidr_str("not-an-ip/24").is_err());
         assert!(_from_cidr_str("256.0.0.1/24").is_err());
-    }
-
-    #[test]
-    fn test_from_ipv4_net() {
-        let cidr = "192.168.5.0/24";
-        let net = Ipv4Network::from_str(cidr).ok();
-        let range = from_ipv4_net(net).unwrap();
-
-        let expected = _from_cidr_str(cidr).unwrap();
-        assert_eq!(range, expected);
-
-        assert!(from_ipv4_net(None).is_none());
     }
 }

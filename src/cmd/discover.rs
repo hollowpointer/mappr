@@ -9,6 +9,7 @@ use crate::print::{self, SPINNER};
 use anyhow::{self, Context};
 use is_root::is_root;
 use pnet::datalink::NetworkInterface;
+use pnet::ipnetwork::Ipv4Network;
 use std::net::IpAddr;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
@@ -34,7 +35,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
 }
 
 fn discover_lan() -> anyhow::Result<Vec<Box<dyn Host>>> {
-    let hosts: Vec<InternalHost> = channel::discover_via_eth()?;
+    let hosts: Vec<InternalHost> = channel::discover_subnet()?;
     Ok(host::internal_to_box(hosts))
 }
 
@@ -85,12 +86,14 @@ async fn tcp_handshake_discovery(target: Target) -> anyhow::Result<Vec<Box<dyn H
 
 async fn tcp_handshake_discovery_lan() -> anyhow::Result<Vec<ExternalHost>> {
     let interface: NetworkInterface = interface::get_lan()?;
-    if let Some(ipv4_range) = range::from_ipv4_net(interface.get_ipv4_net()) {
+    let ipv4_nets: Vec<Ipv4Network> = interface.get_ipv4_nets();
+    if ipv4_nets.len() > 0 {
+        let ipv4_range: Ipv4Range = range::from_ipv4_net(ipv4_nets[0])?;
         tcp_connect::handshake_range_discovery(ipv4_range, tcp_connect::handshake_probe)
             .await
             .context("handshake discovery failed (non-root)")
     } else {
-        anyhow::bail!("No root privileges and failed to retrieve IPv4 range for TCP scan.")
+        anyhow::bail!("Failed to retrieve IPv4 range for TCP scan.")
     }
 }
 

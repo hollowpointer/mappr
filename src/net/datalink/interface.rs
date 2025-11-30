@@ -28,8 +28,8 @@ pub enum ViabilityError {
 
 pub trait NetworkInterfaceExtension {
     fn print_details(&self, idx: usize);
-    fn get_ipv4_net(&self) -> Option<Ipv4Network>;
-    fn get_ipv6_net(&self) -> Option<Ipv6Network>;
+    fn get_ipv4_nets(&self) -> Vec<Ipv4Network>;
+    fn get_ipv6_nets(&self) -> Vec<Ipv6Network>;
     fn get_link_local_addr(&self) -> Option<Ipv6Addr>;
 }
 
@@ -46,18 +46,26 @@ impl NetworkInterfaceExtension for NetworkInterface {
         print::as_tree_one_level(key_value_pair);
     }
 
-    fn get_ipv4_net(&self) -> Option<Ipv4Network> {
-        self.ips.iter().find_map(|&ip| match ip {
-            IpNetwork::V4(net) => Some(net),
-            _ => None,
-        })
+    fn get_ipv4_nets(&self) -> Vec<Ipv4Network> {
+        self.ips.iter()
+            .filter_map(|ip_net| {
+                match ip_net {
+                    IpNetwork::V4(v4_net) => Some(*v4_net),
+                    _ => None,
+                }
+            })
+            .collect()
     }
 
-    fn get_ipv6_net(&self) -> Option<Ipv6Network> {
-        self.ips.iter().find_map(|&ip| match ip {
-            IpNetwork::V6(net) => Some(net),
-            _ => None,
-        })
+    fn get_ipv6_nets(&self) -> Vec<Ipv6Network> {
+        self.ips.iter()
+            .filter_map(|ip_net| {
+                match ip_net {
+                    IpNetwork::V6(v6_net) => Some(*v6_net),
+                    _ => None,
+                }
+            })
+            .collect()
     }
 
     fn get_link_local_addr(&self) -> Option<Ipv6Addr> {
@@ -167,7 +175,9 @@ fn select_best_lan_interface(
 }
 
 fn print_lan_interface_info(interface: &NetworkInterface) {
-    if let Some(ipv4_net) = interface.get_ipv4_net() {
+    let ipv4_nets: Vec<Ipv4Network> = interface.get_ipv4_nets();
+    if ipv4_nets.len() > 0 {
+        let ipv4_net: Ipv4Network = ipv4_nets[0];
         let msg: &str = &format!("Selected {} with address {}", interface.name, ipv4_net.ip());
         print::print_status(msg);
         return;

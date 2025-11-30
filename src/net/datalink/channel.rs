@@ -5,13 +5,15 @@ use crate::net::range::Ipv4Range;
 use crate::net::sender::SenderConfig;
 use crate::net::transport;
 use crate::print;
+use crate::utils::print::SPINNER;
 use anyhow::{self, Context};
+use colored::*;
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
 use pnet::util::MacAddr;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::mpsc::{self, Sender};
-use std::thread;
 use std::time::{Duration, Instant};
 use threadpool::ThreadPool;
 
@@ -52,8 +54,10 @@ impl<'a> ChannelRunner<'a> {
     }
 }
 
-pub fn discover_via_eth() -> anyhow::Result<Vec<InternalHost>> {
-    let (interface, sender_config) = get_interface_and_sender_config()?;
+pub fn discover_subnet() -> anyhow::Result<Vec<InternalHost>> {
+    let (interface, mut sender_config) = get_interface_and_sender_config()?;
+    let range: Ipv4Range = sender_config.get_ipv4_range()?;
+    sender_config.add_targets(range.to_iter());
     let mut runner: ChannelRunner = ChannelRunner::new(&interface, &sender_config)?;
     runner.send_packets()?;
     runner.listen()
@@ -82,8 +86,7 @@ fn open_eth_channel<F>(
     cfg: &Config,
     channel_opener: F,
 ) -> anyhow::Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>)>
-where
-    F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>,
+where F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>,
 {
     let ch: Channel =
         channel_opener(intf, *cfg).with_context(|| format!("opening on {}", intf.name))?;
@@ -117,31 +120,79 @@ fn sniff_and_dispatch(
 ) -> anyhow::Result<()> {
     let deadline: Instant = Instant::now() + duration_in_ms;
     let thread_pool: ThreadPool = ThreadPool::new(50);
+    let mut unique_hosts: HashMap<MacAddr, HashSet<IpAddr>> = HashMap::new();
+
     while Instant::now() < deadline {
-        let frame: &[u8] = match rx_datalink.next() {
-            Ok(frame) => frame,
+        let frame = match rx_datalink.next() {
+            Ok(f) => f,
             Err(_) => continue,
         };
 
-        let (target_mac, target_addr) =
-            if let Ok(Some((mac, ip))) = packets::handle_frame(frame) {
-                (mac, ip)
-            } else {
-                continue;
-            };
+        let (mac, ip) = match extract_new_target(frame, &mut unique_hosts) {
+            Some(target) => target,
+            None => continue,
+        };
 
-        if let Some(mut host) = process_packet_for_host(target_mac, target_addr, sender_config)? {
-            let tx_inner: mpsc::Sender<InternalHost> = tx.clone();
-            thread_pool.execute(move || {
-                thread::spawn(move || {
-                    let _ = transport::try_dns_reverse_lookup(&mut host);
-                    tx_inner.send(host).unwrap(); 
-                });
-            });
-        }
+        process_and_queue_host(
+            mac, 
+            ip, 
+            unique_hosts.len(), 
+            tx, 
+            &thread_pool, 
+            sender_config
+        )?;
     }
+    
     thread_pool.join();
     Ok(())
+}
+
+fn extract_new_target(
+    frame: &[u8],
+    unique_hosts: &mut HashMap<MacAddr, HashSet<IpAddr>>,
+) -> Option<(MacAddr, IpAddr)> {
+    let (mac, ip) = packets::handle_frame(frame).ok()??;
+    let host_ips = unique_hosts.entry(mac).or_default();
+
+    if host_ips.insert(ip) {
+        return Some((mac, ip));
+    }
+
+    None
+}
+
+fn process_and_queue_host(
+    mac: MacAddr,
+    ip: IpAddr,
+    host_count: usize,
+    tx: &Sender<InternalHost>,
+    pool: &ThreadPool,
+    config: &SenderConfig,
+) -> anyhow::Result<()> {
+    if let Some(mut host) = process_packet_for_host(mac, ip, config)? {
+        update_spinner(host_count);
+        let tx_inner: Sender<InternalHost> = tx.clone();        
+        pool.execute(move || {
+            let _ = transport::try_dns_reverse_lookup(&mut host);
+            if let Err(e) = tx_inner.send(host) {
+                eprintln!("Failed to send host: {}", e);
+            }
+        });
+    }
+    Ok(())
+}
+
+fn update_spinner(count: usize) {
+    let count_str = count.to_string();
+    let colored_count = if count > 0 {
+        count_str.color(Color::Green).bold()
+    } else {
+        count_str.color(Color::Red).bold()
+    };
+    
+    SPINNER.set_message(format!(
+        "Scanning network, found {colored_count} hosts so far...",
+    ));
 }
 
 fn process_packet_for_host(

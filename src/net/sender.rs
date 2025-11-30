@@ -1,13 +1,13 @@
 use std::{collections::HashSet, net::{IpAddr, Ipv4Addr, Ipv6Addr}};
 use pnet::{datalink::NetworkInterface, ipnetwork::{Ipv4Network, Ipv6Network}, util::MacAddr};
 
-use crate::net::datalink::interface::NetworkInterfaceExtension;
+use crate::{net::{datalink::interface::NetworkInterfaceExtension, range::{self, Ipv4Range}}};
 
 #[derive(Debug, Clone, Default)]
 pub struct SenderConfig {
     local_mac: Option<MacAddr>,
-    ipv4_net: Option<Ipv4Network>,
-    ipv6_net: Option<Ipv6Network>,
+    ipv4_nets: Vec<Ipv4Network>,
+    ipv6_nets: Vec<Ipv6Network>,
     targets_v4: HashSet<Ipv4Addr>,
     targets_v6: HashSet<Ipv6Addr>,
 }
@@ -16,8 +16,8 @@ impl From<&NetworkInterface> for SenderConfig {
     fn from(interface: &NetworkInterface) -> Self {
         Self {
             local_mac: interface.mac,
-            ipv4_net: interface.get_ipv4_net(),
-            ipv6_net: interface.get_ipv6_net(),
+            ipv4_nets: interface.get_ipv4_nets(),
+            ipv6_nets: interface.get_ipv6_nets(),
             targets_v4: HashSet::new(),
             targets_v6: HashSet::new(),
         }
@@ -25,22 +25,27 @@ impl From<&NetworkInterface> for SenderConfig {
 }
 
 impl SenderConfig {
-    pub fn _set_local_mac(&mut self, mac_addr: MacAddr) {
-        self.local_mac = Some(mac_addr);
-    }
-
     pub fn get_local_mac(&self) -> anyhow::Result<MacAddr> {
         self.local_mac
             .ok_or_else(|| anyhow::anyhow!("local MAC not set"))
     }
 
     pub fn get_ipv4_net(&self) -> anyhow::Result<Ipv4Network> {
-        self.ipv4_net
-            .ok_or_else(|| anyhow::anyhow!("ipv4net not set"))
+        let ipv4_net = self.ipv4_nets.first()
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("No IPv4 networks available in configuration"))?;
+        
+        Ok(ipv4_net)
+    }
+
+    pub fn get_ipv4_range(&self) -> anyhow::Result<Ipv4Range> {
+        let net = self.ipv4_nets.first()
+            .ok_or_else(|| anyhow::anyhow!("No IPv4 networks available in configuration"))?;
+        range::from_ipv4_net(*net)
     }
 
     pub fn get_link_local(&self) -> anyhow::Result<Ipv6Addr> {
-        self.ipv6_net.iter()
+        self.ipv6_nets.iter()
             .find_map(|ipv6_net| {
                 let ip = ipv6_net.ip();
                 ip.is_unicast_link_local().then_some(ip)
@@ -63,18 +68,6 @@ impl SenderConfig {
         for target in targets {
             self.add_target(target);
         }
-    }
-
-    pub fn _target_count(&self) -> usize {
-        self.targets_v4.len() + self.targets_v6.len()
-    }
-
-    pub fn _target_count_v4(&self) -> usize {
-        self.targets_v4.len()
-    }
-
-    pub fn _target_count_v6(&self) -> usize {
-        self.targets_v6.len()
     }
 
     pub fn has_addr(&self, target_addr: &IpAddr) -> bool {
