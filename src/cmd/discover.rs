@@ -1,113 +1,113 @@
 use crate::cmd::Target;
-use crate::host::{self, ExternalHost, Host, InternalHost};
+use crate::host::{self, Host, InternalHost};
+use crate::net::datalink::channel::ChannelRunner;
 use crate::net::datalink::interface::NetworkInterfaceExtension;
-use crate::net::datalink::{channel, interface};
+use crate::net::datalink::interface;
+use crate::net::{packets, transport};
+use crate::net::sender::SenderConfig;
 use crate::net::tcp_connect;
-use crate::net::range::Ipv4Range;
-use crate::net::{ip, range};
+use crate::net::ip;
 use crate::print::{self, SPINNER};
 use anyhow::{self, Context};
 use is_root::is_root;
 use pnet::datalink::NetworkInterface;
-use pnet::ipnetwork::Ipv4Network;
+use pnet::util::MacAddr;
+use threadpool::ThreadPool;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::sync::mpsc;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     SPINNER.set_message("Performing discovery...");
     print::print_status("Initializing discovery...");
 
+    let (targets, lan_interface) = get_targets_and_lan_intf(target)?;
+
     if !is_root() {
-        let mut hosts: Vec<Box<dyn Host>> = tcp_handshake_discovery(target).await?;
+        print::print_status("No root privileges. Falling back to non-privileged TCP scan...");
+        let mut hosts = host::external_to_box(
+            tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?
+        );
         return Ok(discovery_ends(&mut hosts)?);
     }
 
     print::print_status("Root privileges detected. Using advanced techniques...");
-    let mut hosts: Vec<Box<dyn Host>> = match target {
-        Target::LAN => discover_lan()?,
-        Target::Host { dst_addr } => discover_host(dst_addr).await?,
-        Target::Range { ipv4_range } => discover_ipv4_range(ipv4_range).await?,
-        _ => {
-            anyhow::bail!("this target is currently unimplemented!")
-        }
+
+    let mut hosts = if let Some(intf) = lan_interface {
+        let mut sender_cfg = SenderConfig::from(&intf);
+        sender_cfg.add_targets(targets);
+        host::internal_to_box(discover_lan(&intf, &sender_cfg)?)
+    } else {
+        host::external_to_box(
+            tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?
+        )
     };
 
     Ok(discovery_ends(&mut hosts)?)
 }
 
-fn discover_lan() -> anyhow::Result<Vec<Box<dyn Host>>> {
-    let hosts: Vec<InternalHost> = channel::discover_subnet()?;
-    Ok(host::internal_to_box(hosts))
-}
-
-async fn discover_host(dst_addr: IpAddr) -> anyhow::Result<Vec<Box<dyn Host>>> {
-    if !ip::is_private(&dst_addr) {
-        return Ok(host::external_to_box(
-            tcp_handshake_discovery_host(dst_addr).await?,
-        ));
-    }
-    let host: Vec<InternalHost> = if let Some(host) = channel::discover_via_ip_addr(dst_addr)? {
-        vec![host]
-    } else {
-        return Err(anyhow::anyhow!("Failed to discover the host"));
-    };
-    Ok(host::internal_to_box(host))
-}
-
-async fn discover_ipv4_range(ipv4_range: Ipv4Range) -> anyhow::Result<Vec<Box<dyn Host>>> {
-    print::print_status(
-        &format!(
-            "Discovering from {} to {}",
-            ipv4_range.start_addr, ipv4_range.end_addr
-        )
-        .to_string(),
-    );
-    if !ipv4_range.start_addr.is_private() {
-        let hosts: Vec<ExternalHost> =
-            tcp_connect::handshake_range_discovery(ipv4_range, tcp_connect::handshake_probe).await?;
-        return Ok(host::external_to_box(hosts));
-    }
-    Ok(host::internal_to_box(channel::discover_via_range(
-        ipv4_range,
-    )?))
-}
-
-async fn tcp_handshake_discovery(target: Target) -> anyhow::Result<Vec<Box<dyn Host>>> {
-    print::print_status("No root privileges. Falling back to non-privileged TCP scan...");
-    let hosts: Vec<ExternalHost> = match target {
-        Target::LAN => tcp_handshake_discovery_lan().await?,
-        Target::Host { dst_addr } => tcp_handshake_discovery_host(dst_addr).await?,
+fn get_targets_and_lan_intf(target: Target) -> anyhow::Result<(HashSet<IpAddr>, Option<NetworkInterface>)> {
+    match target {
+        Target::LAN => {
+            let intf = interface::get_lan().context("Failed to detect LAN interface for discovery")?;
+            let range = intf.get_ipv4_range().context("LAN interface has no valid IPv4 range")?;
+            Ok((range.to_iter().collect::<HashSet<_>>(), Some(intf)))
+        },
+        Target::Host { target_addr } => {
+            let intf = if ip::is_private(&target_addr) { interface::get_lan().ok() } else { None };
+            Ok((HashSet::from([target_addr]), intf))
+        },
         Target::Range { ipv4_range } => {
-            tcp_connect::handshake_range_discovery(ipv4_range, tcp_connect::handshake_probe).await?
+            let targets: HashSet<IpAddr> = ipv4_range.to_iter().collect();
+            let start = IpAddr::V4(ipv4_range.start_addr);
+            let end = IpAddr::V4(ipv4_range.end_addr);
+            let intf = if ip::is_private(&start) && ip::is_private(&end) {
+                interface::get_lan().ok() 
+            } else { 
+                None 
+            };
+            Ok((targets, intf))
+        },
+        Target::VPN => anyhow::bail!("Target::VPN is currently unimplemented!"),
+    }
+}
+
+fn discover_lan(intf: &NetworkInterface, sender_cfg: &SenderConfig) -> anyhow::Result<Vec<InternalHost>> {
+    let mut hosts_map: HashMap<MacAddr, InternalHost> = HashMap::new();
+    let thread_pool = ThreadPool::new(50);
+    let (tx, rx) = mpsc::channel();
+    let mut runner = ChannelRunner::new(intf, sender_cfg)?;
+    runner.send_packets()?;
+    let eth_frames = runner.receive_eth_frames();
+    for frame in eth_frames {
+        let target_mac = frame.get_source();
+        let target_addr = match packets::get_ip_addr_from_eth(&frame) {
+            Ok(ip) => ip,
+            Err(_) => continue,
+        };
+
+        if target_addr.is_ipv4() && !sender_cfg.has_addr(&target_addr) {
+            continue;
         }
-        _ => anyhow::bail!("Handshake discovery for this target not implemented!"),
-    };
-    Ok(host::external_to_box(hosts))
-}
 
-async fn tcp_handshake_discovery_lan() -> anyhow::Result<Vec<ExternalHost>> {
-    let interface: NetworkInterface = interface::get_lan()?;
-    let ipv4_nets: Vec<Ipv4Network> = interface.get_ipv4_nets();
-    if ipv4_nets.len() > 0 {
-        let ipv4_range: Ipv4Range = range::from_ipv4_net(ipv4_nets[0])?;
-        tcp_connect::handshake_range_discovery(ipv4_range, tcp_connect::handshake_probe)
-            .await
-            .context("handshake discovery failed (non-root)")
-    } else {
-        anyhow::bail!("Failed to retrieve IPv4 range for TCP scan.")
+        let host = hosts_map
+            .entry(target_mac)
+            .or_insert_with(|| InternalHost::from(target_mac));
+        host.ips.insert(target_addr);
     }
-}
 
-async fn tcp_handshake_discovery_host(dst_addr: IpAddr) -> anyhow::Result<Vec<ExternalHost>> {
-    if let Some(host) = tcp_connect::handshake_probe(dst_addr)
-        .await
-        .context("handshake discovery failed (non-root)")?
-    {
-        Ok(vec![host])
-    } else {
-        Err(anyhow::anyhow!(
-            "Failed to discover any hosts with a full tcp handshake"
-        ))
+    for mut host in hosts_map.into_values() {
+        let tx_inner = tx.clone();
+        thread_pool.execute(move || {
+            let _ = transport::try_dns_reverse_lookup(&mut host);
+            if let Err(e) = tx_inner.send(host) {
+                eprintln!("Failed to return host from thread: {}", e);
+            }
+        });
     }
+    drop(tx);
+    let hosts: Vec<InternalHost> = rx.into_iter().collect();
+    Ok(hosts)
 }
 
 fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) -> anyhow::Result<()>  {

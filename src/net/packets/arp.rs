@@ -5,7 +5,7 @@ use pnet::datalink::MacAddr;
 use pnet::packet::Packet;
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::Ipv4Addr;
 
 pub fn create_packet(
     src_mac: MacAddr,
@@ -41,12 +41,12 @@ pub fn create_packet(
     Ok(final_packet)
 }
 
-pub fn get_ip_addr(ethernet_packet: EthernetPacket) -> anyhow::Result<IpAddr> {
-    let arp_packet = ArpPacket::new(ethernet_packet.payload()).context(format!(
+pub fn get_ipv4_addr_from_eth(eth_packet: &EthernetPacket) -> anyhow::Result<Ipv4Addr> {
+    let arp_packet: ArpPacket = ArpPacket::new(eth_packet.payload()).context(format!(
         "truncated or invalid ARP packet (payload len {})",
-        ethernet_packet.payload().len()
+        eth_packet.payload().len()
     ))?;
-    Ok(IpAddr::V4(arp_packet.get_sender_proto_addr()))
+    Ok(arp_packet.get_sender_proto_addr())
 }
 
 // ╔════════════════════════════════════════════╗

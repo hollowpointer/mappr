@@ -1,7 +1,7 @@
 use std::{collections::HashSet, net::{IpAddr, Ipv4Addr, Ipv6Addr}};
 use pnet::{datalink::NetworkInterface, ipnetwork::{Ipv4Network, Ipv6Network}, util::MacAddr};
 
-use crate::{net::{datalink::interface::NetworkInterfaceExtension, range::{self, Ipv4Range}}};
+use crate::net::{datalink::interface::NetworkInterfaceExtension};
 
 #[derive(Debug, Clone, Default)]
 pub struct SenderConfig {
@@ -36,12 +36,6 @@ impl SenderConfig {
             .ok_or_else(|| anyhow::anyhow!("No IPv4 networks available in configuration"))?;
         
         Ok(ipv4_net)
-    }
-
-    pub fn get_ipv4_range(&self) -> anyhow::Result<Ipv4Range> {
-        let net = self.ipv4_nets.first()
-            .ok_or_else(|| anyhow::anyhow!("No IPv4 networks available in configuration"))?;
-        range::from_ipv4_net(*net)
     }
 
     pub fn get_link_local(&self) -> anyhow::Result<Ipv6Addr> {

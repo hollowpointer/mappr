@@ -7,7 +7,7 @@ use mac_oui::Oui;
 use once_cell::sync::Lazy;
 use pnet::datalink::MacAddr;
 use std::{
-    collections::{BTreeSet, HashMap, hash_map},
+    collections::{BTreeSet, HashSet},
     net::IpAddr,
 };
 
@@ -19,13 +19,21 @@ pub trait Host {
     fn set_hostname(&mut self, name: String);
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum NetworkRole {
+    _Gateway,
+    _DHCP,
+    _DNS
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct InternalHost {
     pub hostname: String,
     pub ips: BTreeSet<IpAddr>,
-    pub ports: BTreeSet<u16>,
+    pub _ports: BTreeSet<u16>,
     pub mac_addr: MacAddr,
     pub vendor: Option<String>,
+    pub network_roles: HashSet<NetworkRole>
 }
 
 pub struct ExternalHost {
@@ -39,9 +47,10 @@ impl From<MacAddr> for InternalHost {
         Self {
             hostname: String::from("No hostname"),
             ips: BTreeSet::new(),
-            ports: BTreeSet::new(),
+            _ports: BTreeSet::new(),
             mac_addr,
             vendor: identify_vendor(mac_addr),
+            network_roles: HashSet::new()
         }
     }
 }
@@ -60,11 +69,13 @@ impl Host for InternalHost {
     fn print_details(&self, idx: usize) {
         print::tree_head(idx, &self.hostname);
         let mut key_value_pair: Vec<(String, ColoredString)> = ip::to_key_value_pair(&self.ips);
+
         let mac_key_value: (String, ColoredString) = (
             "MAC".to_string(),
             self.mac_addr.to_string().color(colors::MAC_ADDR),
         );
         key_value_pair.push(mac_key_value);
+
         if self.vendor.is_some() {
             let vendor_key_value: (String, ColoredString) = (
                 "Vendor".to_string(),
@@ -72,6 +83,22 @@ impl Host for InternalHost {
             );
             key_value_pair.push(vendor_key_value);
         }
+
+        if !self.network_roles.is_empty() {
+            let joined_roles: String = self.network_roles
+                .iter()
+                .map(|role| format!("{:?}", role)) 
+                .collect::<Vec<String>>()
+                .join(", ");
+
+            let roles_key_value: (String, ColoredString) = (
+                "Roles".to_string(),
+                joined_roles.normal()
+            );
+            
+            key_value_pair.push(roles_key_value);
+        }
+
         print::as_tree_one_level(key_value_pair);
     }
 
@@ -118,26 +145,6 @@ pub fn internal_to_box(hosts: Vec<InternalHost>) -> Vec<Box<dyn Host>> {
         .into_iter()
         .map(|host| Box::new(host) as Box<dyn Host>)
         .collect()
-}
-
-pub fn merge_by_mac(hosts: &mut Vec<InternalHost>) {
-    let mut merged: HashMap<MacAddr, InternalHost> = HashMap::with_capacity(hosts.len());
-    for host in hosts.drain(..) {
-        match merged.entry(host.mac_addr) {
-            hash_map::Entry::Occupied(mut occupied_entry) => {
-                let existing_host: &mut InternalHost = occupied_entry.get_mut();
-                existing_host.ips.extend(host.ips);
-                existing_host.ports.extend(host.ports);
-                if existing_host.vendor.is_none() && !host.vendor.is_some() {
-                    existing_host.vendor = host.vendor;
-                }
-            }
-            hash_map::Entry::Vacant(vacant_entry) => {
-                vacant_entry.insert(host);
-            }
-        }
-    }
-    hosts.extend(merged.into_values());
 }
 
 fn identify_vendor(mac_addr: MacAddr) -> Option<String> {

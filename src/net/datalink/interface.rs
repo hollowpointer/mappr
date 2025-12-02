@@ -1,6 +1,7 @@
+use crate::net::range::{self, Ipv4Range};
 use crate::print;
 use crate::{net::ip, utils::colors};
-use anyhow;
+use anyhow::{self, Context};
 use colored::{ColoredString, Colorize};
 use pnet::ipnetwork::{IpNetwork, Ipv6Network};
 use pnet::{self, datalink::NetworkInterface, ipnetwork::Ipv4Network};
@@ -30,6 +31,7 @@ pub trait NetworkInterfaceExtension {
     fn print_details(&self, idx: usize);
     fn get_ipv4_nets(&self) -> Vec<Ipv4Network>;
     fn get_ipv6_nets(&self) -> Vec<Ipv6Network>;
+    fn get_ipv4_range(&self) -> anyhow::Result<Ipv4Range>;
     fn get_link_local_addr(&self) -> Option<Ipv6Addr>;
 }
 
@@ -66,6 +68,17 @@ impl NetworkInterfaceExtension for NetworkInterface {
                 }
             })
             .collect()
+    }
+
+    fn get_ipv4_range(&self) -> anyhow::Result<Ipv4Range> {
+        let net = self.ips.iter()
+            .find_map(|ip| match ip {
+                IpNetwork::V4(net) => Some(*net),
+                _ => None,
+            })
+            .context("No IPv4 network found")?; // Returns generic error if None
+            
+        range::from_ipv4_net(net)
     }
 
     fn get_link_local_addr(&self) -> Option<Ipv6Addr> {

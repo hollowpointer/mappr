@@ -1,84 +1,64 @@
-use crate::host::{self, InternalHost};
-use crate::net::datalink::interface;
+use crate::net::datalink::ethernet;
 use crate::net::packets;
-use crate::net::range::Ipv4Range;
 use crate::net::sender::SenderConfig;
-use crate::net::transport;
 use crate::print;
-use crate::utils::print::SPINNER;
 use anyhow::{self, Context};
-use colored::*;
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
-use pnet::util::MacAddr;
-use std::collections::{HashMap, HashSet};
-use std::net::IpAddr;
-use std::sync::mpsc::{self, Sender};
+use pnet::packet::ethernet::EthernetPacket;
 use std::time::{Duration, Instant};
-use threadpool::ThreadPool;
 
 const PROBE_TIMEOUT_MS: u64 = 2000;
 
-struct ChannelRunner<'a> {
+pub struct ChannelRunner<'a> {
     tx: Box<dyn DataLinkSender>,
     rx: Box<dyn DataLinkReceiver>,
-    duration: Duration,
-    sender_config: &'a SenderConfig,
+    duration_in_ms: Duration,
+    sender_cfg: &'a SenderConfig,
+    frame_buffer: Vec<Vec<u8>>
 }
 
 impl<'a> ChannelRunner<'a> {
     pub fn new(
-        interface: &datalink::NetworkInterface,
-        sender_config: &'a SenderConfig,
+        intf: &datalink::NetworkInterface,
+        sender_cfg: &'a SenderConfig,
     ) -> anyhow::Result<Self> {
-        let (tx, rx) = open_eth_channel(interface, &get_config(), datalink::channel)?;
-        let duration = Duration::from_millis(PROBE_TIMEOUT_MS);
+        let (tx, rx) = open_eth_channel(intf, &get_config(), datalink::channel)?;
+        let duration_in_ms = Duration::from_millis(PROBE_TIMEOUT_MS);
         Ok(Self {
             tx,
             rx,
-            duration,
-            sender_config,
+            duration_in_ms,
+            sender_cfg,
+            frame_buffer: Vec::new()
         })
     }
 
     pub fn send_packets(&mut self) -> anyhow::Result<()> {
-        let packets: Vec<Vec<u8>> = packets::create_packets(self.sender_config)?;
+        let packets: Vec<Vec<u8>> = packets::create_packets(self.sender_cfg)?;
         for packet in packets {
             self.tx.send_to(&packet, None);
         }
         Ok(())
     }
 
-    pub fn listen(self) -> anyhow::Result<Vec<InternalHost>> {
-        listen_for_hosts(self.rx, self.duration, self.sender_config)
+    pub fn receive_eth_frames(&'_ mut self) -> Vec<EthernetPacket<'_>> {
+        self.frame_buffer.clear(); 
+        let deadline: Instant = Instant::now() + self.duration_in_ms;
+        while Instant::now() < deadline {
+            if let Ok(frame_bytes) = self.rx.next() {
+                self.frame_buffer.push(frame_bytes.to_vec());
+            }
+        }
+        let mut eth_frames: Vec<EthernetPacket> = Vec::new();
+        for bytes in &self.frame_buffer {
+            if let Ok(frame) = ethernet::get_packet_from_u8(bytes) {
+                eth_frames.push(frame);
+            }
+        }
+        
+        eth_frames
     }
-}
-
-pub fn discover_subnet() -> anyhow::Result<Vec<InternalHost>> {
-    let (interface, mut sender_config) = get_interface_and_sender_config()?;
-    let range: Ipv4Range = sender_config.get_ipv4_range()?;
-    sender_config.add_targets(range.to_iter());
-    let mut runner: ChannelRunner = ChannelRunner::new(&interface, &sender_config)?;
-    runner.send_packets()?;
-    runner.listen()
-}
-
-pub fn discover_via_ip_addr(target_addr: IpAddr) -> anyhow::Result<Option<InternalHost>> {
-    let (interface, mut sender_config) = get_interface_and_sender_config()?;
-    sender_config.add_target(target_addr);
-    let mut runner: ChannelRunner = ChannelRunner::new(&interface, &sender_config)?;
-    runner.send_packets()?;
-    let hosts: Vec<InternalHost> = runner.listen()?;
-    let host: Option<InternalHost> = hosts.into_iter().find(|host| host.ips.contains(&target_addr));
-    Ok(host)
-}
-
-pub fn discover_via_range(ipv4_range: Ipv4Range) -> anyhow::Result<Vec<InternalHost>> {
-    let (interface, mut sender_config) = get_interface_and_sender_config()?;
-    sender_config.add_targets(ipv4_range.to_iter());
-    let mut runner: ChannelRunner = ChannelRunner::new(&interface, &sender_config)?;
-    runner.send_packets()?;
-    runner.listen()
 }
 
 fn open_eth_channel<F>(
@@ -97,125 +77,6 @@ where F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>
         }
         _ => anyhow::bail!("non-ethernet channel for {}", intf.name),
     }
-}
-
-fn listen_for_hosts(
-    rx_datalink: Box<dyn DataLinkReceiver>,
-    duration_in_ms: Duration,
-    sender_config: &SenderConfig,
-) -> anyhow::Result<Vec<InternalHost>> {  
-    let (tx, rx) = mpsc::channel();
-    sniff_and_dispatch(rx_datalink, &tx, duration_in_ms, sender_config)?;
-    drop(tx);
-    let mut hosts: Vec<InternalHost> = rx.iter().collect();
-    host::merge_by_mac(&mut hosts);
-    Ok(hosts)
-}
-
-fn sniff_and_dispatch(
-    mut rx_datalink: Box<dyn DataLinkReceiver>,
-    tx: &Sender<InternalHost>,
-    duration_in_ms: Duration,
-    sender_config: &SenderConfig,
-) -> anyhow::Result<()> {
-    let deadline: Instant = Instant::now() + duration_in_ms;
-    let thread_pool: ThreadPool = ThreadPool::new(50);
-    let mut unique_hosts: HashMap<MacAddr, HashSet<IpAddr>> = HashMap::new();
-
-    while Instant::now() < deadline {
-        let frame = match rx_datalink.next() {
-            Ok(f) => f,
-            Err(_) => continue,
-        };
-
-        let (mac, ip) = match extract_new_target(frame, &mut unique_hosts) {
-            Some(target) => target,
-            None => continue,
-        };
-
-        process_and_queue_host(
-            mac, 
-            ip, 
-            unique_hosts.len(), 
-            tx, 
-            &thread_pool, 
-            sender_config
-        )?;
-    }
-    
-    thread_pool.join();
-    Ok(())
-}
-
-fn extract_new_target(
-    frame: &[u8],
-    unique_hosts: &mut HashMap<MacAddr, HashSet<IpAddr>>,
-) -> Option<(MacAddr, IpAddr)> {
-    let (mac, ip) = packets::handle_frame(frame).ok()??;
-    let host_ips = unique_hosts.entry(mac).or_default();
-
-    if host_ips.insert(ip) {
-        return Some((mac, ip));
-    }
-
-    None
-}
-
-fn process_and_queue_host(
-    mac: MacAddr,
-    ip: IpAddr,
-    host_count: usize,
-    tx: &Sender<InternalHost>,
-    pool: &ThreadPool,
-    config: &SenderConfig,
-) -> anyhow::Result<()> {
-    if let Some(mut host) = process_packet_for_host(mac, ip, config)? {
-        update_spinner(host_count);
-        let tx_inner: Sender<InternalHost> = tx.clone();        
-        pool.execute(move || {
-            let _ = transport::try_dns_reverse_lookup(&mut host);
-            if let Err(e) = tx_inner.send(host) {
-                eprintln!("Failed to send host: {}", e);
-            }
-        });
-    }
-    Ok(())
-}
-
-fn update_spinner(count: usize) {
-    let count_str = count.to_string();
-    let colored_count = if count > 0 {
-        count_str.color(Color::Green).bold()
-    } else {
-        count_str.color(Color::Red).bold()
-    };
-    
-    SPINNER.set_message(format!(
-        "Scanning network, found {colored_count} hosts so far...",
-    ));
-}
-
-fn process_packet_for_host(
-    target_mac: MacAddr,
-    target_addr: IpAddr,
-    sender_config: &SenderConfig,
-) -> anyhow::Result<Option<InternalHost>> {
-    let local_mac: MacAddr = sender_config.get_local_mac()?;
-    if target_mac == local_mac {
-        return Ok(None)
-    }
-    if target_addr.is_ipv4() && !sender_config.has_addr(&target_addr) {
-        return Ok(None);
-    }
-    let mut host: InternalHost = host::InternalHost::from(target_mac);
-    host.ips.insert(target_addr);
-    Ok(Some(host))
-}
-
-fn get_interface_and_sender_config() -> anyhow::Result<(NetworkInterface, SenderConfig)> {
-    let interface: NetworkInterface = interface::get_lan()?;
-    let sender_config: SenderConfig = SenderConfig::from(&interface);
-    Ok((interface, sender_config))
 }
 
 fn get_config() -> Config {

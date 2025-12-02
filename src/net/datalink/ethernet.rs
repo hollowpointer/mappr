@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pnet::datalink::MacAddr;
-use pnet::packet::ethernet::{EtherType, MutableEthernetPacket};
+use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 
 use crate::net::utils::ETH_HDR_LEN;
 
@@ -18,4 +18,10 @@ pub fn make_header(
         eth.set_ethertype(et);
     }
     Ok(buffer.to_vec())
+}
+
+pub fn get_packet_from_u8(frame_bytes: &'_ [u8]) -> anyhow::Result<EthernetPacket<'_>> {
+    let eth_packet: EthernetPacket = EthernetPacket::new(frame_bytes)
+        .context("truncated or invalid Ethernet frame")?;
+    Ok(eth_packet)
 }

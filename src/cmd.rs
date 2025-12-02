@@ -36,7 +36,7 @@ pub enum Commands {
 #[derive(Clone, Debug)]
 pub enum Target {
     LAN,
-    Host { dst_addr: IpAddr },
+    Host { target_addr: IpAddr },
     Range { ipv4_range: Ipv4Range },
     VPN,
 }
@@ -83,7 +83,7 @@ fn parse_keyword(s_lower: &str) -> Option<Target> {
 fn parse_host(s: &str) -> Option<Target> {
     s.parse::<IpAddr>()
         .ok()
-        .map(|dst_addr| Target::Host { dst_addr })
+        .map(|target_addr| Target::Host { target_addr })
 }
 
 fn parse_ip_range(s: &str) -> Result<Option<Target>, String> {

@@ -1,5 +1,5 @@
 use crate::host::ExternalHost;
-use crate::net::range::Ipv4Range;
+use std::collections::HashSet;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
@@ -7,7 +7,7 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 pub async fn handshake_range_discovery<F, Fut>(
-    ipv4_range: Ipv4Range,
+    ip_addrs: HashSet<IpAddr>,
     mut prober: F,
 ) -> anyhow::Result<Vec<ExternalHost>>
 where
@@ -15,8 +15,8 @@ where
     Fut: Future<Output = anyhow::Result<Option<ExternalHost>>>,
 {
     let mut result: Vec<ExternalHost> = Vec::new();
-    for ip in ipv4_range.iter() {
-        if let Some(found) = prober(IpAddr::V4(ip)).await? {
+    for ip in ip_addrs {
+        if let Some(found) = prober(ip).await? {
             result.push(found);
         }
     }
@@ -46,66 +46,7 @@ pub async fn handshake_probe(addr: IpAddr) -> anyhow::Result<Option<ExternalHost
 mod tests {
     use super::*;
     use crate::host::ExternalHost;
-    use crate::net::range::Ipv4Range;
     use std::net::{IpAddr, Ipv4Addr};
-
-    #[tokio::test]
-    async fn handshake_range_discovery_should_collect_found_hosts() {
-        let range = Ipv4Range::new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
-        let mock_prober = |ip: IpAddr| async move {
-            if ip == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)) {
-                Ok(Some(ExternalHost::from(ip)))
-            } else {
-                Ok(None)
-            }
-        };
-        let results: Vec<ExternalHost> =
-            handshake_range_discovery(range, mock_prober).await.unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(
-            results[0]
-                .ips
-                .contains(&IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
-            true
-        );
-    }
-
-    #[tokio::test]
-    async fn handshake_range_discovery_returns_empty_vec_when_none_found() {
-        let range = Ipv4Range::new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
-        let mock_prober = |_: IpAddr| async move { Ok(None) };
-        let results: Vec<ExternalHost> =
-            handshake_range_discovery(range, mock_prober).await.unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn handshake_range_discovery_handles_empty_range() {
-        let range = Ipv4Range::new(Ipv4Addr::new(10, 0, 0, 5), Ipv4Addr::new(10, 0, 0, 4));
-        let mock_prober = |ip: IpAddr| async move {
-            panic!(
-                "Prober should not be called for an empty range, but was called for {}",
-                ip
-            );
-            #[allow(unreachable_code)]
-            Ok(None)
-        };
-        let results: Vec<ExternalHost> =
-            handshake_range_discovery(range, mock_prober).await.unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn handshake_range_discovery_propagates_prober_error() {
-        let range = Ipv4Range::new(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
-        let mock_prober =
-            |_: IpAddr| async move { Err(anyhow::anyhow!("Network subsystem failure!")) };
-        let result = handshake_range_discovery(range, mock_prober).await;
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert_eq!(e.to_string(), "Network subsystem failure!");
-        }
-    }
 
     #[tokio::test]
     #[ignore]

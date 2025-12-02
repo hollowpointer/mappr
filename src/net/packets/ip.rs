@@ -1,10 +1,12 @@
+use std::net::{Ipv4Addr, Ipv6Addr};
+
 use crate::net::utils::IP_V6_HDR_LEN;
 use anyhow::Context;
 use pnet::packet::Packet;
 use pnet::packet::ethernet::EthernetPacket;
-use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
+use pnet::packet::ip::IpNextHeaderProtocol;
+use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::{Ipv6Packet, MutableIpv6Packet};
-use std::net::{IpAddr, Ipv6Addr};
 
 // const WORD_LEN: usize = 4;
 // const NO_FRAG_FLAG: u8 = 1 << 1;
@@ -64,15 +66,19 @@ pub fn create_ipv6_header(
     Ok(buffer.to_vec())
 }
 
-
-pub fn extract_addr_if_icmpv6(eth_packet: EthernetPacket) -> anyhow::Result<Option<IpAddr>> {
-    let ipv6_packet: Ipv6Packet = Ipv6Packet::new(eth_packet.payload()).context(format!(
-        "truncated or invalid IPv6 packet (payload len {})",
-        eth_packet.payload().len()
+pub fn get_ipv6_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<Ipv6Addr> {
+    let ipv6_packet: Ipv6Packet = Ipv6Packet::new(frame.payload()).context(format!(
+        "truncated or invalid ipv6 packet (payload len {})",
+        frame.payload().len()
     ))?;
-    if ipv6_packet.get_next_header() == IpNextHeaderProtocols::Icmpv6 {
-        let src_addr: IpAddr = IpAddr::V6(ipv6_packet.get_source());
-        return Ok(Some(src_addr));
-    }
-    Ok(None)
+    Ok(ipv6_packet.get_source())
 }
+
+pub fn get_ipv4_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<Ipv4Addr> {
+    let ipv4_packet: Ipv4Packet = Ipv4Packet::new(frame.payload()).context(format!(
+        "truncated or invalid ipv4 packet (payload len {})",
+        frame.payload().len()
+    ))?;
+    Ok(ipv4_packet.get_source())
+}
+

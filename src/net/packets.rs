@@ -1,9 +1,10 @@
 pub mod icmp;
 pub mod dns;
 pub mod udp;
-mod ip;
+pub mod arp;
+mod ndp;
+pub mod ip;
 
-use crate::net::datalink::arp;
 use crate::net::sender::SenderConfig;
 use crate::utils::print;
 use anyhow::Context;
@@ -71,16 +72,12 @@ fn create_icmpv6_packet(sender_config: &SenderConfig) -> anyhow::Result<Vec<u8>>
     Ok(packet)
 }
 
-pub fn handle_frame(frame: &[u8]) -> anyhow::Result<Option<(MacAddr, IpAddr)>> {
-    let eth = EthernetPacket::new(frame).context("truncated or invalid Ethernet frame")?;
-    let mac_addr: MacAddr = eth.get_source();
-    let ip: Option<IpAddr> = match eth.get_ethertype() {
-        EtherTypes::Arp => Some(arp::get_ip_addr(eth)?),
-        EtherTypes::Ipv6 => ip::extract_addr_if_icmpv6(eth)?,
-        _ => None,
-    };
-    if let Some(ip) = ip {
-        return Ok(Some((mac_addr, ip)));
+pub fn get_ip_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<IpAddr> {
+    match frame.get_ethertype() {
+        EtherTypes::Arp => Ok(IpAddr::V4(arp::get_ipv4_addr_from_eth(&frame)?)),
+        EtherTypes::Ipv4 => Ok(IpAddr::V4(ip::get_ipv4_addr_from_eth(&frame)?)),
+        EtherTypes::Ipv6 => Ok(IpAddr::V6(ip::get_ipv6_addr_from_eth(&frame)?)),
+        _ => Err(anyhow::anyhow!("Unsupported EtherType: {:?}", frame.get_ethertype()))
     }
-    Ok(None)
 }
+
