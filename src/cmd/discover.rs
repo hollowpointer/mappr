@@ -12,10 +12,9 @@ use anyhow::{self, Context};
 use is_root::is_root;
 use pnet::datalink::NetworkInterface;
 use pnet::util::MacAddr;
-use threadpool::ThreadPool;
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
-use std::sync::mpsc;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     SPINNER.set_message("Performing discovery...");
@@ -72,15 +71,32 @@ fn get_targets_and_lan_intf(target: Target) -> anyhow::Result<(HashSet<IpAddr>, 
     }
 }
 
-fn discover_lan(intf: &NetworkInterface, sender_cfg: &SenderConfig) -> anyhow::Result<Vec<InternalHost>> {
-    let mut hosts_map: HashMap<MacAddr, InternalHost> = HashMap::new();
-    let thread_pool = ThreadPool::new(50);
-    let (tx, rx) = mpsc::channel();
-    let mut runner = ChannelRunner::new(intf, sender_cfg)?;
+pub fn discover_lan(
+    intf: &NetworkInterface, 
+    sender_cfg: &SenderConfig
+) -> anyhow::Result<Vec<InternalHost>> {
+    // Phase 1: Scan network and build basic MAC/IP map
+    let mut hosts_map = collect_active_hosts(intf, sender_cfg)?;
+    // Phase 2: Parallel rDNS lookups
+    enrich_with_hostnames(&mut hosts_map);
+    Ok(hosts_map.into_values().collect())
+}
+
+fn collect_active_hosts(
+    intf: &NetworkInterface,
+    sender_cfg: &SenderConfig,
+) -> anyhow::Result<HashMap<MacAddr, InternalHost>> {
+    let mut runner = ChannelRunner::new(intf, sender_cfg)
+        .context("Failed to initialize channel runner")?;
+
     runner.send_packets()?;
     let eth_frames = runner.receive_eth_frames();
+
+    let mut hosts_map: HashMap<MacAddr, InternalHost> = HashMap::new();
+
     for frame in eth_frames {
         let target_mac = frame.get_source();
+        
         let target_addr = match packets::get_ip_addr_from_eth(&frame) {
             Ok(ip) => ip,
             Err(_) => continue,
@@ -90,24 +106,24 @@ fn discover_lan(intf: &NetworkInterface, sender_cfg: &SenderConfig) -> anyhow::R
             continue;
         }
 
-        let host = hosts_map
+        hosts_map
             .entry(target_mac)
-            .or_insert_with(|| InternalHost::from(target_mac));
-        host.ips.insert(target_addr);
+            .or_insert_with(|| InternalHost::from(target_mac))
+            .ips
+            .insert(target_addr);
     }
 
-    for mut host in hosts_map.into_values() {
-        let tx_inner = tx.clone();
-        thread_pool.execute(move || {
-            let _ = transport::try_dns_reverse_lookup(&mut host);
-            if let Err(e) = tx_inner.send(host) {
-                eprintln!("Failed to return host from thread: {}", e);
+    Ok(hosts_map)
+}
+
+fn enrich_with_hostnames(hosts_map: &mut HashMap<MacAddr, InternalHost>) {
+    hosts_map.par_iter_mut().for_each(|(_, host)| {
+        if let Some(&target_addr) = host.ips.iter().find(|ip| ip.is_ipv4()) {
+            if let Ok(hostname) = transport::get_hostname_via_rdns(target_addr) {
+                host.set_hostname(hostname);
             }
-        });
-    }
-    drop(tx);
-    let hosts: Vec<InternalHost> = rx.into_iter().collect();
-    Ok(hosts)
+        }
+    });
 }
 
 fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) -> anyhow::Result<()>  {

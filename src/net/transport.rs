@@ -1,23 +1,12 @@
 use std::{net::IpAddr, time::{Duration, Instant}};
 
 use anyhow::Context;
-use pnet::{
-    packet::{
-        Packet, 
-        ip::IpNextHeaderProtocols, 
-        udp::UdpPacket
-    }, 
-    transport::{
-        self, 
-        TransportChannelType, 
-        TransportProtocol, 
-        TransportReceiver,
-        TransportSender, UdpTransportChannelIterator
-    }
+use pnet::{packet::{Packet, ip::IpNextHeaderProtocols, udp::UdpPacket}, 
+    transport::{self, TransportChannelType, TransportProtocol, TransportReceiver,TransportSender, UdpTransportChannelIterator}
 };
 use rand::random_range;
 
-use crate::{host::Host, net::{ip, packets::{dns, udp}}};
+use crate::net::{ip, packets::{dns, udp}};
 
 const TRANSPORT_BUFFER_SIZE: usize = 4096;
 const CHANNEL_TYPE_UDP: TransportChannelType = TransportChannelType::Layer4(
@@ -37,7 +26,7 @@ impl TransportRunner {
         Ok(Self { tx, rx, timeout })
     }
 
-    fn send_packets<P>(&mut self, packet: P, dst_addr: IpAddr) -> anyhow::Result<()>
+    fn send_packet<P>(&mut self, packet: P, dst_addr: IpAddr) -> anyhow::Result<()>
     where P: Packet {
         self.tx.send_to(packet, dst_addr)?;
         Ok(())
@@ -64,21 +53,18 @@ impl TransportRunner {
     }
 }
 
-pub fn try_dns_reverse_lookup(host: &mut dyn Host) -> anyhow::Result<()> {
-    let host_addr: IpAddr = host.get_primary_ip().ok_or_else(|| anyhow::anyhow!("No Primary IP"))?;
+pub fn get_hostname_via_rdns(ip_addr: IpAddr) -> anyhow::Result<String> {
     let mut runner: TransportRunner = TransportRunner::new_layer4_udp()?;
-    let id: u16 = ip::derive_u16_id(&host_addr);
-    let payload: Vec<u8> = dns::create_ptr_packet(&host_addr)?;
+    let id: u16 = ip::derive_u16_id(&ip_addr);
+    let ptr_packet: Vec<u8> = dns::create_ptr_packet(&ip_addr)?;
     let src_port: u16 = random_range(50_000..u16::max_value());
-    let (dst_addr, dst_port) = dns::get_dns_server_socket_addr(&host_addr)?;
-    let udp_payload: Vec<u8> = udp::create_packet(src_port, dst_port, payload)?;
-    let udp_packet: UdpPacket = UdpPacket::new(&udp_payload).context("creating udp packet")?;
-    
-    runner.send_packets(udp_packet, dst_addr)?;
+    let (dst_addr, dst_port) = dns::get_dns_server_socket_addr(&ip_addr)?;
+    let udp_packet: Vec<u8> = udp::create_packet(src_port, dst_port, ptr_packet)?;
+    let udp_packet: UdpPacket = UdpPacket::new(&udp_packet).context("creating udp packet")?;
 
+    runner.send_packet(udp_packet, dst_addr)?;
     if let Some(hostname) = runner.listen_for_dns_responses(src_port, id)? {
-        host.set_hostname(hostname);
+        return Ok(hostname)
     }
-
-    Ok(())
+    Err(anyhow::anyhow!("No hostname found"))
 }
