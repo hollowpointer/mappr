@@ -1,8 +1,7 @@
 use crate::cmd::Target;
 use crate::host::{self, Host, InternalHost};
-use crate::net::datalink::channel::ChannelRunner;
 use crate::net::datalink::interface::NetworkInterfaceExtension;
-use crate::net::datalink::interface;
+use crate::net::datalink::{channel, ethernet, interface};
 use crate::net::{packets, transport};
 use crate::net::sender::SenderConfig;
 use crate::net::tcp_connect;
@@ -10,11 +9,17 @@ use crate::net::ip;
 use crate::print::{self, SPINNER};
 use anyhow::{self, Context};
 use is_root::is_root;
-use pnet::datalink::NetworkInterface;
+use pnet::datalink::{self, NetworkInterface};
 use pnet::util::MacAddr;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
+
+const MAX_CHANNEL_TIME_MS: u64 = 3000;
+const MAX_SILENCE_TIME_MS: u64 = 200;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     SPINNER.set_message("Performing discovery...");
@@ -75,45 +80,48 @@ pub fn discover_lan(
     intf: &NetworkInterface, 
     sender_cfg: &SenderConfig
 ) -> anyhow::Result<Vec<InternalHost>> {
-    // Phase 1: Scan network and build basic MAC/IP map
-    let mut hosts_map = collect_active_hosts(intf, sender_cfg)?;
-    // Phase 2: Parallel rDNS lookups
-    enrich_with_hostnames(&mut hosts_map);
-    Ok(hosts_map.into_values().collect())
-}
-
-fn collect_active_hosts(
-    intf: &NetworkInterface,
-    sender_cfg: &SenderConfig,
-) -> anyhow::Result<HashMap<MacAddr, InternalHost>> {
-    let mut runner = ChannelRunner::new(intf, sender_cfg)
-        .context("Failed to initialize channel runner")?;
-
-    runner.send_packets()?;
-    let eth_frames = runner.receive_eth_frames();
 
     let mut hosts_map: HashMap<MacAddr, InternalHost> = HashMap::new();
 
-    for frame in eth_frames {
-        let target_mac = frame.get_source();
-        
-        let target_addr = match packets::get_ip_addr_from_eth(&frame) {
-            Ok(ip) => ip,
-            Err(_) => continue,
-        };
+    let (tx, rx) = mpsc::channel();
+    let (eth_tx, mut eth_rx) = channel::open_eth_channel(intf, datalink::channel)?;
 
-        if target_addr.is_ipv4() && !sender_cfg.has_addr(&target_addr) {
-            continue;
+    thread::spawn(move || {
+        let deadline: Instant = Instant::now() + Duration::from_millis(MAX_CHANNEL_TIME_MS);
+        let mut receive_window: Instant = Instant::now() + Duration::from_millis(MAX_SILENCE_TIME_MS);
+        while Instant::now() < deadline && Instant::now() < receive_window {
+            if let Ok(frame) = eth_rx.next() {
+                let _ = tx.send(frame.to_vec());
+                receive_window = Instant::now() + Duration::from_millis(MAX_SILENCE_TIME_MS);
+            }
         }
+    });
 
-        hosts_map
-            .entry(target_mac)
-            .or_insert_with(|| InternalHost::from(target_mac))
-            .ips
-            .insert(target_addr);
+    let _ = channel::send_packets(eth_tx, sender_cfg);
+
+    while let Ok(frame_bytes) = rx.recv() {
+        if let Ok(eth_frame) = ethernet::get_packet_from_u8(&frame_bytes) {
+            let target_mac = eth_frame.get_source();
+    
+            let target_addr = match packets::get_ip_addr_from_eth(&eth_frame) {
+                Ok(ip) => ip,
+                Err(_) => continue,
+            };
+
+            if target_addr.is_ipv4() && !sender_cfg.has_addr(&target_addr) {
+                continue;
+            }
+
+            hosts_map
+                .entry(target_mac)
+                .or_insert_with(|| InternalHost::from(target_mac))
+                .ips
+                .insert(target_addr);
+        }
     }
 
-    Ok(hosts_map)
+    enrich_with_hostnames(&mut hosts_map);
+    Ok(hosts_map.into_values().collect())
 }
 
 fn enrich_with_hostnames(hosts_map: &mut HashMap<MacAddr, InternalHost>) {
