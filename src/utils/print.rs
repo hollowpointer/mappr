@@ -151,6 +151,11 @@ pub fn header(msg: &str) {
     SPINNER.println(&format!("{line}"));
 }
 
+pub fn fat_separator() {
+    let sep: ColoredString = "═".repeat(TOTAL_WIDTH).bright_black();
+    SPINNER.println(&format!("{}", sep));
+}
+
 pub fn aligned_line<V>(key: &str, value: V)
 where
     V: Display + WithDefaultColor,
@@ -200,6 +205,12 @@ pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
         );
         println(&output);
     }
+}
+
+pub fn centerln(msg: &str) {
+    let space = " ".repeat((TOTAL_WIDTH - msg.len()) / 2);
+    let output: String = format!("{}{}{}", space, msg, space);
+    SPINNER.println(output);
 }
 
 pub fn println(msg: &str) {

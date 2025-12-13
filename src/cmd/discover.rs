@@ -22,13 +22,15 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-const MAX_CHANNEL_TIME_MS: u64 = 3000;
+const MAX_CHANNEL_TIME_MS: u64 = 10000;
+const MIN_CHANNEL_TIME_MS: u64 = 3000;
 const MAX_SILENCE_TIME_MS: u64 = 500;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     SPINNER.set_message("Performing discovery...");
     print::print_status("Initializing discovery...");
 
+    let start_time: Instant = Instant::now();
     let (targets, lan_interface) = get_targets_and_lan_intf(target)?;
 
     if !is_root() {
@@ -36,7 +38,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
         let mut hosts = host::external_to_box(
             tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?
         );
-        return Ok(discovery_ends(&mut hosts)?);
+        return Ok(discovery_ends(&mut hosts, start_time.elapsed())?);
     }
 
     print::print_status("Root privileges detected. Using advanced techniques...");
@@ -51,7 +53,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
         )
     };
 
-    Ok(discovery_ends(&mut hosts)?)
+    Ok(discovery_ends(&mut hosts, start_time.elapsed())?)
 }
 
 fn get_targets_and_lan_intf(target: Target) -> anyhow::Result<(HashSet<IpAddr>, Option<NetworkInterface>)> {
@@ -103,6 +105,7 @@ pub fn discover_lan(
 
     let max_silence = Duration::from_millis(MAX_SILENCE_TIME_MS);
     let hard_deadline = Instant::now() + Duration::from_millis(MAX_CHANNEL_TIME_MS);
+    let min_discovery = Instant::now() + Duration::from_millis(MIN_CHANNEL_TIME_MS);
     let mut last_seen_packet = Instant::now();
 
     loop {
@@ -112,11 +115,14 @@ pub fn discover_lan(
         }
 
         let time_since_last = now.duration_since(last_seen_packet);
-        if time_since_last >= max_silence {
+        if now > min_discovery && time_since_last >= max_silence {
             break;
         }
 
-        let remaining_wait = max_silence - time_since_last;
+        let remaining_wait = max_silence
+            .checked_sub(time_since_last)
+            .unwrap_or(Duration::from_millis(100));
+
         match eth_queue_rx.recv_timeout(remaining_wait) {
             Ok(bytes) => {
                 last_seen_packet = Instant::now();
@@ -159,6 +165,9 @@ pub fn discover_lan(
                 }
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
+                if now < min_discovery {
+                    continue; 
+                }
                 break;
             },
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -211,7 +220,7 @@ fn start_receiving_udp(udp_tx: mpsc::Sender<Vec<u8>>, mut udp_rx: TransportRecei
     });
 }
 
-fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) -> anyhow::Result<()>  {
+fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>, total_time: Duration) -> anyhow::Result<()>  {
     if hosts.len() == 0 {
         return Ok(no_hosts_found());
     }
@@ -223,6 +232,8 @@ fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) -> anyhow::Result<()>  {
             print::println("");
         }
     }
+    print::fat_separator();
+    print::centerln(&format!("Discovery Complete: {} active hosts identified in {:.2}s", hosts.len(), total_time.as_secs_f64()));
     print::end_of_program();
     SPINNER.finish_and_clear();
     Ok(())
