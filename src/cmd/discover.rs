@@ -10,9 +10,10 @@ use crate::net::ip;
 use crate::print::{self, SPINNER};
 use anyhow::{self, Context};
 use is_root::is_root;
-use pnet::datalink::{self, NetworkInterface};
+use pnet::datalink::{self, DataLinkReceiver, NetworkInterface};
 use pnet::packet::Packet;
 use pnet::packet::udp::UdpPacket;
+use pnet::transport::TransportReceiver;
 use pnet::util::MacAddr;
 use rand::random_range;
 use std::collections::{HashMap, HashSet};
@@ -87,36 +88,18 @@ pub fn discover_lan(
     let mut hosts_map: HashMap<MacAddr, InternalHost> = HashMap::new();
     let mut dns_map: HashMap<u16, MacAddr> = HashMap::new(); 
 
-    let (tx_eth, rx_eth) = mpsc::channel();
-    let (tx_udp, rx_udp) = mpsc::channel();
-    
+    let (eth_queue_tx, eth_queue_rx) = mpsc::channel();
+    let (udp_queue_tx, udp_queue_rx) = mpsc::channel();
 
-    let (eth_tx, eth_rx) = channel::open_eth_channel(intf, datalink::channel)?;
-    let (mut udp_tx, mut udp_rx) = transport::open_udp_channel()?;
+    let (eth_socket_tx, eth_socket_rx) = channel::open_eth_channel(intf, datalink::channel)?;
+    let (mut udp_socket_tx, udp_socket_rx) = transport::open_udp_channel()?;
 
-    thread::spawn(move || {
-        let mut eth_iter = eth_rx;
-        loop {
-            if let Ok(frame) = eth_iter.next() {
-                if tx_eth.send(frame.to_vec()).is_err() {
-                    break;
-                }
-            }
-        }
-    });
+    // Start Receiver
+    start_receiving_eth(eth_queue_tx, eth_socket_rx);
+    start_receiving_udp(udp_queue_tx, udp_socket_rx);
 
-    thread::spawn(move || {
-        let mut udp_iterator = pnet::transport::udp_packet_iter(&mut udp_rx);
-        loop {
-            if let Ok((udp_packet, _)) = udp_iterator.next() {
-                if tx_udp.send(udp_packet.packet().to_vec()).is_err() {
-                    break;
-                }
-            }
-        }
-    });
-
-    let _ = channel::send_packets(eth_tx, sender_cfg);
+    // Send Discovery Packets (ARP, ICMPv6)
+    channel::send_packets(eth_socket_tx, sender_cfg)?;
 
     let max_silence = Duration::from_millis(MAX_SILENCE_TIME_MS);
     let hard_deadline = Instant::now() + Duration::from_millis(MAX_CHANNEL_TIME_MS);
@@ -134,7 +117,7 @@ pub fn discover_lan(
         }
 
         let remaining_wait = max_silence - time_since_last;
-        match rx_eth.recv_timeout(remaining_wait) {
+        match eth_queue_rx.recv_timeout(remaining_wait) {
             Ok(bytes) => {
                 last_seen_packet = Instant::now();
                 if let Ok(eth_frame) = ethernet::get_packet_from_u8(&bytes) {
@@ -166,7 +149,7 @@ pub fn discover_lan(
                                 if let Ok((dst_addr, dst_port)) = dns::get_dns_server_socket_addr(&target_addr) {
                                      if let Ok(udp_bytes) = udp::create_packet(src_port, dst_port, ptr_bytes) {
                                         if let Some(udp_pkt) = UdpPacket::new(&udp_bytes) {
-                                            let _ = udp_tx.send_to(udp_pkt, dst_addr);
+                                            let _ = udp_socket_tx.send_to(udp_pkt, dst_addr);
                                         }
                                      }
                                 }
@@ -183,7 +166,7 @@ pub fn discover_lan(
             }
         }
 
-        while let Ok(bytes) = rx_udp.try_recv() {
+        while let Ok(bytes) = udp_queue_rx.try_recv() {
             last_seen_packet = Instant::now();
             if let Some(udp_packet) = UdpPacket::new(&bytes) {
                 if udp_packet.get_source() == 53 {
@@ -200,6 +183,32 @@ pub fn discover_lan(
     }    
 
     Ok(hosts_map.into_values().collect())
+}
+
+fn start_receiving_eth(eth_tx: mpsc::Sender<Vec<u8>>, eth_rx: Box<dyn DataLinkReceiver>) {
+    thread::spawn(move || {
+        let mut eth_iter = eth_rx;
+        loop {
+            if let Ok(frame) = eth_iter.next() {
+                if eth_tx.send(frame.to_vec()).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn start_receiving_udp(udp_tx: mpsc::Sender<Vec<u8>>, mut udp_rx: TransportReceiver) {
+    thread::spawn(move || {
+        let mut udp_iterator = pnet::transport::udp_packet_iter(&mut udp_rx);
+        loop {
+            if let Ok((udp_packet, _)) = udp_iterator.next() {
+                if udp_tx.send(udp_packet.packet().to_vec()).is_err() {
+                    break;
+                }
+            }
+        }
+    });
 }
 
 fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>) -> anyhow::Result<()>  {
