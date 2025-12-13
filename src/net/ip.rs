@@ -18,7 +18,7 @@ pub enum Ipv6AddressType {
 
 pub fn get_ipv6_type(ipv6_addr: &Ipv6Addr) -> Ipv6AddressType {
     match true {
-        _ if is_global_unicast(&ipv6_addr) => Ipv6AddressType::GlobalUnicast,
+        _ if is_global_unicast(&IpAddr::V6(*ipv6_addr)) => Ipv6AddressType::GlobalUnicast,
         _ if ipv6_addr.is_unique_local() => Ipv6AddressType::UniqueLocal,
         _ if ipv6_addr.is_unicast_link_local() => Ipv6AddressType::LinkLocal,
         _ if ipv6_addr.is_loopback() => Ipv6AddressType::Loopback,
@@ -26,9 +26,14 @@ pub fn get_ipv6_type(ipv6_addr: &Ipv6Addr) -> Ipv6AddressType {
     }
 }
 
-pub fn is_global_unicast(ipv6_addr: &Ipv6Addr) -> bool {
-    let first_byte = ipv6_addr.octets()[0];
-    0x3F >= first_byte && first_byte >= 0x20
+pub fn is_global_unicast(ip_addr: &IpAddr) -> bool {
+    match ip_addr {
+        IpAddr::V6(ipv6_addr) => {
+            let first_byte = ipv6_addr.octets()[0];
+            0x3F >= first_byte && first_byte >= 0x20
+        },
+        _ => false
+    }
 }
 
 pub fn is_private(ip_addr: &IpAddr) -> bool {
