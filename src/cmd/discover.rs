@@ -8,7 +8,9 @@ use crate::net::sender::SenderConfig;
 use crate::net::tcp_connect;
 use crate::net::ip;
 use crate::print::{self, SPINNER};
+use crate::utils::colors;
 use anyhow::{self, Context};
+use colored::*;
 use is_root::is_root;
 use pnet::datalink::{self, DataLinkReceiver, NetworkInterface};
 use pnet::packet::Packet;
@@ -97,8 +99,8 @@ pub fn discover_lan(
     let (mut udp_socket_tx, udp_socket_rx) = transport::open_udp_channel()?;
 
     // Start Receiver
-    start_receiving_eth(eth_queue_tx, eth_socket_rx);
-    start_receiving_udp(udp_queue_tx, udp_socket_rx);
+    spawn_eth_listener(eth_queue_tx, eth_socket_rx);
+    spawn_udp_listener(udp_queue_tx, udp_socket_rx);
 
     // Send Discovery Packets (ARP, ICMPv6)
     channel::send_packets(eth_socket_tx, sender_cfg)?;
@@ -143,6 +145,8 @@ pub fn discover_lan(
                         .or_insert_with(|| InternalHost::from(target_mac))
                         .ips
                         .insert(target_addr);
+
+                    report_discovery_progress(hosts_map.len());
 
                     if target_addr.is_ipv4() || ip::is_global_unicast(&target_addr) {
                         let id: u16 = ip::derive_u16_id(&target_addr);
@@ -194,7 +198,7 @@ pub fn discover_lan(
     Ok(hosts_map.into_values().collect())
 }
 
-fn start_receiving_eth(eth_tx: mpsc::Sender<Vec<u8>>, eth_rx: Box<dyn DataLinkReceiver>) {
+fn spawn_eth_listener(eth_tx: mpsc::Sender<Vec<u8>>, eth_rx: Box<dyn DataLinkReceiver>) {
     thread::spawn(move || {
         let mut eth_iter = eth_rx;
         loop {
@@ -207,7 +211,7 @@ fn start_receiving_eth(eth_tx: mpsc::Sender<Vec<u8>>, eth_rx: Box<dyn DataLinkRe
     });
 }
 
-fn start_receiving_udp(udp_tx: mpsc::Sender<Vec<u8>>, mut udp_rx: TransportReceiver) {
+fn spawn_udp_listener(udp_tx: mpsc::Sender<Vec<u8>>, mut udp_rx: TransportReceiver) {
     thread::spawn(move || {
         let mut udp_iterator = pnet::transport::udp_packet_iter(&mut udp_rx);
         loop {
@@ -218,6 +222,17 @@ fn start_receiving_udp(udp_tx: mpsc::Sender<Vec<u8>>, mut udp_rx: TransportRecei
             }
         }
     });
+}
+
+fn report_discovery_progress(count: usize) {
+    SPINNER.set_message(
+        format!(
+            "Identified {} so far...", 
+            format!("{} hosts", count).green().bold()
+        )
+        .color(colors::TEXT_DEFAULT)
+        .to_string()
+    );
 }
 
 fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>, total_time: Duration) -> anyhow::Result<()>  {
@@ -233,7 +248,9 @@ fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>, total_time: Duration) -> anyho
         }
     }
     print::fat_separator();
-    print::centerln(&format!("Discovery Complete: {} active hosts identified in {:.2}s", hosts.len(), total_time.as_secs_f64()));
+    let active_hosts: ColoredString = format!("{} active hosts", hosts.len()).bold().green();
+    let total_time: ColoredString = format!("{:.2}s", total_time.as_secs_f64()).bold().yellow();
+    print::centerln(&format!("Discovery Complete: {} identified in {}", active_hosts, total_time).color(colors::TEXT_DEFAULT));
     print::end_of_program();
     SPINNER.finish_and_clear();
     Ok(())

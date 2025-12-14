@@ -208,7 +208,7 @@ pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
 }
 
 pub fn centerln(msg: &str) {
-    let space = " ".repeat((TOTAL_WIDTH - msg.len()) / 2);
+    let space = " ".repeat((TOTAL_WIDTH - console::measure_text_width(msg)) / 2);
     let output: String = format!("{}{}{}", space, msg, space);
     SPINNER.println(output);
 }
