@@ -4,9 +4,26 @@ use crate::print;
 use anyhow::{self, Context};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
-const READ_TIMEOUT_MS: u64 = 50; 
+const READ_TIMEOUT_MS: u64 = 50;
+
+pub struct EthernetHandle {
+    pub tx: Box<dyn DataLinkSender>, 
+    pub rx: mpsc::Receiver<Vec<u8>>,
+}
+
+pub fn start_capture(intf: &NetworkInterface) -> anyhow::Result<EthernetHandle> {
+    let (tx, rx_socket) = open_eth_channel(intf, datalink::channel)?;
+    let (queue_tx, queue_rx) = mpsc::channel();
+    spawn_eth_listener(queue_tx, rx_socket);
+    Ok(EthernetHandle {
+        tx,
+        rx: queue_rx,
+    })
+}
 
 pub fn send_packets(mut tx: Box<dyn DataLinkSender>, sender_cfg: &SenderConfig) -> anyhow::Result<()> {
     let packets: Vec<Vec<u8>> = packets::create_packets(sender_cfg)?;
@@ -31,6 +48,19 @@ where F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>
         }
         _ => anyhow::bail!("non-ethernet channel for {}", intf.name),
     }
+}
+
+pub fn spawn_eth_listener(eth_tx: mpsc::Sender<Vec<u8>>, eth_rx: Box<dyn DataLinkReceiver>) {
+    thread::spawn(move || {
+        let mut eth_iter = eth_rx;
+        loop {
+            if let Ok(frame) = eth_iter.next() {
+                if eth_tx.send(frame.to_vec()).is_err() {
+                    break;
+                }
+            }
+        }
+    });
 }
 
 fn get_config() -> Config {
