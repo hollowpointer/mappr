@@ -22,12 +22,16 @@ use pnet::util::MacAddr;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::ops::ControlFlow;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-const MAX_CHANNEL_TIME: Duration = Duration::from_millis(10_000);
+const MAX_CHANNEL_TIME: Duration = Duration::from_millis(7_500);
 const MIN_CHANNEL_TIME: Duration = Duration::from_millis(2_500);
 const MAX_SILENCE: Duration = Duration::from_millis(500);
+
+const DNS_PORT: u16 = 53;
+const MDNS_PORT: u16 = 5353;
 
 struct LocalRunner {
     hosts_map: HashMap<MacAddr, InternalHost>,
@@ -35,7 +39,8 @@ struct LocalRunner {
     sender_cfg: SenderConfig,
     eth_handle: EthernetHandle,
     udp_handle: UdpHandle,
-    timer: ScanTimer
+    timer: ScanTimer,
+    trans_id_counter: AtomicU16
 }
 
 impl LocalRunner {
@@ -49,7 +54,8 @@ impl LocalRunner {
                 sender_cfg,
                 eth_handle,
                 udp_handle,
-                timer
+                timer,
+                trans_id_counter: AtomicU16::new(0)
             }
         )
     }
@@ -87,19 +93,19 @@ impl LocalRunner {
 
     fn process_eth_packet(&mut self, bytes: &[u8]) {
         let Ok(eth_frame) = ethernet::get_packet_from_u8(bytes) else { return };
-        let Ok(target_addr) = packets::get_ip_addr_from_eth(&eth_frame) else { return };
+        let Ok(source_addr) = packets::get_ip_addr_from_eth(&eth_frame) else { return };
 
-        if target_addr.is_ipv4() && !self.sender_cfg.has_addr(&target_addr) { return }
+        if source_addr.is_ipv4() && !self.sender_cfg.has_addr(&source_addr) { return }
+        let source_mac = eth_frame.get_source();
 
-        let target_mac = eth_frame.get_source();
-        self.hosts_map
-            .entry(target_mac)
-            .or_insert_with(|| InternalHost::from(target_mac))
-            .ips
-            .insert(target_addr);
+        let host = self.hosts_map
+            .entry(source_mac)
+            .or_insert_with(|| InternalHost::from(source_mac));
 
-        report_discovery_progress(self.hosts_map.len());
-        self.send_dns_ptr_query(&target_addr, target_mac);
+        if host.ips.insert(source_addr) {
+            self.send_dns_ptr_query(&source_addr, source_mac);
+            report_discovery_progress(self.hosts_map.len());
+        }
     }
 
     fn process_udp_packets(&mut self) {
@@ -107,7 +113,8 @@ impl LocalRunner {
             self.timer.mark_seen();
             let Some(udp_packet) = UdpPacket::new(&bytes) else { continue };
             match udp_packet.get_source() {
-                53 => self.handle_dns_response(udp_packet),
+                DNS_PORT => self.handle_dns_response(udp_packet),
+                MDNS_PORT => { /* Implement mDNS next */ }
                 _ => { continue }
             }
         }
@@ -123,15 +130,20 @@ impl LocalRunner {
 
     fn send_dns_ptr_query(&mut self, target_addr: &IpAddr, target_mac: MacAddr) {
         if !target_addr.is_ipv4() && !ip::is_global_unicast(&target_addr) { return }
-        let id: u16 = self.dns_map.len() as u16;
-        if self.dns_map.contains_key(&id) { return }
+        let id = self.get_next_trans_id();
+        if self.dns_map.contains_key(&id) { 
+            return 
+        }
         self.dns_map.insert(id, target_mac);
-        let id: u16 = (self.dns_map.len() - 1) as u16;
         transport::send_dns_query(dns::create_ptr_packet, id, &target_addr, &mut self.udp_handle.tx);
     }
 
+    fn get_next_trans_id(&self) -> u16 {
+        self.trans_id_counter.fetch_add(1, Ordering::Relaxed)
+    }
+
     fn get_hosts(self) -> Vec<InternalHost> {
-        return self.hosts_map.into_values().collect()
+        self.hosts_map.into_values().collect()
     }
 }
 
@@ -155,7 +167,12 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     let mut hosts = if let Some(intf) = lan_interface {
         let mut sender_cfg = SenderConfig::from(&intf);
         sender_cfg.add_targets(targets);
-        host::internal_to_box(discover_lan(intf, sender_cfg)?)
+
+        let scanned_hosts = tokio::task::spawn_blocking(move || {
+            discover_lan(intf, sender_cfg)
+        }).await??;
+        
+        host::internal_to_box(scanned_hosts)
     } else {
         host::external_to_box(
             tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?
@@ -218,7 +235,7 @@ fn report_discovery_progress(count: usize) {
 }
 
 fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>, total_time: Duration) -> anyhow::Result<()>  {
-    if hosts.len() == 0 {
+    if hosts.is_empty() {
         return Ok(no_hosts_found());
     }
     print::header("Network Discovery");
