@@ -1,6 +1,6 @@
 [package]
 name = "mappr"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 
 [dependencies]
@@ -20,3 +20,4 @@ netstat2 = "0.11.2"
 unicode-width = "0.2.2"
 rayon = "1.11.0"
 console = "0.16.1"
+crossterm = "0.29.0"

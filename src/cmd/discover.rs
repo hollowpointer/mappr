@@ -11,6 +11,7 @@ use crate::net::tcp_connect;
 use crate::net::ip;
 use crate::print::{self, SPINNER};
 use crate::utils::colors;
+use crate::utils::input::InputHandle;
 use crate::utils::timing::ScanTimer;
 use anyhow::{self, Context};
 use colored::*;
@@ -37,6 +38,7 @@ struct LocalRunner {
     hosts_map: HashMap<MacAddr, InternalHost>,
     dns_map: HashMap<u16, MacAddr>,
     sender_cfg: SenderConfig,
+    input_handle: InputHandle,
     eth_handle: EthernetHandle,
     udp_handle: UdpHandle,
     timer: ScanTimer,
@@ -44,14 +46,19 @@ struct LocalRunner {
 }
 
 impl LocalRunner {
-    fn new(sender_cfg: SenderConfig, eth_handle: EthernetHandle, udp_handle: UdpHandle) 
-    -> anyhow::Result<Self> {
+    fn new(
+        sender_cfg: SenderConfig, 
+        input_handle: InputHandle, 
+        eth_handle: EthernetHandle,
+        udp_handle: UdpHandle
+    ) -> anyhow::Result<Self> {
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
         Ok(
             Self { 
                 hosts_map: HashMap::new(), 
                 dns_map: HashMap::new(),
                 sender_cfg,
+                input_handle,
                 eth_handle,
                 udp_handle,
                 timer,
@@ -62,13 +69,19 @@ impl LocalRunner {
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
         channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg)?;
+        self.start_input_listener();
         Ok(())
     }
 
+    fn start_input_listener(&mut self) {
+        self.input_handle.start();
+    }
+
     fn process_packets(&mut self) -> ControlFlow<()> {
-        if self.timer.is_expired() {
+        if self.timer.is_expired() || self.input_handle.should_interrupt() {
             return ControlFlow::Break(());
         }
+        
         let wait = self.timer.next_wait();
 
         match self.eth_handle.rx.recv_timeout(wait) {
@@ -168,11 +181,11 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
         let mut sender_cfg = SenderConfig::from(&intf);
         sender_cfg.add_targets(targets);
 
-        let scanned_hosts = tokio::task::spawn_blocking(move || {
+        let discovered_hosts = tokio::task::spawn_blocking(move || {
             discover_lan(intf, sender_cfg)
         }).await??;
         
-        host::internal_to_box(scanned_hosts)
+        host::internal_to_box(discovered_hosts)
     } else {
         host::external_to_box(
             tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?
@@ -211,7 +224,13 @@ fn get_targets_and_lan_intf(target: Target) -> anyhow::Result<(HashSet<IpAddr>, 
 pub fn discover_lan(intf: NetworkInterface, sender_cfg: SenderConfig) -> anyhow::Result<Vec<InternalHost>> {
     let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
     let udp_handle: UdpHandle = transport::start_capture()?;
-    let mut local_runner: LocalRunner = LocalRunner::new(sender_cfg, eth_handle, udp_handle)?;
+    let input_handle: InputHandle = InputHandle::new();
+    let mut local_runner: LocalRunner = LocalRunner::new(
+        sender_cfg, 
+        input_handle, 
+        eth_handle, 
+        udp_handle
+    )?;
     local_runner.send_discovery_packets()?;
 
     loop {

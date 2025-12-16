@@ -107,7 +107,7 @@ impl WithDefaultColor for ColoredString {
 }
 
 pub fn print_banner() {
-    println!();
+    println("");
     initialize();
     let n: u8 = rand::random_range(0..=4);
     banner(n);
@@ -118,18 +118,19 @@ fn initialize() {
     let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
     let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
-    println!("{}{}{}", sep, text, sep);
+    let output: String = format!("{}{}{}", sep, text, sep);
+    println(&output);
 }
 
 fn banner(id: u8) {
-    match id {
-        0 => println!("{}", BANNER_0.red()),
-        1 => println!("{}", BANNER_1.truecolor(255, 165, 0)),
-        2 => println!("{}", BANNER_2.green()),
-        3 => println!("{}", BANNER_3.blue()),
-        4 => println!("{}", BANNER_4.truecolor(80, 80, 100)),
-        _ => {}
-    }
+    let output = match id {
+        0 => format!("{}", BANNER_0.red()),
+        1 => format!("{}", BANNER_1.truecolor(255, 165, 0)),
+        2 => format!("{}", BANNER_2.green()),
+        3 => format!("{}", BANNER_3.blue()),
+        _ => format!("{}", BANNER_4.truecolor(80, 80, 100)),
+    };
+    println(&output);
 }
 
 pub fn header(msg: &str) {
