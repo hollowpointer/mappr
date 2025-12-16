@@ -33,13 +33,12 @@ pub fn get_dns_server_socket_addr(ip_addr: &IpAddr) -> anyhow::Result<(IpAddr, u
     return Ok((dst_addr, dst_port))
 }
 
-pub fn create_ptr_packet(ip_addr: &IpAddr) -> anyhow::Result<Vec<u8>> {
+pub fn create_ptr_packet(ip_addr: &IpAddr, id: u16) -> anyhow::Result<Vec<u8>> {
     let query: DnsQuery = create_ptr_query(ip_addr)?;
     let q_fixed_len: usize = 4;
     let qlen: usize = query.qname.len() + q_fixed_len;
     let total: usize = DNS_HDR_LEN + qlen;
     let mut buffer: Vec<u8> = vec![0u8; total];
-    let id: u16 = ip::derive_u16_id(&ip_addr);
 
     {
         let mut dns: MutableDnsPacket = MutableDnsPacket::new(&mut buffer).context("creating dns header")?;

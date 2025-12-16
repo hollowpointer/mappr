@@ -121,20 +121,6 @@ pub fn to_key_value_pair_net(ip_net: &[IpNetwork]) -> Vec<(String, ColoredString
         .collect()
 }
 
-pub fn derive_u16_id(ip: &IpAddr) -> u16 {
-    let octets: [u8; 2] = match ip {
-        IpAddr::V4(v4) => {
-            let bytes = v4.octets();
-            [bytes[3], bytes[2]]
-        },
-        IpAddr::V6(v6) => {
-            let bytes = v6.octets();
-            [bytes[15], bytes[14]] 
-        },
-    };
-    u16::from_be_bytes(octets)
-}
-
 pub fn get_gateway_addr(_ip_addr: &IpAddr) -> IpAddr {
     IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1))
 }

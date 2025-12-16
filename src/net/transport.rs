@@ -53,11 +53,11 @@ pub fn spawn_udp_listener(udp_tx: mpsc::Sender<Vec<u8>>, mut udp_rx: TransportRe
     });
 }
 
-pub fn send_dns_query<F>(dns_packet_creator_fn: F, target_addr: &IpAddr, udp_tx: &mut TransportSender)
+pub fn send_dns_query<F>(dns_packet_creator_fn: F, id: u16, target_addr: &IpAddr, udp_tx: &mut TransportSender)
 where 
-    F: Fn(&IpAddr) -> anyhow::Result<Vec<u8>>
+    F: Fn(&IpAddr, u16) -> anyhow::Result<Vec<u8>>
 {
-    let Ok(bytes) = dns_packet_creator_fn(target_addr) else { return };
+    let Ok(bytes) = dns_packet_creator_fn(target_addr, id) else { return };
     let Ok((dst_addr, dst_port)) = dns::get_dns_server_socket_addr(&target_addr) else { return };
     let src_port = rand::random_range(50_000..u16::max_value());
     let Ok(udp_bytes) = udp::create_packet(src_port, dst_port, bytes) else { return };

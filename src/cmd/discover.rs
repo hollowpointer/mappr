@@ -25,8 +25,8 @@ use std::ops::ControlFlow;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-const MAX_CHANNEL_TIME: Duration = Duration::from_millis(3000);
-const MIN_CHANNEL_TIME: Duration = Duration::from_millis(1000);
+const MAX_CHANNEL_TIME: Duration = Duration::from_millis(10_000);
+const MIN_CHANNEL_TIME: Duration = Duration::from_millis(2_500);
 const MAX_SILENCE: Duration = Duration::from_millis(500);
 
 struct LocalRunner {
@@ -123,10 +123,11 @@ impl LocalRunner {
 
     fn send_dns_ptr_query(&mut self, target_addr: &IpAddr, target_mac: MacAddr) {
         if !target_addr.is_ipv4() && !ip::is_global_unicast(&target_addr) { return }
-        let id: u16 = ip::derive_u16_id(&target_addr);
+        let id: u16 = self.dns_map.len() as u16;
         if self.dns_map.contains_key(&id) { return }
         self.dns_map.insert(id, target_mac);
-        transport::send_dns_query(dns::create_ptr_packet, &target_addr, &mut self.udp_handle.tx);
+        let id: u16 = (self.dns_map.len() - 1) as u16;
+        transport::send_dns_query(dns::create_ptr_packet, id, &target_addr, &mut self.udp_handle.tx);
     }
 
     fn get_hosts(self) -> Vec<InternalHost> {
