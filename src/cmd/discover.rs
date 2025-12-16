@@ -1,8 +1,9 @@
 use crate::cmd::Target;
 use crate::host::{self, Host, InternalHost};
+use crate::net::datalink::channel::EthernetHandle;
 use crate::net::datalink::interface::NetworkInterfaceExtension;
 use crate::net::datalink::{channel, ethernet, interface};
-use crate::net::packets::{dns, udp};
+use crate::net::packets::dns;
 use crate::net::transport::UdpHandle;
 use crate::net::{packets, transport};
 use crate::net::sender::SenderConfig;
@@ -10,23 +11,128 @@ use crate::net::tcp_connect;
 use crate::net::ip;
 use crate::print::{self, SPINNER};
 use crate::utils::colors;
+use crate::utils::timing::ScanTimer;
 use anyhow::{self, Context};
 use colored::*;
 use is_root::is_root;
 use pnet::datalink::NetworkInterface;
 use pnet::packet::Packet;
 use pnet::packet::udp::UdpPacket;
-use pnet::transport::TransportSender;
 use pnet::util::MacAddr;
-use rand::random_range;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::ops::ControlFlow;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-const MAX_CHANNEL_TIME_MS: u64 = 10000;
-const MIN_CHANNEL_TIME_MS: u64 = 3000;
-const MAX_SILENCE_TIME_MS: u64 = 500;
+const MAX_CHANNEL_TIME: Duration = Duration::from_millis(3000);
+const MIN_CHANNEL_TIME: Duration = Duration::from_millis(1000);
+const MAX_SILENCE: Duration = Duration::from_millis(500);
+
+struct LocalRunner {
+    hosts_map: HashMap<MacAddr, InternalHost>,
+    dns_map: HashMap<u16, MacAddr>,
+    sender_cfg: SenderConfig,
+    eth_handle: EthernetHandle,
+    udp_handle: UdpHandle,
+    timer: ScanTimer
+}
+
+impl LocalRunner {
+    fn new(sender_cfg: SenderConfig, eth_handle: EthernetHandle, udp_handle: UdpHandle) 
+    -> anyhow::Result<Self> {
+        let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
+        Ok(
+            Self { 
+                hosts_map: HashMap::new(), 
+                dns_map: HashMap::new(),
+                sender_cfg,
+                eth_handle,
+                udp_handle,
+                timer
+            }
+        )
+    }
+
+    fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
+        channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg)?;
+        Ok(())
+    }
+
+    fn process_packets(&mut self) -> ControlFlow<()> {
+        if self.timer.is_expired() {
+            return ControlFlow::Break(());
+        }
+        let wait = self.timer.next_wait();
+
+        match self.eth_handle.rx.recv_timeout(wait) {
+            Ok(bytes) => {
+                self.timer.mark_seen();
+                self.process_eth_packet(&bytes);
+            },
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if self.timer.should_break_on_timeout() {
+                    return ControlFlow::Break(());
+                }
+                return ControlFlow::Continue(());
+            },
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return ControlFlow::Break(());
+            },
+        }
+
+        self.process_udp_packets();
+        ControlFlow::Continue(())
+    }
+
+    fn process_eth_packet(&mut self, bytes: &[u8]) {
+        let Ok(eth_frame) = ethernet::get_packet_from_u8(bytes) else { return };
+        let Ok(target_addr) = packets::get_ip_addr_from_eth(&eth_frame) else { return };
+
+        if target_addr.is_ipv4() && !self.sender_cfg.has_addr(&target_addr) { return }
+
+        let target_mac = eth_frame.get_source();
+        self.hosts_map
+            .entry(target_mac)
+            .or_insert_with(|| InternalHost::from(target_mac))
+            .ips
+            .insert(target_addr);
+
+        report_discovery_progress(self.hosts_map.len());
+        self.send_dns_ptr_query(&target_addr, target_mac);
+    }
+
+    fn process_udp_packets(&mut self) {
+        while let Ok(bytes) = self.udp_handle.rx.try_recv() {
+            self.timer.mark_seen();
+            let Some(udp_packet) = UdpPacket::new(&bytes) else { continue };
+            match udp_packet.get_source() {
+                53 => self.handle_dns_response(udp_packet),
+                _ => { continue }
+            }
+        }
+    }
+
+    fn handle_dns_response(&mut self, packet: UdpPacket) {
+        let Ok(Some((response_id, name))) = dns::get_hostname(packet.payload()) else { return };
+        let Some(mac_addr) = self.dns_map.get(&response_id) else { return };
+        if let Some(host) = self.hosts_map.get_mut(mac_addr) {
+            host.set_hostname(name);
+        }
+    }
+
+    fn send_dns_ptr_query(&mut self, target_addr: &IpAddr, target_mac: MacAddr) {
+        if !target_addr.is_ipv4() && !ip::is_global_unicast(&target_addr) { return }
+        let id: u16 = ip::derive_u16_id(&target_addr);
+        if self.dns_map.contains_key(&id) { return }
+        self.dns_map.insert(id, target_mac);
+        transport::send_dns_query(dns::create_ptr_packet, &target_addr, &mut self.udp_handle.tx);
+    }
+
+    fn get_hosts(self) -> Vec<InternalHost> {
+        return self.hosts_map.into_values().collect()
+    }
+}
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     SPINNER.set_message("Performing discovery...");
@@ -48,7 +154,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     let mut hosts = if let Some(intf) = lan_interface {
         let mut sender_cfg = SenderConfig::from(&intf);
         sender_cfg.add_targets(targets);
-        host::internal_to_box(discover_lan(&intf, &sender_cfg)?)
+        host::internal_to_box(discover_lan(intf, sender_cfg)?)
     } else {
         host::external_to_box(
             tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?
@@ -76,7 +182,7 @@ fn get_targets_and_lan_intf(target: Target) -> anyhow::Result<(HashSet<IpAddr>, 
             let intf = if ip::is_private(&start) && ip::is_private(&end) {
                 interface::get_lan().ok() 
             } else { 
-                None 
+                None
             };
             Ok((targets, intf))
         },
@@ -84,136 +190,19 @@ fn get_targets_and_lan_intf(target: Target) -> anyhow::Result<(HashSet<IpAddr>, 
     }
 }
 
-pub fn discover_lan(
-    intf: &NetworkInterface, 
-    sender_cfg: &SenderConfig
-) -> anyhow::Result<Vec<InternalHost>> {
-
-    let mut hosts_map: HashMap<MacAddr, InternalHost> = HashMap::new();
-    let mut dns_map: HashMap<u16, MacAddr> = HashMap::new(); 
-
-    // Start capturing packets
-    let eth = channel::start_capture(intf)?;
-    let mut udp = transport::start_capture()?;
-
-    // Send discovery packets (ARP, ICMPv6)
-    channel::send_packets(eth.tx, sender_cfg)?;
-
-    let max_silence = Duration::from_millis(MAX_SILENCE_TIME_MS);
-    let hard_deadline = Instant::now() + Duration::from_millis(MAX_CHANNEL_TIME_MS);
-    let min_discovery = Instant::now() + Duration::from_millis(MIN_CHANNEL_TIME_MS);
-    let mut last_seen_packet = Instant::now();
+pub fn discover_lan(intf: NetworkInterface, sender_cfg: SenderConfig) -> anyhow::Result<Vec<InternalHost>> {
+    let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
+    let udp_handle: UdpHandle = transport::start_capture()?;
+    let mut local_runner: LocalRunner = LocalRunner::new(sender_cfg, eth_handle, udp_handle)?;
+    local_runner.send_discovery_packets()?;
 
     loop {
-        let now = Instant::now();
-        if now > hard_deadline {
+        if let ControlFlow::Break(_) = local_runner.process_packets() {
             break;
         }
-
-        let time_since_last = now.duration_since(last_seen_packet);
-        if now > min_discovery && time_since_last >= max_silence {
-            break;
-        }
-
-        let remaining_wait = max_silence
-            .checked_sub(time_since_last)
-            .unwrap_or(Duration::from_millis(100));
-
-        match eth.rx.recv_timeout(remaining_wait) {
-            Ok(bytes) => {
-                last_seen_packet = Instant::now();
-                process_ethernet_packet(&bytes, sender_cfg, &mut hosts_map, &mut dns_map, &mut udp.tx);
-            },
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                if now < min_discovery {
-                    continue; 
-                }
-                break;
-            },
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-        process_udp_packets(&udp, &mut last_seen_packet, &mut hosts_map, &mut dns_map);
-    }    
-
-    Ok(hosts_map.into_values().collect())
-}
-
-fn process_ethernet_packet(
-    bytes: &[u8],
-    sender_cfg: &SenderConfig,
-    hosts_map: &mut HashMap<MacAddr, InternalHost>,
-    dns_map: &mut HashMap<u16, MacAddr>,
-    udp_tx: &mut TransportSender
-) {
-    let Ok(eth_frame) = ethernet::get_packet_from_u8(bytes) else { return };
-    let Ok(target_addr) = packets::get_ip_addr_from_eth(&eth_frame) else { return };
-
-    if target_addr.is_ipv4() && !sender_cfg.has_addr(&target_addr) {
-        return;
     }
 
-    let target_mac = eth_frame.get_source();
-    hosts_map
-        .entry(target_mac)
-        .or_insert_with(|| InternalHost::from(target_mac))
-        .ips
-        .insert(target_addr);
-
-    report_discovery_progress(hosts_map.len());
-    send_dns_ptr_lookup(target_addr, target_mac, dns_map, udp_tx);
-}
-
-fn send_dns_ptr_lookup(
-    target_addr: IpAddr,
-    target_mac: MacAddr,
-    dns_map: &mut HashMap<u16, MacAddr>,
-    udp_tx: &mut TransportSender,
-) {
-    if !target_addr.is_ipv4() && !ip::is_global_unicast(&target_addr) {
-        return;
-    }
-
-    let id: u16 = ip::derive_u16_id(&target_addr);
-
-    if dns_map.contains_key(&id) {
-        return;
-    }
-
-    dns_map.insert(id, target_mac);
-
-    if let Ok(ptr_bytes) = dns::create_ptr_packet(&target_addr) {
-        if let Ok((dst_addr, dst_port)) = dns::get_dns_server_socket_addr(&target_addr) {
-            let src_port = random_range(50_000..u16::max_value());
-            
-            if let Ok(udp_bytes) = udp::create_packet(src_port, dst_port, ptr_bytes) {
-                if let Some(udp_pkt) = UdpPacket::new(&udp_bytes) {
-                    let _ = udp_tx.send_to(udp_pkt, dst_addr);
-                }
-            }
-        }
-    }
-}
-
-fn process_udp_packets(
-    udp: &UdpHandle,
-    last_seen_packet: &mut Instant,
-    hosts_map: &mut HashMap<MacAddr, InternalHost>,
-    dns_map: &HashMap<u16, MacAddr>
-) {
-    while let Ok(bytes) = udp.rx.try_recv() {
-        *last_seen_packet = Instant::now();
-        if let Some(udp_packet) = UdpPacket::new(&bytes) {
-            if udp_packet.get_source() == 53 {
-                if let Ok(Some((response_id, name))) = dns::get_hostname(udp_packet.payload()) {
-                    if let Some(mac_addr) = dns_map.get(&response_id) {
-                        if let Some(host) = hosts_map.get_mut(mac_addr) {
-                            host.set_hostname(name);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    Ok(local_runner.get_hosts())
 }
 
 fn report_discovery_progress(count: usize) {
