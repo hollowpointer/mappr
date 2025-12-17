@@ -1,5 +1,5 @@
 use crate::net::datalink::ethernet;
-use crate::net::packets::ip;
+use crate::net::protocol::ip;
 use crate::net::utils::{ETH_HDR_LEN, ICMP_V6_ECHO_REQ_LEN, IP_V6_HDR_LEN};
 use anyhow::Context;
 use pnet::datalink::MacAddr;

@@ -14,7 +14,7 @@ use pnet::{
     }
 };
 
-use crate::net::packets::{dns, udp};
+use crate::net::protocol::{dns, udp};
 
 const TRANSPORT_BUFFER_SIZE: usize = 4096;
 const CHANNEL_TYPE_UDP: TransportChannelType = TransportChannelType::Layer4(

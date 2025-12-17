@@ -1,6 +1,6 @@
-use crate::net::packets;
+use crate::net::protocol;
 use crate::net::sender::SenderConfig;
-use crate::print;
+use crate::utils::print;
 use anyhow::{self, Context};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
@@ -26,7 +26,7 @@ pub fn start_capture(intf: &NetworkInterface) -> anyhow::Result<EthernetHandle> 
 }
 
 pub fn send_packets(tx: &mut Box<dyn DataLinkSender>, sender_cfg: &SenderConfig) -> anyhow::Result<()> {
-    let packets: Vec<Vec<u8>> = packets::create_packets(sender_cfg)?;
+    let packets: Vec<Vec<u8>> = protocol::create_packets(sender_cfg)?;
     for packet in packets {
         tx.send_to(&packet, None);
     }

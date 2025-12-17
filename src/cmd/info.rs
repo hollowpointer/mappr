@@ -5,10 +5,10 @@ use pnet::datalink::NetworkInterface;
 use std::env;
 use sys_info;
 
-use crate::GLOBAL_KEY_WIDTH;
+use crate::utils::print::GLOBAL_KEY_WIDTH;
 use crate::net::datalink::interface::{self, NetworkInterfaceExtension};
 use crate::{
-    print::{self, SPINNER},
+    utils::print::{self, SPINNER},
     utils::colors,
 };
 

@@ -1,6 +1,6 @@
-use std::{fmt::Display, time::Duration};
+use std::{cell::Cell, fmt::Display, time::Duration};
 
-use crate::{GLOBAL_KEY_WIDTH, utils::colors};
+use crate::utils::colors;
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
@@ -8,6 +8,11 @@ use rand;
 use unicode_width::UnicodeWidthStr;
 
 const TOTAL_WIDTH: usize = 64;
+
+thread_local! {
+    pub static GLOBAL_KEY_WIDTH: Cell<usize> = Cell::new(0);
+}
+
 
 pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
     let pb: ProgressBar = ProgressBar::new_spinner();

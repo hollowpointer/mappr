@@ -3,13 +3,12 @@ use crate::host::{self, Host, InternalHost};
 use crate::net::datalink::channel::EthernetHandle;
 use crate::net::datalink::interface::NetworkInterfaceExtension;
 use crate::net::datalink::{channel, ethernet, interface};
-use crate::net::packets::dns;
-use crate::net::transport::UdpHandle;
-use crate::net::{packets, transport};
+use crate::net::protocol::dns;
+use crate::net::transport::{self, UdpHandle};
 use crate::net::sender::SenderConfig;
-use crate::net::tcp_connect;
+use crate::net::{protocol, tcp_connect};
 use crate::net::ip;
-use crate::print::{self, SPINNER};
+use crate::utils::print::{self, SPINNER};
 use crate::utils::colors;
 use crate::utils::input::InputHandle;
 use crate::utils::timing::ScanTimer;
@@ -69,7 +68,6 @@ impl LocalRunner {
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
         channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg)?;
-        self.start_input_listener();
         Ok(())
     }
 
@@ -106,7 +104,7 @@ impl LocalRunner {
 
     fn process_eth_packet(&mut self, bytes: &[u8]) {
         let Ok(eth_frame) = ethernet::get_packet_from_u8(bytes) else { return };
-        let Ok(source_addr) = packets::get_ip_addr_from_eth(&eth_frame) else { return };
+        let Ok(source_addr) = protocol::get_ip_addr_from_eth(&eth_frame) else { return };
 
         if source_addr.is_ipv4() && !self.sender_cfg.has_addr(&source_addr) { return }
         let source_mac = eth_frame.get_source();
@@ -225,13 +223,16 @@ pub fn discover_lan(intf: NetworkInterface, sender_cfg: SenderConfig) -> anyhow:
     let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
     let udp_handle: UdpHandle = transport::start_capture()?;
     let input_handle: InputHandle = InputHandle::new();
+
     let mut local_runner: LocalRunner = LocalRunner::new(
         sender_cfg, 
         input_handle, 
         eth_handle, 
         udp_handle
     )?;
+    
     local_runner.send_discovery_packets()?;
+    local_runner.start_input_listener();
 
     loop {
         if let ControlFlow::Break(_) = local_runner.process_packets() {

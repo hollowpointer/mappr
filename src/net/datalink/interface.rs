@@ -1,5 +1,5 @@
 use crate::net::range::{self, Ipv4Range};
-use crate::print;
+use crate::utils::print;
 use crate::{net::ip, utils::colors};
 use anyhow::{self, Context};
 use colored::{ColoredString, Colorize};

@@ -1,20 +1,9 @@
-use crate::utils::print;
-use cmd::Commands;
-use cmd::{discover, info, listen, scan};
-use std::cell::Cell;
-
-mod cmd;
-mod host;
-mod net;
-mod utils;
-
-thread_local! {
-    static GLOBAL_KEY_WIDTH: Cell<usize> = Cell::new(0);
-}
+use mappr::utils::print;
+use mappr::cmd::{Commands, discover, info, listen, scan};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let commands = cmd::CommandLine::parse_args();
+    let commands = mappr::cmd::CommandLine::parse_args();
     print::print_banner();
     match commands.command {
         Commands::Info => {
