@@ -9,7 +9,7 @@ use sysinfo::{Pid, System};
 
 use crate::{
     cmd::info::GLOBAL_KEY_WIDTH,
-    utils::{colors, print},
+    terminal::{colors, print},
 };
 
 pub struct IpServiceGroup {

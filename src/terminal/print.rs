@@ -1,10 +1,7 @@
-use std::{cell::Cell, fmt::Display, time::Duration};
+use std::{cell::Cell, fmt::Display};
 
-use crate::utils::colors;
+use crate::terminal::{banner, colors, spinner::SPINNER};
 use colored::*;
-use indicatif::{ProgressBar, ProgressStyle};
-use once_cell::sync::Lazy;
-use rand;
 use unicode_width::UnicodeWidthStr;
 
 const TOTAL_WIDTH: usize = 64;
@@ -12,82 +9,6 @@ const TOTAL_WIDTH: usize = 64;
 thread_local! {
     pub static GLOBAL_KEY_WIDTH: Cell<usize> = Cell::new(0);
 }
-
-
-pub static SPINNER: Lazy<ProgressBar> = Lazy::new(|| {
-    let pb: ProgressBar = ProgressBar::new_spinner();
-    let style: ProgressStyle = ProgressStyle::with_template("{spinner:.blue} {msg}")
-        .unwrap()
-        .tick_strings(&[
-            "▁▁▁▁▁",
-            "▁▂▂▂▁",
-            "▁▄▂▄▁",
-            "▂▄▆▄▂",
-            "▄▆█▆▄",
-            "▂▄▆▄▂",
-            "▁▄▂▄▁",
-            "▁▂▂▂▁",
-        ]);
-    pb.set_style(style);
-    pb.enable_steady_tick(Duration::from_millis(100));
-    pb
-});
-
-const BANNER_0: &str = r#"
-         ███▄ ▄███▓ ▄▄▄       ██▓███   ██▓███   ██▀███
-        ▓██▒▀█▀ ██▒▒████▄    ▓██░  ██▒▓██░  ██▒▓██ ▒ ██▒
-        ▓██    ▓██░▒██  ▀█▄  ▓██░ ██▓▒▓██░ ██▓▒▓██ ░▄█ ▒
-        ▒██    ▒██ ░██▄▄▄▄██ ▒██▄█▓▒ ▒▒██▄█▓▒ ▒▒██▀▀█▄
-        ▒██▒   ░██▒ ▓█   ▓██▒▒██▒ ░  ░▒██▒ ░  ░░██▓ ▒██▒
-        ░ ▒░   ░  ░ ▒▒   ▓▒█░▒▓▒░ ░  ░▒▓▒░ ░  ░░ ▒▓ ░▒▓░
-        ░  ░      ░  ▒   ▒▒ ░░▒ ░     ░▒ ░       ░▒ ░ ▒░
-        ░      ░     ░   ▒   ░░       ░░         ░░   ░
-               ░         ░  ░                     ░
-"#;
-
-const BANNER_1: &str = r#"
-      _   .-')      ('-.      _ (`-.    _ (`-.  _  .-')
-     ( '.( OO )_   ( OO ).-. ( (OO  )  ( (OO  )( \( -O )
-      ,--.   ,--.) / . --. /_.`     \ _.`     \ ,------.
-      |   `.'   |  | \-.  \(__...--''(__...--'' |   /`. '
-      |         |.-'-'  |  ||  /  | | |  /  | | |  /  | |
-      |  |'.'|  | \| |_.'  ||  |_.' | |  |_.' | |  |_.' |
-      |  |   |  |  |  .-.  ||  .___.' |  .___.' |  .  '.'
-      |  |   |  |  |  | |  ||  |      |  |      |  |\  \
-      `--'   `--'  `--' `--'`--'      `--'      `--' '--'
-"#;
-
-const BANNER_2: &str = r#"
-          ___       ___       ___       ___       ___
-         /\__\     /\  \     /\  \     /\  \     /\  \
-        /::L_L_   /::\  \   /::\  \   /::\  \   /::\  \
-       /:/L:\__\ /::\:\__\ /::\:\__\ /::\:\__\ /::\:\__\
-       \/_/:/  / \/\::/  / \/\::/  / \/\::/  / \;:::/  /
-         /:/  /    /:/  /     \/__/     \/__/   |:\/__/
-         \/__/     \/__/                         \|__|
-"#;
-
-const BANNER_3: &str = r#"
-     ___ __ __   ________   ______   ______   ______
-    /__//_//_/\ /_______/\ /_____/\ /_____/\ /_____/\
-    \::\| \| \ \\::: _  \ \\:::_ \ \\:::_ \ \\:::_ \ \
-     \:.      \ \\::(_)  \ \\:(_) \ \\:(_) \ \\:(_) ) )_
-      \:.\-/\  \ \\:: __  \ \\: ___\/ \: ___\/ \: __ `\ \
-       \. \  \  \ \\:.\ \  \ \\ \ \    \ \ \    \ \ `\ \ \
-        \__\/ \__\/ \__\/\__\/ \_\/     \_\/     \_\/ \_\/
-"#;
-
-const BANNER_4: &str = r#"
-      =/\                 /\=
-      / \'._   (\_/)   _.'/ \       (_                   _)
-     / .''._'--(o.o)--'_.''. \       /\                 /\
-    /.' _/ |`'=/ " \='`| \_ `.\     / \'._   (\_/)   _.'/ \
-   /` .' `\;-,'\___/',-;/` '. '\   /_.''._'--('.')--'_.''._\
-  /.-' jgs   `\(-V-)/`       `-.\  | \_ / `;=/ " \=;` \ _/ |
-               "   "               \/  `\__|`\___/`|__/`  \/
-                                    `       \(/|\)/       `
-                                             " ` "
-"#;
 
 pub trait WithDefaultColor {
     fn with_default(self, default_color: Color) -> ColoredString;
@@ -111,31 +32,14 @@ impl WithDefaultColor for ColoredString {
     }
 }
 
-pub fn print_banner() {
-    println("");
-    initialize();
-    let n: u8 = rand::random_range(0..=4);
-    banner(n);
-}
-
-fn initialize() {
+pub fn initialize() {
     let text_content: String = format!("⟦ INITIALIZING MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
     let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
     let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
     let output: String = format!("{}{}{}", sep, text, sep);
     println(&output);
-}
-
-fn banner(id: u8) {
-    let output = match id {
-        0 => format!("{}", BANNER_0.red()),
-        1 => format!("{}", BANNER_1.truecolor(255, 165, 0)),
-        2 => format!("{}", BANNER_2.green()),
-        3 => format!("{}", BANNER_3.blue()),
-        _ => format!("{}", BANNER_4.truecolor(80, 80, 100)),
-    };
-    println(&output);
+    banner::print();
 }
 
 pub fn header(msg: &str) {

@@ -14,9 +14,9 @@ pub struct ScanTimer {
 
 impl ScanTimer {
     pub fn new(
-        max_total_duration: Duration, 
-        min_runtime_duration: Duration, 
-        max_silence: Duration
+        max_total_duration: Duration,
+        min_runtime_duration: Duration,
+        max_silence: Duration,
     ) -> Self {
         let now = Instant::now();
         Self {
@@ -37,7 +37,7 @@ impl ScanTimer {
     pub fn next_wait(&self) -> Duration {
         let now = Instant::now();
         let time_since_last = now.duration_since(self.last_seen);
-        
+
         self.max_silence
             .checked_sub(time_since_last)
             .unwrap_or(Duration::from_millis(100))
@@ -46,7 +46,7 @@ impl ScanTimer {
     /// Checks if the entire operation should abort due to hard limits.
     pub fn is_expired(&self) -> bool {
         let now = Instant::now();
-        
+
         if now > self.hard_deadline {
             return true;
         }
@@ -58,7 +58,7 @@ impl ScanTimer {
 
         false
     }
-    
+
     /// Helper to decide if a socket timeout is fatal or if we should continue.
     /// Returns `true` if we should break the loop.
     pub fn should_break_on_timeout(&self) -> bool {

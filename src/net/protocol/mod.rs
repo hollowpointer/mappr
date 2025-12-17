@@ -1,12 +1,12 @@
-pub mod icmp;
-pub mod dns;
-pub mod udp;
 pub mod arp;
-mod ndp;
+pub mod dns;
+pub mod icmp;
 pub mod ip;
+mod ndp;
+pub mod udp;
 
 use crate::net::sender::SenderConfig;
-use crate::utils::print;
+use crate::terminal::print;
 use anyhow::Context;
 use pnet::ipnetwork::Ipv4Network;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
@@ -77,7 +77,9 @@ pub fn get_ip_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<IpAddr> {
         EtherTypes::Arp => Ok(IpAddr::V4(arp::get_ipv4_addr_from_eth(&frame)?)),
         EtherTypes::Ipv4 => Ok(IpAddr::V4(ip::get_ipv4_addr_from_eth(&frame)?)),
         EtherTypes::Ipv6 => Ok(IpAddr::V6(ip::get_ipv6_addr_from_eth(&frame)?)),
-        _ => Err(anyhow::anyhow!("Unsupported EtherType: {:?}", frame.get_ethertype()))
+        _ => Err(anyhow::anyhow!(
+            "Unsupported EtherType: {:?}",
+            frame.get_ethertype()
+        )),
     }
 }
-

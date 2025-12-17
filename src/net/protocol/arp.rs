@@ -13,8 +13,7 @@ pub fn create_packet(
     src_addr: Ipv4Addr,
     dst_addr: Ipv4Addr,
 ) -> anyhow::Result<Vec<u8>> {
-    
-    let eth_header: Vec<u8> = 
+    let eth_header: Vec<u8> =
         ethernet::make_header(src_mac, MacAddr::broadcast(), EtherTypes::Arp)?;
 
     let mut arp_buffer: [u8; ARP_LEN] = [0u8; ARP_LEN];
@@ -66,8 +65,8 @@ mod tests {
     use pnet::packet::arp::{ArpOperations, ArpPacket, MutableArpPacket};
     use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
     use pnet::util::MacAddr;
-    use std::net::Ipv4Addr;
     use std::net::IpAddr;
+    use std::net::Ipv4Addr;
 
     const ETH_HDR_LEN: usize = 14;
     const ARP_LEN: usize = 28;
@@ -81,8 +80,7 @@ mod tests {
                         payload.len()
                     ));
                 }
-                let arp = ArpPacket::new(payload)
-                    .context("failed to parse ARP packet")?;
+                let arp = ArpPacket::new(payload).context("failed to parse ARP packet")?;
                 Ok(IpAddr::V4(arp.get_sender_proto_addr()))
             }
             _ => Err(anyhow::anyhow!("not an ARP packet")),
@@ -90,7 +88,6 @@ mod tests {
     }
 
     fn build_mock_arp_packet(sender_ip: Ipv4Addr, payload_size: usize) -> Vec<u8> {
-        
         let mut eth_buffer = vec![0u8; ETH_HDR_LEN];
         {
             let mut eth_pkt = MutableEthernetPacket::new(&mut eth_buffer).unwrap();
@@ -135,7 +132,7 @@ mod tests {
         assert_eq!(eth_packet.get_destination(), MacAddr::broadcast());
         assert_eq!(eth_packet.get_source(), src_mac);
         assert_eq!(eth_packet.get_ethertype(), EtherTypes::Arp);
-        
+
         let arp_payload = eth_packet.payload();
         assert!(arp_payload.len() >= ARP_LEN);
 
@@ -180,13 +177,13 @@ mod tests {
     fn test_get_ip_addr_wrong_payload_type() {
         const IPV4_PAYLOAD_SIZE: usize = 20;
         let mut buffer = build_mock_arp_packet(Ipv4Addr::UNSPECIFIED, IPV4_PAYLOAD_SIZE);
-        
+
         let mut eth_pkt = MutableEthernetPacket::new(&mut buffer).unwrap();
         eth_pkt.set_ethertype(EtherTypes::Ipv4);
-        
+
         let ethernet_packet = EthernetPacket::new(&buffer).unwrap();
         assert_eq!(ethernet_packet.payload().len(), IPV4_PAYLOAD_SIZE);
-        
+
         let result = get_ip_addr(ethernet_packet);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();

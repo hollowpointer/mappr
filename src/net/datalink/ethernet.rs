@@ -4,11 +4,7 @@ use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 
 use crate::net::utils::ETH_HDR_LEN;
 
-pub fn make_header(
-    src_mac: MacAddr,
-    dst_mac: MacAddr,
-    et: EtherType,
-) -> anyhow::Result<Vec<u8>> {
+pub fn make_header(src_mac: MacAddr, dst_mac: MacAddr, et: EtherType) -> anyhow::Result<Vec<u8>> {
     let mut buffer: [u8; ETH_HDR_LEN] = [0; ETH_HDR_LEN];
     {
         let mut eth: MutableEthernetPacket = MutableEthernetPacket::new(&mut buffer[..])
@@ -21,7 +17,7 @@ pub fn make_header(
 }
 
 pub fn get_packet_from_u8(frame_bytes: &'_ [u8]) -> anyhow::Result<EthernetPacket<'_>> {
-    let eth_packet: EthernetPacket = EthernetPacket::new(frame_bytes)
-        .context("truncated or invalid Ethernet frame")?;
+    let eth_packet: EthernetPacket =
+        EthernetPacket::new(frame_bytes).context("truncated or invalid Ethernet frame")?;
     Ok(eth_packet)
 }

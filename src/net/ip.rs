@@ -1,4 +1,4 @@
-use crate::utils::colors;
+use crate::terminal::colors;
 use colored::*;
 use pnet::ipnetwork::IpNetwork;
 use std::{
@@ -31,8 +31,8 @@ pub fn is_global_unicast(ip_addr: &IpAddr) -> bool {
         IpAddr::V6(ipv6_addr) => {
             let first_byte = ipv6_addr.octets()[0];
             0x3F >= first_byte && first_byte >= 0x20
-        },
-        _ => false
+        }
+        _ => false,
     }
 }
 
@@ -51,7 +51,7 @@ pub fn reverse_address_to_ptr(ip_addr: &IpAddr) -> String {
                 "{}.{}.{}.{}.in-addr.arpa",
                 octets[3], octets[2], octets[1], octets[0]
             )
-        },
+        }
         IpAddr::V6(ipv6_addr) => {
             let octets: [u8; 16] = ipv6_addr.octets();
             let mut ret: String = String::with_capacity(72);
@@ -63,10 +63,10 @@ pub fn reverse_address_to_ptr(ip_addr: &IpAddr) -> String {
                 use std::fmt::Write;
                 write!(ret, "{:x}.{:x}.", low, high).unwrap();
             }
-            
+
             ret.push_str("ip6.arpa");
             ret
-        },
+        }
     }
 }
 

@@ -2,7 +2,7 @@ use anyhow;
 
 #[cfg(target_os = "linux")]
 pub fn print_firewall_status() -> anyhow::Result<()> {
-    use crate::utils::{colors, print};
+    use crate::terminal::{colors, print};
     use colored::Colorize;
     use std::process::Command;
 

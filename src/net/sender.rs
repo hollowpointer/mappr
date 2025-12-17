@@ -1,7 +1,14 @@
-use std::{collections::HashSet, net::{IpAddr, Ipv4Addr, Ipv6Addr}};
-use pnet::{datalink::NetworkInterface, ipnetwork::{Ipv4Network, Ipv6Network}, util::MacAddr};
+use pnet::{
+    datalink::NetworkInterface,
+    ipnetwork::{Ipv4Network, Ipv6Network},
+    util::MacAddr,
+};
+use std::{
+    collections::HashSet,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+};
 
-use crate::net::{datalink::interface::NetworkInterfaceExtension};
+use crate::net::datalink::interface::NetworkInterfaceExtension;
 
 #[derive(Debug, Clone, Default)]
 pub struct SenderConfig {
@@ -31,15 +38,18 @@ impl SenderConfig {
     }
 
     pub fn get_ipv4_net(&self) -> anyhow::Result<Ipv4Network> {
-        let ipv4_net = self.ipv4_nets.first()
+        let ipv4_net = self
+            .ipv4_nets
+            .first()
             .copied()
             .ok_or_else(|| anyhow::anyhow!("No IPv4 networks available in configuration"))?;
-        
+
         Ok(ipv4_net)
     }
 
     pub fn get_link_local(&self) -> anyhow::Result<Ipv6Addr> {
-        self.ipv6_nets.iter()
+        self.ipv6_nets
+            .iter()
             .find_map(|ipv6_net| {
                 let ip = ipv6_net.ip();
                 ip.is_unicast_link_local().then_some(ip)

@@ -1,6 +1,6 @@
 use crate::{
     net::ip,
-    utils::{colors, print},
+    terminal::{colors, print},
 };
 use colored::*;
 use mac_oui::Oui;
@@ -23,7 +23,7 @@ pub trait Host {
 pub enum NetworkRole {
     _Gateway,
     _DHCP,
-    _DNS
+    _DNS,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -33,7 +33,7 @@ pub struct InternalHost {
     pub _ports: BTreeSet<u16>,
     pub mac_addr: MacAddr,
     pub vendor: Option<String>,
-    pub network_roles: HashSet<NetworkRole>
+    pub network_roles: HashSet<NetworkRole>,
 }
 
 pub struct ExternalHost {
@@ -50,7 +50,7 @@ impl From<MacAddr> for InternalHost {
             _ports: BTreeSet::new(),
             mac_addr,
             vendor: identify_vendor(mac_addr),
-            network_roles: HashSet::new()
+            network_roles: HashSet::new(),
         }
     }
 }
@@ -79,23 +79,26 @@ impl Host for InternalHost {
         if self.vendor.is_some() {
             let vendor_key_value: (String, ColoredString) = (
                 "Vendor".to_string(),
-                self.vendor.clone().unwrap().to_string().color(colors::MAC_ADDR)
+                self.vendor
+                    .clone()
+                    .unwrap()
+                    .to_string()
+                    .color(colors::MAC_ADDR),
             );
             key_value_pair.push(vendor_key_value);
         }
 
         if !self.network_roles.is_empty() {
-            let joined_roles: String = self.network_roles
+            let joined_roles: String = self
+                .network_roles
                 .iter()
-                .map(|role| format!("{:?}", role)) 
+                .map(|role| format!("{:?}", role))
                 .collect::<Vec<String>>()
                 .join(", ");
 
-            let roles_key_value: (String, ColoredString) = (
-                "Roles".to_string(),
-                joined_roles.normal()
-            );
-            
+            let roles_key_value: (String, ColoredString) =
+                ("Roles".to_string(), joined_roles.normal());
+
             key_value_pair.push(roles_key_value);
         }
 
@@ -103,7 +106,8 @@ impl Host for InternalHost {
     }
 
     fn get_primary_ip(&self) -> Option<IpAddr> {
-        self.ips.iter()
+        self.ips
+            .iter()
             .find(|ip| ip.is_ipv4())
             .or_else(|| self.ips.iter().next())
             .cloned()
@@ -122,7 +126,8 @@ impl Host for ExternalHost {
     }
 
     fn get_primary_ip(&self) -> Option<IpAddr> {
-        self.ips.iter()
+        self.ips
+            .iter()
             .find(|ip| ip.is_ipv4())
             .or_else(|| self.ips.iter().next())
             .cloned()

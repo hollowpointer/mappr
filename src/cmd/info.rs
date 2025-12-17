@@ -5,11 +5,11 @@ use pnet::datalink::NetworkInterface;
 use std::env;
 use sys_info;
 
-use crate::utils::print::GLOBAL_KEY_WIDTH;
 use crate::net::datalink::interface::{self, NetworkInterfaceExtension};
-use crate::{
-    utils::print::{self, SPINNER},
-    utils::colors,
+use crate::terminal::spinner::SPINNER;
+use crate::terminal::{
+    colors,
+    print::{self, GLOBAL_KEY_WIDTH},
 };
 
 mod firewall;

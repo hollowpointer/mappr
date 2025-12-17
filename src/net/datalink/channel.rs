@@ -1,6 +1,6 @@
 use crate::net::protocol;
 use crate::net::sender::SenderConfig;
-use crate::utils::print;
+use crate::terminal::print;
 use anyhow::{self, Context};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
@@ -11,7 +11,7 @@ use std::time::Duration;
 const READ_TIMEOUT_MS: u64 = 50;
 
 pub struct EthernetHandle {
-    pub tx: Box<dyn DataLinkSender>, 
+    pub tx: Box<dyn DataLinkSender>,
     pub rx: mpsc::Receiver<Vec<u8>>,
 }
 
@@ -19,13 +19,13 @@ pub fn start_capture(intf: &NetworkInterface) -> anyhow::Result<EthernetHandle> 
     let (tx, rx_socket) = open_eth_channel(intf, datalink::channel)?;
     let (queue_tx, queue_rx) = mpsc::channel();
     spawn_eth_listener(queue_tx, rx_socket);
-    Ok(EthernetHandle {
-        tx,
-        rx: queue_rx,
-    })
+    Ok(EthernetHandle { tx, rx: queue_rx })
 }
 
-pub fn send_packets(tx: &mut Box<dyn DataLinkSender>, sender_cfg: &SenderConfig) -> anyhow::Result<()> {
+pub fn send_packets(
+    tx: &mut Box<dyn DataLinkSender>,
+    sender_cfg: &SenderConfig,
+) -> anyhow::Result<()> {
     let packets: Vec<Vec<u8>> = protocol::create_packets(sender_cfg)?;
     for packet in packets {
         tx.send_to(&packet, None);
@@ -37,7 +37,8 @@ pub fn open_eth_channel<F>(
     intf: &NetworkInterface,
     channel_opener: F,
 ) -> anyhow::Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>)>
-where F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>,
+where
+    F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>,
 {
     let ch: Channel =
         channel_opener(intf, get_config()).with_context(|| format!("opening on {}", intf.name))?;

@@ -1,12 +1,12 @@
-use std::{sync::mpsc, thread};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
+use std::{sync::mpsc, thread};
 
 pub struct InputHandle {
     rx: mpsc::Receiver<Event>,
-    tx: Option<mpsc::Sender<Event>>, 
+    tx: Option<mpsc::Sender<Event>>,
 }
 
 impl InputHandle {
@@ -22,7 +22,7 @@ impl InputHandle {
                 loop {
                     if let Ok(Event::Key(key_event)) = event::read() {
                         let is_q = key_event.code == KeyCode::Char('q');
-                        let is_ctrl_c = key_event.code == KeyCode::Char('c') 
+                        let is_ctrl_c = key_event.code == KeyCode::Char('c')
                             && key_event.modifiers.contains(KeyModifiers::CONTROL);
 
                         if (is_q || is_ctrl_c) && key_event.kind == KeyEventKind::Press {

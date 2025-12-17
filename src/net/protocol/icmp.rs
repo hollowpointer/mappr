@@ -22,16 +22,13 @@ pub fn create_all_nodes_echo_request_v6(
     let dst_mac: MacAddr = MacAddr::new(0x33, 0x33, 0, 0, 0, 1);
     let dst_addr: Ipv6Addr = Ipv6Addr::new(0xff02, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1);
     let eth_header: Vec<u8> = ethernet::make_header(src_mac, dst_mac, EtherTypes::Ipv6)?;
-    let ipv6_header: Vec<u8> = ip::create_ipv6_header(
-        src_addr,
-        dst_addr,
-        PAYLOAD_LENGTH,
-        NEXT_PROTOCOL,
-    )?;
+    let ipv6_header: Vec<u8> =
+        ip::create_ipv6_header(src_addr, dst_addr, PAYLOAD_LENGTH, NEXT_PROTOCOL)?;
     let mut icmp_packet: [u8; ICMP_V6_ECHO_REQ_LEN] = [0u8; ICMP_V6_ECHO_REQ_LEN];
 
     {
-        let mut icmp: MutableEchoRequestPacket = MutableEchoRequestPacket::new(&mut icmp_packet[..])
+        let mut icmp: MutableEchoRequestPacket =
+            MutableEchoRequestPacket::new(&mut icmp_packet[..])
                 .context("failed to create echo request packet")?;
         icmp.set_icmpv6_type(Icmpv6Types::EchoRequest);
         icmp.set_icmpv6_code(Icmpv6Codes::NoCode);

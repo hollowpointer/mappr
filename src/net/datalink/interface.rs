@@ -1,6 +1,8 @@
 use crate::net::range::{self, Ipv4Range};
-use crate::utils::print;
-use crate::{net::ip, utils::colors};
+use crate::{
+    net::ip,
+    terminal::{colors, print},
+};
 use anyhow::{self, Context};
 use colored::{ColoredString, Colorize};
 use pnet::ipnetwork::{IpNetwork, Ipv6Network};
@@ -49,35 +51,35 @@ impl NetworkInterfaceExtension for NetworkInterface {
     }
 
     fn get_ipv4_nets(&self) -> Vec<Ipv4Network> {
-        self.ips.iter()
-            .filter_map(|ip_net| {
-                match ip_net {
-                    IpNetwork::V4(v4_net) => Some(*v4_net),
-                    _ => None,
-                }
+        self.ips
+            .iter()
+            .filter_map(|ip_net| match ip_net {
+                IpNetwork::V4(v4_net) => Some(*v4_net),
+                _ => None,
             })
             .collect()
     }
 
     fn get_ipv6_nets(&self) -> Vec<Ipv6Network> {
-        self.ips.iter()
-            .filter_map(|ip_net| {
-                match ip_net {
-                    IpNetwork::V6(v6_net) => Some(*v6_net),
-                    _ => None,
-                }
+        self.ips
+            .iter()
+            .filter_map(|ip_net| match ip_net {
+                IpNetwork::V6(v6_net) => Some(*v6_net),
+                _ => None,
             })
             .collect()
     }
 
     fn get_ipv4_range(&self) -> anyhow::Result<Ipv4Range> {
-        let net = self.ips.iter()
+        let net = self
+            .ips
+            .iter()
             .find_map(|ip| match ip {
                 IpNetwork::V4(net) => Some(*net),
                 _ => None,
             })
             .context("No IPv4 network found")?; // Returns generic error if None
-            
+
         range::from_ipv4_net(net)
     }
 
@@ -87,7 +89,6 @@ impl NetworkInterfaceExtension for NetworkInterface {
             _ => None,
         })
     }
-    
 }
 
 pub fn get_prioritized_interfaces(max: usize) -> anyhow::Result<Vec<NetworkInterface>> {

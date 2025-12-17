@@ -11,7 +11,6 @@ use pnet::packet::ipv6::{Ipv6Packet, MutableIpv6Packet};
 // const WORD_LEN: usize = 4;
 // const NO_FRAG_FLAG: u8 = 1 << 1;
 
-
 // pub fn create_ipv4_header(
 //     src_addr: Ipv4Addr,
 //     dst_addr: Ipv4Addr,
@@ -43,7 +42,6 @@ use pnet::packet::ipv6::{Ipv6Packet, MutableIpv6Packet};
 //     Ok(buffer.to_vec())
 // }
 
-
 pub fn create_ipv6_header(
     src_addr: Ipv6Addr,
     dst_addr: Ipv6Addr,
@@ -52,8 +50,8 @@ pub fn create_ipv6_header(
 ) -> anyhow::Result<Vec<u8>> {
     let mut buffer: [u8; IP_V6_HDR_LEN] = [0; IP_V6_HDR_LEN];
     {
-        let mut ipv6: MutableIpv6Packet = MutableIpv6Packet::new(&mut buffer[..])
-            .context("creating ipv6 packet")?;
+        let mut ipv6: MutableIpv6Packet =
+            MutableIpv6Packet::new(&mut buffer[..]).context("creating ipv6 packet")?;
         ipv6.set_version(6);
         ipv6.set_traffic_class(0);
         ipv6.set_flow_label(rand::random());
@@ -81,4 +79,3 @@ pub fn get_ipv4_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<Ipv4Addr
     ))?;
     Ok(ipv4_packet.get_source())
 }
-
