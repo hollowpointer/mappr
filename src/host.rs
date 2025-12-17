@@ -4,14 +4,19 @@ use crate::{
 };
 use colored::*;
 use mac_oui::Oui;
-use once_cell::sync::Lazy;
 use pnet::datalink::MacAddr;
 use std::{
     collections::{BTreeSet, HashSet},
-    net::IpAddr,
+    net::IpAddr, sync::OnceLock,
 };
 
-static OUI_DB: Lazy<Oui> = Lazy::new(|| Oui::default().expect("failed to load OUI database"));
+static OUI_DB: OnceLock<Oui> = OnceLock::new();
+
+fn get_oui_db() -> &'static Oui {
+    OUI_DB.get_or_init(|| {
+        Oui::default().expect("failed to load OUI database")
+    })
+}
 
 pub trait Host {
     fn print_details(&self, idx: usize);
@@ -153,7 +158,7 @@ pub fn internal_to_box(hosts: Vec<InternalHost>) -> Vec<Box<dyn Host>> {
 }
 
 fn identify_vendor(mac_addr: MacAddr) -> Option<String> {
-    let oui_db = &*OUI_DB;
+    let oui_db: &Oui = get_oui_db();
     match oui_db.lookup_by_mac(&mac_addr.to_string()) {
         Ok(Some(entry)) => Some(entry.company_name.clone()),
         Ok(None) => None,

@@ -1,6 +1,6 @@
 use std::{cell::Cell, fmt::Display};
 
-use crate::terminal::{banner, colors, spinner::SPINNER};
+use crate::terminal::{banner, colors, spinner::get_spinner};
 use colored::*;
 use unicode_width::UnicodeWidthStr;
 
@@ -58,12 +58,12 @@ pub fn header(msg: &str) {
     )
     .bright_black();
 
-    SPINNER.println(&format!("{line}"));
+    get_spinner().println(&format!("{line}"));
 }
 
 pub fn fat_separator() {
     let sep: ColoredString = "═".repeat(TOTAL_WIDTH).bright_black();
-    SPINNER.println(&format!("{}", sep));
+    get_spinner().println(&format!("{}", sep));
 }
 
 pub fn aligned_line<V>(key: &str, value: V)
@@ -83,7 +83,7 @@ where
 pub fn print_status<T: AsRef<str>>(msg: T) {
     let prefix: ColoredString = ">".color(colors::SEPARATOR);
     let message: String = format!("{} {}", prefix, msg.as_ref().color(colors::TEXT_DEFAULT));
-    SPINNER.println(message);
+    get_spinner().println(&message);
 }
 
 pub fn tree_head(idx: usize, name: &str) {
@@ -119,12 +119,11 @@ pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
 
 pub fn centerln(msg: &str) {
     let space = " ".repeat((TOTAL_WIDTH - console::measure_text_width(msg)) / 2);
-    let output: String = format!("{}{}{}", space, msg, space);
-    SPINNER.println(output);
+    get_spinner().println(&format!("{}{}{}", space, msg, space));
 }
 
 pub fn println(msg: &str) {
-    SPINNER.println(format!("{}", msg));
+    get_spinner().println(&format!("{}", msg));
 }
 
 const NO_RESULTS_0: &str = r#"

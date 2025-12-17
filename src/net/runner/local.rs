@@ -14,8 +14,7 @@ use pnet::{
 };
 
 use crate::{
-    host::{Host, InternalHost},
-    net::{
+    cmd::discover, host::{Host, InternalHost}, net::{
         datalink::{
             channel::{self, EthernetHandle},
             ethernet,
@@ -24,9 +23,7 @@ use crate::{
         protocol::{self, dns},
         sender::SenderConfig,
         transport::{self, UdpHandle},
-    },
-    terminal::spinner,
-    utils::{input::InputHandle, timing::ScanTimer},
+    }, utils::{input::InputHandle, timing::ScanTimer}
 };
 
 const DNS_PORT: u16 = 53;
@@ -119,7 +116,7 @@ impl LocalRunner {
 
         if host.ips.insert(source_addr) {
             self.send_dns_ptr_query(&source_addr, source_mac);
-            spinner::report_discovery_progress(self.hosts_map.len());
+            discover::report_discovery_progress(self.hosts_map.len());
         }
     }
 

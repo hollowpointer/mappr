@@ -8,7 +8,7 @@ use crate::net::runner::local::LocalRunner;
 use crate::net::sender::SenderConfig;
 use crate::net::tcp_connect;
 use crate::net::transport::{self, UdpHandle};
-use crate::terminal::spinner::SPINNER;
+use crate::terminal::spinner::get_spinner;
 use crate::terminal::{colors, print};
 use crate::utils::input::InputHandle;
 use crate::utils::timing::ScanTimer;
@@ -26,7 +26,7 @@ const MIN_CHANNEL_TIME: Duration = Duration::from_millis(2_500);
 const MAX_SILENCE: Duration = Duration::from_millis(500);
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
-    SPINNER.set_message("Performing discovery...");
+    get_spinner().set_message("Performing discovery...".to_owned());
     print::print_status("Initializing discovery...");
 
     let start_time: Instant = Instant::now();
@@ -118,6 +118,16 @@ pub fn discover_lan(
     Ok(local_runner.get_hosts())
 }
 
+pub fn report_discovery_progress(count: usize) {
+    get_spinner().send_to_queue(
+        format!(
+            "Identified {} hosts so far...",
+            count.to_string().green().bold()
+        )
+        .into()
+    );
+}
+
 fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>, total_time: Duration) -> anyhow::Result<()> {
     if hosts.is_empty() {
         return Ok(no_hosts_found());
@@ -141,7 +151,7 @@ fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>, total_time: Duration) -> anyho
         .color(colors::TEXT_DEFAULT),
     );
     print::end_of_program();
-    SPINNER.finish_and_clear();
+    get_spinner().finish_and_clear();
     Ok(())
 }
 
@@ -149,5 +159,5 @@ fn no_hosts_found() {
     print::header("ZERO HOSTS DETECTED");
     print::no_results();
     print::end_of_program();
-    SPINNER.finish_and_clear();
+    get_spinner().finish_and_clear();
 }

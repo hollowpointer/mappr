@@ -6,7 +6,7 @@ use std::env;
 use sys_info;
 
 use crate::net::datalink::interface::{self, NetworkInterfaceExtension};
-use crate::terminal::spinner::SPINNER;
+use crate::terminal::spinner::get_spinner;
 use crate::terminal::{
     colors,
     print::{self, GLOBAL_KEY_WIDTH},
@@ -30,7 +30,7 @@ pub fn info() -> anyhow::Result<()> {
         print_local_system()?;
         print_network_interfaces()?;
         print::end_of_program();
-        SPINNER.finish_and_clear();
+        get_spinner().finish_and_clear();
         return Ok(());
     }
 
@@ -44,7 +44,7 @@ pub fn info() -> anyhow::Result<()> {
     print_network_interfaces()?;
 
     print::end_of_program();
-    SPINNER.finish_and_clear();
+    get_spinner().finish_and_clear();
     Ok(())
 }
 

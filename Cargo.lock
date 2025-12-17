@@ -579,7 +579,6 @@ dependencies = [
  "is-root",
  "mac_oui",
  "netstat2",
- "once_cell",
  "pnet",
  "rand",
  "rayon",
