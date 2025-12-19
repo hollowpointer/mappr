@@ -5,12 +5,16 @@ use colored::*;
 
 use crate::domain::models::target::Target;
 use crate::domain::models::host::Host; 
-use crate::adapters::outbound::network::ip;
 use crate::adapters::outbound::terminal::spinner::get_spinner;
-use crate::adapters::outbound::terminal::{colors, print};
+use crate::adapters::outbound::terminal::{
+    colors,
+    print,
+    format,
+};
 
 use crate::application::services::discovery::DiscoveryService;
 use crate::adapters::outbound::mac_oui_repo::MacOuiRepo;
+use crate::adapters::outbound::network::scanner_adapter::NetworkScannerAdapter;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     get_spinner().set_message("Performing discovery...".to_owned());
@@ -20,7 +24,8 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
 
     // 1. Instantiate Dependencies
     let vendor_repo = Box::new(MacOuiRepo);
-    let service = DiscoveryService::new(vendor_repo);
+    let scanner_adapter = Box::new(NetworkScannerAdapter);
+    let service = DiscoveryService::new(vendor_repo, scanner_adapter);
 
     // 2. Execute Service
     let mut hosts = service.perform_discovery(target).await?;
@@ -66,7 +71,7 @@ fn no_hosts_found() {
 
 fn print_host_details(host: &dyn Host, idx: usize) {
     print::tree_head(idx, host.hostname());
-    let mut key_value_pair: Vec<(String, ColoredString)> = ip::to_key_value_pair(host.ips());
+    let mut key_value_pair = format::ip_to_key_value_pair(host.ips());
 
     if let Some(mac) = host.mac_addr() {
         let mac_key_value: (String, ColoredString) = (
