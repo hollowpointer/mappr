@@ -1,17 +1,8 @@
-use mac_oui::Oui;
 use pnet::datalink::MacAddr;
 use std::{
     collections::{BTreeSet, HashSet},
-    net::IpAddr, sync::OnceLock,
+    net::IpAddr,
 };
-
-static OUI_DB: OnceLock<Oui> = OnceLock::new();
-
-fn get_oui_db() -> &'static Oui {
-    OUI_DB.get_or_init(|| {
-        Oui::default().expect("failed to load OUI database")
-    })
-}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum NetworkRole {
@@ -44,7 +35,7 @@ impl From<MacAddr> for InternalHost {
             ips: BTreeSet::new(),
             _ports: BTreeSet::new(),
             mac_addr,
-            vendor: identify_vendor(mac_addr),
+            vendor: None,
             network_roles: HashSet::new(),
         }
     }
@@ -63,6 +54,7 @@ impl From<IpAddr> for ExternalHost {
 pub trait Host {
     fn get_primary_ip(&self) -> Option<IpAddr>;
     fn set_hostname(&mut self, name: String);
+    fn set_vendor(&mut self, _vendor: String) {} // Default: do nothing
     fn mac_addr(&self) -> Option<MacAddr> { None }
     fn vendor(&self) -> Option<&str> { None }
     fn roles(&self) -> Option<&HashSet<NetworkRole>> { None }
@@ -81,6 +73,10 @@ impl Host for InternalHost {
 
     fn set_hostname(&mut self, name: String) {
         self.hostname = name;
+    }
+
+    fn set_vendor(&mut self, vendor: String) {
+        self.vendor = Some(vendor);
     }
 
     fn mac_addr(&self) -> Option<MacAddr> {
@@ -138,16 +134,4 @@ pub fn internal_to_box(hosts: Vec<InternalHost>) -> Vec<Box<dyn Host>> {
         .into_iter()
         .map(|host| Box::new(host) as Box<dyn Host>)
         .collect()
-}
-
-fn identify_vendor(mac_addr: MacAddr) -> Option<String> {
-    let oui_db: &Oui = get_oui_db();
-    match oui_db.lookup_by_mac(&mac_addr.to_string()) {
-        Ok(Some(entry)) => Some(entry.company_name.clone()),
-        Ok(None) => None,
-        Err(_) => {
-            // We sink the error here as it's just enrichment
-            None
-        }
-    }
 }
