@@ -28,7 +28,7 @@ The "Engine" is the high-performance core that talks to the network. It prioriti
 *   **Rules**:
     *   **Anything Goes**: You can use `pnet`, raw pointers, optimization hacks, and OS syscalls.
     *   **Internal Types**: Use optimized internal structs (e.g., `EngineHost`) to save memory/cycles in hot loops.
-    *   **Zero Dependencies**: The `engine` does NOT depend on `domain` or `application`. It is a standalone "library" inside the app.
+    *   **Shared Types**: The `engine` MAY depend on `domain::models` to share common types (e.g., `Host`, `Ipv4Range`) and avoid redundant definitions.
 
 ---
 

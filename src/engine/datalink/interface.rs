@@ -80,7 +80,7 @@ impl NetworkInterfaceExtension for NetworkInterface {
             })
             .context("No IPv4 network found")?; // Returns generic error if None
 
-        range::from_ipv4_net(net)
+        range::cidr_range(net.ip(), net.prefix())
     }
 
     fn get_link_local_addr(&self) -> Option<Ipv6Addr> {

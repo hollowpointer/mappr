@@ -1,4 +1,4 @@
-//! # Local System Info Model
+//! # Local Host Info Model
 //!
 //! Models information about the *local machine* (where the application is running),
 //! rather than remote hosts discovered on the network.

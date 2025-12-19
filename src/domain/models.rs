@@ -9,7 +9,7 @@
 //!
 //! ## Value Objects
 //! * [`range::Ipv4Range`]: Represents an inclusive range of IPv4 addresses.
-//! * [`local_system::IpServiceGroup`]: Represents local system information (open ports, firewall).
+//! * [`localhost::IpServiceGroup`]: Represents local system information (open ports, firewall).
 //!
 //! ## Design Principles
 //! * **Rich Models**: Models should contain logic for validation, parsing, and data manipulation.
@@ -19,4 +19,4 @@
 pub mod host;
 pub mod target;
 pub mod range;
-pub mod local_system;
+pub mod localhost;

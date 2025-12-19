@@ -1,4 +1,4 @@
-use crate::domain::models::local_system::{IpServiceGroup, FirewallStatus};
+use crate::domain::models::localhost::{IpServiceGroup, FirewallStatus};
 use pnet::datalink::NetworkInterface;
 
 /// Defines the contract for accessing OS-level network information.

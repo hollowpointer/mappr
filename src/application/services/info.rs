@@ -5,7 +5,7 @@
 //! This service acts as a facade for gathering local machine statistics and
 //! configuration, useful for debugging or self-awareness context.
 
-use crate::domain::models::local_system::{FirewallStatus, IpServiceGroup};
+use crate::domain::models::localhost::{FirewallStatus, IpServiceGroup};
 use crate::ports::outbound::system_repository::SystemRepository;
 use pnet::datalink::NetworkInterface;
 

@@ -6,9 +6,7 @@
 //! to represent ranges like `192.168.1.1-100` or CIDR `192.168.1.0/24`.
 
 use anyhow;
-use pnet::ipnetwork::Ipv4Network;
 use std::net::{IpAddr, Ipv4Addr};
-use std::str::FromStr;
 
 /// Represents a continuous range of IPv4 addresses, inclusive.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,11 +34,6 @@ impl Ipv4Range {
     }
 }
 
-/// Converts a `pnet` Ipv4Network to an `Ipv4Range`.
-pub fn from_ipv4_net(ipv4_net: Ipv4Network) -> anyhow::Result<Ipv4Range> {
-    Ok(cidr_range(ipv4_net.ip(), ipv4_net.prefix())?)
-}
-
 /// Creates a range from an IP and a CIDR prefix (e.g., 192.168.1.0/24).
 ///
 /// Returns the range covering the entire network block.
@@ -60,15 +53,6 @@ pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<Ipv4Range> {
         Ipv4Addr::from(network),
         Ipv4Addr::from(broadcast),
     ))
-}
-
-pub fn _from_cidr_str(cidr: &str) -> anyhow::Result<Ipv4Range> {
-    if !cidr.contains('/') {
-        anyhow::bail!("Invalid CIDR string '{cidr}': missing '/' separator");
-    }
-    let net = Ipv4Network::from_str(cidr)
-        .map_err(|e| anyhow::anyhow!("Invalid CIDR string '{cidr}': {e}"))?;
-    cidr_range(net.ip(), net.prefix())
 }
 
 // ╔════════════════════════════════════════════╗
@@ -193,24 +177,5 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "Invalid prefix: 33 > 32");
-    }
-
-    #[test]
-    fn test_from_cidr_str() {
-        let cidr = "10.0.0.0/8";
-        let range = _from_cidr_str(cidr).unwrap();
-
-        let expected_start = Ipv4Addr::new(10, 0, 0, 0);
-        let expected_end = Ipv4Addr::new(10, 255, 255, 255);
-
-        assert_eq!(range, Ipv4Range::new(expected_start, expected_end));
-    }
-
-    #[test]
-    fn test_from_cidr_str_invalid() {
-        assert!(_from_cidr_str("10.0.0.0/33").is_err());
-        assert!(_from_cidr_str("10.0.0.0").is_err());
-        assert!(_from_cidr_str("not-an-ip/24").is_err());
-        assert!(_from_cidr_str("256.0.0.1/24").is_err());
     }
 }
