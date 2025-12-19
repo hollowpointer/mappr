@@ -5,7 +5,7 @@ use anyhow::Context;
 use is_root::is_root;
 use pnet::datalink::NetworkInterface;
 
-use crate::domain::models::host::{self, Host};
+use crate::domain::models::host::Host;
 use crate::domain::models::target::Target;
 use crate::ports::outbound::network_scanner::NetworkScanner;
 
@@ -17,20 +17,18 @@ use crate::engine::{
     sender::SenderConfig,
     tcp_connect,
 };
-use crate::domain::models::host::InternalHost;
 
 pub struct NetworkScannerAdapter;
 
 #[async_trait::async_trait]
 impl NetworkScanner for NetworkScannerAdapter {
-    async fn scan(&self, target: Target) -> anyhow::Result<Vec<Box<dyn Host>>> {
+    async fn scan(&self, target: Target) -> anyhow::Result<Vec<Host>> {
         let (targets, lan_interface) = get_targets_and_lan_intf(target)?;
 
-        let hosts: Vec<Box<dyn Host>> = if !is_root() {
-            // Non-root fallback
-            host::external_to_box(
-                tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?,
-            )
+        let hosts: Vec<Host> = if !is_root() {
+            // Non-root fallback - only gets IPs
+            let external_hosts: Vec<Host> = tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?;
+            external_hosts
         } else if let Some(intf) = lan_interface {
             // Root & LAN available -> Advanced Scan
             let mut sender_cfg = SenderConfig::from(&intf);
@@ -40,24 +38,25 @@ impl NetworkScanner for NetworkScannerAdapter {
                 tokio::task::spawn_blocking(move || scanner::discover_lan(intf, sender_cfg))
                     .await??;
             
-            // MAP ENGINE HOST TO INTERNAL HOST (Anti-Corruption Layer)
-            let internal_hosts: Vec<InternalHost> = discovered_hosts.into_iter().map(|eh| {
-                InternalHost {
-                    hostname: eh.hostname.unwrap_or_else(|| "No hostname".to_string()),
-                    ips: eh.ips.into_iter().collect(), // HashSet -> BTreeSet
-                    mac_addr: eh.mac,
-                    _ports: std::collections::BTreeSet::new(),
-                    vendor: None,
-                    network_roles: std::collections::HashSet::new(),
+            // MAP ENGINE HOST TO HOST
+            discovered_hosts.into_iter().map(|eh| {
+                let primary_ip = eh.ips.iter()
+                    .find(|ip| ip.is_ipv4())
+                    .or_else(|| eh.ips.iter().next())
+                    .cloned()
+                    .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::new(0,0,0,0)));
+                let mut host = Host::new(primary_ip);
+                host.ips = eh.ips.into_iter().collect();
+                host.mac = Some(eh.mac);
+                if let Some(h) = eh.hostname {
+                    host.hostname = Some(h);
                 }
-            }).collect();
-
-            host::internal_to_box(internal_hosts)
+                host
+            }).collect()
         } else {
             // Root but no LAN -> Fallback to TCP
-            host::external_to_box(
-                tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?,
-            )
+              let external_hosts: Vec<Host> = tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?;
+              external_hosts
         };
         
         Ok(hosts)

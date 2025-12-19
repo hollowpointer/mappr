@@ -12,7 +12,7 @@ use crate::adapters::outbound::terminal::{
 };
 use crate::application::services::info::InfoService;
 use crate::adapters::outbound::os::system_repo::SystemRepo;
-use crate::domain::models::system::{IpServiceGroup, Service, FirewallStatus};
+use crate::domain::models::local_system::{IpServiceGroup, Service, FirewallStatus};
 
 pub fn info() -> anyhow::Result<()> {
     print::println(

@@ -1,3 +1,12 @@
+//! # Mappr Binary
+//!
+//! The entry point for the `mappr` CLI application.
+//!
+//! ## Responsibility
+//! * Parses command line arguments.
+//! * Initializes the terminal interface.
+//! * Dispatches commands to the appropriate Inbound Adapter (`src/adapters/inbound/cli`).
+
 use mappr::adapters::inbound::cli::{Commands, discover, info, listen, scan, CommandLine};
 use mappr::adapters::outbound::terminal::print;
 

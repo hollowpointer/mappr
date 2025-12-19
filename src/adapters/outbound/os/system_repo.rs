@@ -10,7 +10,7 @@ use netstat2::{AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, get_socket
 use sysinfo::{Pid, System};
 use pnet::datalink::NetworkInterface;
 
-use crate::domain::models::system::{IpServiceGroup, Service, FirewallStatus};
+use crate::domain::models::local_system::{IpServiceGroup, Service, FirewallStatus};
 use crate::ports::outbound::system_repository::SystemRepository;
 
 pub struct SystemRepo;

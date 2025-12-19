@@ -1,6 +1,16 @@
+//! # Local System Info Model
+//!
+//! Models information about the *local machine* (where the application is running),
+//! rather than remote hosts discovered on the network.
+//!
+//! This includes:
+//! * Active network services (ports opened by local processes).
+//! * Firewall status.
+
 use std::collections::HashSet;
 use std::net::IpAddr;
 
+/// Represents a group of services running on a specific local IP address.
 #[derive(Debug, Clone)]
 pub struct IpServiceGroup {
     pub ip_addr: IpAddr,

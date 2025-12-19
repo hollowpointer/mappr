@@ -1,8 +1,20 @@
+//! # Network Discovery Service
+//!
+//! Implements the core "Network Scan" use case.
+//!
+//! This service is responsible for finding devices on the network and aggregating
+//! information about them from various sources (Network Scanner, Vendor Repository).
+
 use crate::domain::models::host::Host;
 use crate::domain::models::target::Target;
 use crate::ports::outbound::vendor_repository::VendorRepository;
 use crate::ports::outbound::network_scanner::NetworkScanner;
 
+/// Application Service for Network Discovery.
+///
+/// Orchestrates the discovery process by:
+/// 1. delegating the raw network scan to the [`NetworkScanner`] port.
+/// 2. enriching the results with additional data (e.g., Vendor lookups).
 pub struct DiscoveryService {
     vendor_repo: Box<dyn VendorRepository>,
     scanner: Box<dyn NetworkScanner>,
@@ -19,7 +31,12 @@ impl DiscoveryService {
         }
     }
 
-    pub async fn perform_discovery(&self, target: Target) -> anyhow::Result<Vec<Box<dyn Host>>> {
+    /// Executes a network scan against the specified `target`.
+    ///
+    /// The process involves:
+    /// 1. **Scanning**: Using the underlying network adapter to find hosts.
+    /// 2. **Enrichment**: Resolving MAC addresses to Vendor names.
+    pub async fn perform_discovery(&self, target: Target) -> anyhow::Result<Vec<Host>> {
         // 1. Delegate "How to scan" to the Adapter
         let mut hosts = self.scanner.scan(target).await?;
 
@@ -29,11 +46,11 @@ impl DiscoveryService {
         Ok(hosts)
     }
 
-    fn enrich_vendors(&self, hosts: &mut Vec<Box<dyn Host>>) {
+    fn enrich_vendors(&self, hosts: &mut Vec<Host>) {
         for host in hosts.iter_mut() {
-            if let Some(mac) = host.mac_addr() {
+            if let Some(mac) = host.mac {
                 if let Some(vendor) = self.vendor_repo.get_vendor(mac) {
-                    host.set_vendor(vendor);
+                    host.vendor = Some(vendor);
                 }
             }
         }

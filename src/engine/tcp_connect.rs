@@ -1,4 +1,4 @@
-use crate::domain::models::host::ExternalHost;
+use crate::domain::models::host::Host;
 use std::collections::HashSet;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
@@ -9,12 +9,12 @@ use tokio::time::timeout;
 pub async fn handshake_range_discovery<F, Fut>(
     ip_addrs: HashSet<IpAddr>,
     mut prober: F,
-) -> anyhow::Result<Vec<ExternalHost>>
+) -> anyhow::Result<Vec<Host>>
 where
     F: FnMut(IpAddr) -> Fut,
-    Fut: Future<Output = anyhow::Result<Option<ExternalHost>>>,
+    Fut: Future<Output = anyhow::Result<Option<Host>>>,
 {
-    let mut result: Vec<ExternalHost> = Vec::new();
+    let mut result: Vec<Host> = Vec::new();
     for ip in ip_addrs {
         if let Some(found) = prober(ip).await? {
             result.push(found);
@@ -23,12 +23,12 @@ where
     Ok(result)
 }
 
-pub async fn handshake_probe(addr: IpAddr) -> anyhow::Result<Option<ExternalHost>> {
+pub async fn handshake_probe(addr: IpAddr) -> anyhow::Result<Option<Host>> {
     let socket_addr: SocketAddr = SocketAddr::new(addr, 443);
     let probe_timeout: Duration = Duration::from_millis(100);
 
     match timeout(probe_timeout, TcpStream::connect(socket_addr)).await {
-        Ok(Ok(_)) | Ok(Err(_)) => Ok(Some(ExternalHost::from(addr))),
+        Ok(Ok(_)) | Ok(Err(_)) => Ok(Some(Host::new(addr))),
         Err(_elapsed) => Ok(None),
     }
 }
@@ -45,14 +45,14 @@ pub async fn handshake_probe(addr: IpAddr) -> anyhow::Result<Option<ExternalHost
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::models::host::ExternalHost;
+    use crate::domain::models::host::Host;
     use std::net::{IpAddr, Ipv4Addr};
 
     #[tokio::test]
     #[ignore]
     async fn handshake_probe_should_find_known_open_port() {
         let ip: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
-        let result: Option<ExternalHost> = handshake_probe(ip).await.unwrap();
+        let result: Option<Host> = handshake_probe(ip).await.unwrap();
         assert!(result.is_some());
     }
 
@@ -60,7 +60,7 @@ mod tests {
     #[ignore]
     async fn handshake_probe_should_timeout_on_unreachable_ip() {
         let ip: IpAddr = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 1));
-        let result: Option<ExternalHost> = handshake_probe(ip).await.unwrap();
+        let result: Option<Host> = handshake_probe(ip).await.unwrap();
         assert!(result.is_none());
     }
 }

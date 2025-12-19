@@ -1,3 +1,10 @@
+//! # IPv4 Range Model
+//!
+//! Provides utilities for working with continuous ranges of IPv4 addresses.
+//!
+//! This module is primarily used by the [`crate::domain::models::target::Target`] enum
+//! to represent ranges like `192.168.1.1-100` or CIDR `192.168.1.0/24`.
+
 use anyhow;
 use pnet::ipnetwork::Ipv4Network;
 use std::net::{IpAddr, Ipv4Addr};
@@ -29,10 +36,14 @@ impl Ipv4Range {
     }
 }
 
+/// Converts a `pnet` Ipv4Network to an `Ipv4Range`.
 pub fn from_ipv4_net(ipv4_net: Ipv4Network) -> anyhow::Result<Ipv4Range> {
     Ok(cidr_range(ipv4_net.ip(), ipv4_net.prefix())?)
 }
 
+/// Creates a range from an IP and a CIDR prefix (e.g., 192.168.1.0/24).
+///
+/// Returns the range covering the entire network block.
 pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<Ipv4Range> {
     if prefix > 32 {
         anyhow::bail!("Invalid prefix: {prefix} > 32");

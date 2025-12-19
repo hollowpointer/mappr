@@ -35,14 +35,14 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
 }
 
 
-fn discovery_ends(hosts: &mut Vec<Box<dyn Host>>, total_time: Duration) -> anyhow::Result<()> {
+fn discovery_ends(hosts: &mut Vec<Host>, total_time: Duration) -> anyhow::Result<()> {
     if hosts.is_empty() {
         return Ok(no_hosts_found());
     }
     print::header("Network Discovery");
-    hosts.sort_by_key(|host| host.get_primary_ip());
+    hosts.sort_by_key(|host| host.ip);
     for (idx, host) in hosts.iter().enumerate() {
-        print_host_details(host.as_ref(), idx);
+        print_host_details(host, idx);
         if idx + 1 != hosts.len() {
             print::println("");
         }
@@ -69,11 +69,12 @@ fn no_hosts_found() {
     get_spinner().finish_and_clear();
 }
 
-fn print_host_details(host: &dyn Host, idx: usize) {
-    print::tree_head(idx, host.hostname());
-    let mut key_value_pair = format::ip_to_key_value_pair(host.ips());
+fn print_host_details(host: &Host, idx: usize) {
+    let hostname = host.hostname.as_deref().unwrap_or("No hostname");
+    print::tree_head(idx, hostname);
+    let mut key_value_pair = format::ip_to_key_value_pair(&host.ips);
 
-    if let Some(mac) = host.mac_addr() {
+    if let Some(mac) = host.mac {
         let mac_key_value: (String, ColoredString) = (
             "MAC".to_string(),
             mac.to_string().color(colors::MAC_ADDR),
@@ -81,7 +82,7 @@ fn print_host_details(host: &dyn Host, idx: usize) {
         key_value_pair.push(mac_key_value);
     }
 
-    if let Some(vendor) = host.vendor() {
+    if let Some(vendor) = &host.vendor {
         let vendor_key_value: (String, ColoredString) = (
             "Vendor".to_string(),
             vendor.to_string().color(colors::MAC_ADDR),
@@ -89,9 +90,8 @@ fn print_host_details(host: &dyn Host, idx: usize) {
         key_value_pair.push(vendor_key_value);
     }
 
-    if let Some(roles) = host.roles() {
-        if !roles.is_empty() {
-             let joined_roles: String = roles
+    if !host.network_roles.is_empty() {
+             let joined_roles: String = host.network_roles
                 .iter()
                 .map(|role| format!("{:?}", role))
                 .collect::<Vec<String>>()
@@ -101,7 +101,6 @@ fn print_host_details(host: &dyn Host, idx: usize) {
                 ("Roles".to_string(), joined_roles.normal());
 
             key_value_pair.push(roles_key_value);
-        }
     }
 
     print::as_tree_one_level(key_value_pair);

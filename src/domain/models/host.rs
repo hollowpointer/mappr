@@ -1,3 +1,11 @@
+//! # Host Domain Model
+//!
+//! This module defines the [`Host`] entity, which represents a single network device detected during a scan.
+//!
+//! ## Key Concepts
+//! * **Unified Model**: A `Host` represents both devices on the local LAN (Layer 2) and remote devices (Layer 3).
+//! * **Identity**: A host is primarily identified by its IP address for the duration of a scan.
+//! * **Enrichment**: The model is mutable and strictly additive; scans populate optional fields (hostname, vendor) as data becomes available.
 use pnet::datalink::MacAddr;
 use std::{
     collections::{BTreeSet, HashSet},
@@ -11,127 +19,52 @@ pub enum NetworkRole {
     _DNS,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct InternalHost {
-    pub hostname: String,
+/// Represents a discovered network host.
+///
+/// A host is defined by what we know about it.
+#[derive(Debug, Clone)]
+pub struct Host {
+    /// The primary way to identify the host (on this run).
+    /// Note: A host might have multiple IPs, but we usually discover it via one.
+    pub ip: IpAddr,
+    
+    /// The resolved hostname (if any).
+    pub hostname: Option<String>,
+    
+    /// All known IP addresses for this host.
     pub ips: BTreeSet<IpAddr>,
-    pub _ports: BTreeSet<u16>,
-    pub mac_addr: MacAddr,
+    
+    /// Open ports found on the host.
+    /// TODO: Refactor to a rich `Port` struct in a future iteration.
+    pub ports: BTreeSet<u16>,
+    
+    /// The MAC address (only available if the host is on the same LAN).
+    pub mac: Option<MacAddr>,
+    
+    /// The device vendor/manufacturer (derived from MAC).
     pub vendor: Option<String>,
+    
+    /// Inferred network roles (e.g., is it a Gateway?).
     pub network_roles: HashSet<NetworkRole>,
 }
 
-#[derive(Debug, Clone)]
-pub struct ExternalHost {
-    pub hostname: String,
-    pub ips: BTreeSet<IpAddr>,
-    pub _ports: BTreeSet<u16>,
-}
-
-impl From<MacAddr> for InternalHost {
-    fn from(mac_addr: MacAddr) -> Self {
+impl Host {
+    /// Creates a new Host with minimal information (just an IP).
+    pub fn new(ip: IpAddr) -> Self {
         Self {
-            hostname: String::from("No hostname"),
-            ips: BTreeSet::new(),
-            _ports: BTreeSet::new(),
-            mac_addr,
+            ip,
+            hostname: None,
+            ips: BTreeSet::from([ip]),
+            ports: BTreeSet::new(),
+            mac: None,
             vendor: None,
             network_roles: HashSet::new(),
         }
     }
-}
 
-impl From<IpAddr> for ExternalHost {
-    fn from(ip: IpAddr) -> Self {
-        Self {
-            hostname: String::from("No hostname"),
-            ips: BTreeSet::from([ip]),
-            _ports: BTreeSet::new(),
-        }
+    /// Sets the MAC address.
+    pub fn with_mac(mut self, mac: MacAddr) -> Self {
+        self.mac = Some(mac);
+        self
     }
-}
-
-pub trait Host {
-    fn get_primary_ip(&self) -> Option<IpAddr>;
-    fn set_hostname(&mut self, name: String);
-    fn set_vendor(&mut self, _vendor: String) {} // Default: do nothing
-    fn mac_addr(&self) -> Option<MacAddr> { None }
-    fn vendor(&self) -> Option<&str> { None }
-    fn roles(&self) -> Option<&HashSet<NetworkRole>> { None }
-    fn hostname(&self) -> &str;
-    fn ips(&self) -> &BTreeSet<IpAddr>;
-}
-
-impl Host for InternalHost {
-    fn get_primary_ip(&self) -> Option<IpAddr> {
-        self.ips
-            .iter()
-            .find(|ip| ip.is_ipv4())
-            .or_else(|| self.ips.iter().next())
-            .cloned()
-    }
-
-    fn set_hostname(&mut self, name: String) {
-        self.hostname = name;
-    }
-
-    fn set_vendor(&mut self, vendor: String) {
-        self.vendor = Some(vendor);
-    }
-
-    fn mac_addr(&self) -> Option<MacAddr> {
-        Some(self.mac_addr)
-    }
-
-    fn vendor(&self) -> Option<&str> {
-        self.vendor.as_deref()
-    }
-
-    fn roles(&self) -> Option<&HashSet<NetworkRole>> {
-        Some(&self.network_roles)
-    }
-
-    fn hostname(&self) -> &str {
-        &self.hostname
-    }
-
-    fn ips(&self) -> &BTreeSet<IpAddr> {
-        &self.ips
-    }
-}
-
-impl Host for ExternalHost {
-    fn get_primary_ip(&self) -> Option<IpAddr> {
-        self.ips
-            .iter()
-            .find(|ip| ip.is_ipv4())
-            .or_else(|| self.ips.iter().next())
-            .cloned()
-    }
-
-    fn set_hostname(&mut self, name: String) {
-        self.hostname = name;
-    }
-
-    fn hostname(&self) -> &str {
-        &self.hostname
-    }
-
-    fn ips(&self) -> &BTreeSet<IpAddr> {
-        &self.ips
-    }
-}
-
-pub fn external_to_box(hosts: Vec<ExternalHost>) -> Vec<Box<dyn Host>> {
-    hosts
-        .into_iter()
-        .map(|host| Box::new(host) as Box<dyn Host>)
-        .collect()
-}
-
-pub fn internal_to_box(hosts: Vec<InternalHost>) -> Vec<Box<dyn Host>> {
-    hosts
-        .into_iter()
-        .map(|host| Box::new(host) as Box<dyn Host>)
-        .collect()
 }

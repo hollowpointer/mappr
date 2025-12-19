@@ -1,7 +1,21 @@
-use crate::domain::models::system::{FirewallStatus, IpServiceGroup};
+//! # Local System Information Service
+//!
+//! Implements the "System Info" use case.
+//!
+//! This service acts as a facade for gathering local machine statistics and
+//! configuration, useful for debugging or self-awareness context.
+
+use crate::domain::models::local_system::{FirewallStatus, IpServiceGroup};
 use crate::ports::outbound::system_repository::SystemRepository;
 use pnet::datalink::NetworkInterface;
 
+/// Application Service for Local System Information.
+///
+/// Responsible for gathering and aggregating information about the machine
+/// where the application is running, such as:
+/// * Network Interfaces (IPs, MACs).
+/// * Active Services (Open ports).
+/// * Firewall status.
 pub struct InfoService {
     system_repo: Box<dyn SystemRepository>,
 }
@@ -17,6 +31,7 @@ impl InfoService {
         Self { system_repo }
     }
 
+    /// Retrieves a comprehensive snapshot of the local system's network state.
     pub fn get_system_info(&self) -> anyhow::Result<SystemInfo> {
         let services = self.system_repo.get_local_services()?;
         let firewall = self.system_repo.get_firewall_status()?;

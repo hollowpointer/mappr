@@ -1,17 +1,40 @@
+//! # Scan Target Model
+//!
+//! Defines the possible inputs for a network scan.
+//!
+//! This module handles parsing and representing targets, which can be:
+//! * A single IP address (host).
+//! * An IPv4 Range (e.g., `192.168.1.1-100`).
+//! * A CIDR block (e.g., `192.168.1.0/24`).
+//! * The local LAN (detected automatically).
+
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use crate::domain::models::range::{self, Ipv4Range};
 
+/// Represents a distinct target to be scanned.
 #[derive(Clone, Debug)]
 pub enum Target {
+    /// Scan the entire local area network (requires root for advanced features).
     LAN,
+    /// Scan a single specific host.
     Host { target_addr: IpAddr },
+    /// Scan a range of IPv4 addresses.
     Range { ipv4_range: Ipv4Range },
+    /// Scan via VPN interface (placeholder).
     VPN,
 }
 
 impl FromStr for Target {
     type Err = String;
+
+    /// Parses a string into a `Target`.
+    ///
+    /// Supported formats:
+    /// * **Keywords**: "lan", "vpn" (case-insensitive).
+    /// * **Host**: Single IPv4/IPv6 address (e.g., "192.168.1.5").
+    /// * **Range**: "Start-End" (e.g., "192.168.1.1-50", "192.168.1.1-192.168.1.50").
+    /// * **CIDR**: "Network/Prefix" (e.g., "192.168.1.0/24").
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lower = s.to_ascii_lowercase();
 
@@ -35,6 +58,7 @@ impl FromStr for Target {
     }
 }
 
+/// Parses special keywords like "lan" or "vpn".
 fn parse_keyword(s_lower: &str) -> Option<Target> {
     match s_lower {
         "lan" => Some(Target::LAN),
@@ -43,12 +67,14 @@ fn parse_keyword(s_lower: &str) -> Option<Target> {
     }
 }
 
+/// Parses a single IP address.
 fn parse_host(s: &str) -> Option<Target> {
     s.parse::<IpAddr>()
         .ok()
         .map(|target_addr| Target::Host { target_addr })
 }
 
+/// Parses a range string like "1.1.1.1-2.2.2.2" or "1.1.1.1-50".
 fn parse_ip_range(s: &str) -> Result<Option<Target>, String> {
     let Some((start_str, end_str)) = s.split_once('-') else {
         return Ok(None);
@@ -64,6 +90,10 @@ fn parse_ip_range(s: &str) -> Result<Option<Target>, String> {
     Ok(Some(Target::Range { ipv4_range }))
 }
 
+/// Helper to parse the end address of a range.
+///
+/// Handles abbreviated forms like "192.168.1.1-50" (implies 192.168.1.50)
+/// and full forms like "192.168.1.1-192.168.1.255".
 fn parse_range_end_addr(
     end_str: &str,
     start_addr: &Ipv4Addr,
@@ -94,6 +124,7 @@ fn parse_range_end_addr(
     Ok(Ipv4Addr::from(end_octets))
 }
 
+/// Parses CIDR notation like "192.168.1.0/24".
 fn parse_cidr_range(s: &str) -> Result<Option<Target>, String> {
     let Some((ip_str, prefix_str)) = s.split_once('/') else {
         return Ok(None);
