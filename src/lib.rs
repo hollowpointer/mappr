@@ -1,5 +1,5 @@
-pub mod cmd;
-pub mod host;
-pub mod net;
-pub mod terminal;
+pub mod adapters; 
+pub mod application; 
+pub mod domain;
+pub mod ports; 
 pub mod utils;

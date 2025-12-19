@@ -1,9 +1,9 @@
-use mappr::cmd::{Commands, discover, info, listen, scan};
-use mappr::terminal::print;
+use mappr::adapters::inbound::cli::{Commands, discover, info, listen, scan, CommandLine};
+use mappr::adapters::outbound::terminal::print;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let commands = mappr::cmd::CommandLine::parse_args();
+    let commands = CommandLine::parse_args();
     print::initialize();
     match commands.command {
         Commands::Info => {
