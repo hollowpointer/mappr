@@ -1,6 +1,6 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::engine::utils::IP_V6_HDR_LEN;
+use crate::adapters::outbound::network::utils::IP_V6_HDR_LEN;
 use anyhow::Context;
 use pnet::packet::Packet;
 use pnet::packet::ethernet::EthernetPacket;

@@ -5,7 +5,7 @@ pub mod ip;
 pub mod ndp;
 pub mod udp;
 
-use crate::engine::sender::SenderConfig;
+use crate::adapters::outbound::network::sender::SenderConfig;
 use crate::adapters::outbound::terminal::print;
 use anyhow::Context;
 use pnet::ipnetwork::Ipv4Network;

@@ -1,6 +1,6 @@
-use crate::engine::datalink::ethernet;
-use crate::engine::protocol::ip;
-use crate::engine::utils::{ETH_HDR_LEN, ICMP_V6_ECHO_REQ_LEN, IP_V6_HDR_LEN};
+use crate::adapters::outbound::network::datalink::ethernet;
+use crate::adapters::outbound::network::protocol::ip;
+use crate::adapters::outbound::network::utils::{ETH_HDR_LEN, ICMP_V6_ECHO_REQ_LEN, IP_V6_HDR_LEN};
 use anyhow::Context;
 use pnet::datalink::MacAddr;
 use pnet::packet::Packet;

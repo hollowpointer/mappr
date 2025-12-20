@@ -90,13 +90,9 @@ fn print_local_system() -> anyhow::Result<()> {
 
 fn print_network_interfaces(interfaces: &[NetworkInterface]) -> anyhow::Result<()> {
     print::header("network interfaces");
-    // We can't call print_details directly if the trait is private!
-    // We should rely on a public helper or make the trait public.
-    // I will use crate::adapters::outbound::network::scanner::print_interface_details(intf)
-    // I need to add that helper to scanner.rs
     
     for (idx, intf) in interfaces.iter().enumerate() {
-        crate::engine::scanner::print_interface_details(intf, idx);
+        crate::adapters::outbound::terminal::network_fmt::print_interface(intf, idx);
         
         if idx + 1 != interfaces.len() {
             print::println("");

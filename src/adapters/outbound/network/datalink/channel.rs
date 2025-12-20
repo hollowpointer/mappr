@@ -1,5 +1,5 @@
-use crate::engine::protocol;
-use crate::engine::sender::SenderConfig;
+use crate::adapters::outbound::network::protocol;
+use crate::adapters::outbound::network::sender::SenderConfig;
 use crate::adapters::outbound::terminal::print;
 use anyhow::{self, Context};
 use pnet::datalink;

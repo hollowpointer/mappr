@@ -8,7 +8,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
-use crate::engine::datalink::interface::NetworkInterfaceExtension;
+use crate::adapters::outbound::network::datalink::interface::NetworkInterfaceExtension;
 
 #[derive(Debug, Clone, Default)]
 pub struct SenderConfig {

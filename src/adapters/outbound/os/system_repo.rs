@@ -103,6 +103,6 @@ impl SystemRepository for SystemRepo {
     }
 
     fn get_network_interfaces(&self) -> anyhow::Result<Vec<NetworkInterface>> {
-        crate::engine::scanner::get_prioritized_interfaces()
+        crate::adapters::outbound::network::scanner::get_prioritized_interfaces()
     }
 }

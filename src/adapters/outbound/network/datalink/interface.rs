@@ -1,10 +1,6 @@
 use crate::domain::models::range::{self, Ipv4Range};
-use crate::{
-    engine::ip,
-    adapters::outbound::terminal::{colors, print},
-};
+use crate::adapters::outbound::terminal::print;
 use anyhow::{self, Context};
-use colored::{ColoredString, Colorize};
 use pnet::ipnetwork::{IpNetwork, Ipv6Network};
 use pnet::{self, datalink::NetworkInterface, ipnetwork::Ipv4Network};
 use std::net::Ipv6Addr;
@@ -30,7 +26,6 @@ pub enum ViabilityError {
 }
 
 pub trait NetworkInterfaceExtension {
-    fn print_details(&self, idx: usize);
     fn get_ipv4_nets(&self) -> Vec<Ipv4Network>;
     fn get_ipv6_nets(&self) -> Vec<Ipv6Network>;
     fn get_ipv4_range(&self) -> anyhow::Result<Ipv4Range>;
@@ -38,18 +33,6 @@ pub trait NetworkInterfaceExtension {
 }
 
 impl NetworkInterfaceExtension for NetworkInterface {
-    fn print_details(self: &Self, idx: usize) {
-        print::tree_head(idx, &self.name);
-        let mut key_value_pair: Vec<(String, ColoredString)> = ip::to_key_value_pair_net(&self.ips);
-        if let Some(mac_addr) = self.mac {
-            key_value_pair.push((
-                "MAC".to_string(),
-                mac_addr.to_string().color(colors::MAC_ADDR),
-            ));
-        }
-        print::as_tree_one_level(key_value_pair);
-    }
-
     fn get_ipv4_nets(&self) -> Vec<Ipv4Network> {
         self.ips
             .iter()

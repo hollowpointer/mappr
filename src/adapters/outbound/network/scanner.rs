@@ -2,11 +2,11 @@ use std::time::Duration;
 use pnet::datalink::NetworkInterface;
 use std::ops::ControlFlow;
 
-use crate::engine::models::EngineHost;
-use crate::engine::sender::SenderConfig;
-use crate::engine::datalink::{channel::{self, EthernetHandle}, interface::{self, NetworkInterfaceExtension}};
-use crate::engine::transport::{self, UdpHandle};
-use crate::engine::runner::local::LocalRunner;
+use crate::domain::models::host::Host;
+use crate::adapters::outbound::network::sender::SenderConfig;
+use crate::adapters::outbound::network::datalink::{channel::{self, EthernetHandle}, interface};
+use crate::adapters::outbound::network::transport::{self, UdpHandle};
+use crate::adapters::outbound::network::runner::local::LocalRunner;
 use crate::utils::input::InputHandle;
 use crate::utils::timing::ScanTimer;
 
@@ -17,7 +17,7 @@ const MAX_SILENCE: Duration = Duration::from_millis(500);
 pub fn discover_lan(
     intf: NetworkInterface,
     sender_cfg: SenderConfig,
-) -> anyhow::Result<Vec<EngineHost>> {
+) -> anyhow::Result<Vec<Host>> {
     let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
     let udp_handle: UdpHandle = transport::start_capture()?;
     let input_handle: InputHandle = InputHandle::new();
@@ -40,8 +40,4 @@ pub fn discover_lan(
 
 pub fn get_prioritized_interfaces() -> anyhow::Result<Vec<NetworkInterface>> {
     interface::get_prioritized_interfaces(5)
-}
-
-pub fn print_interface_details(intf: &NetworkInterface, idx: usize) {
-    intf.print_details(idx);
 }

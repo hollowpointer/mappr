@@ -1,5 +1,5 @@
-use crate::engine::datalink::ethernet;
-use crate::engine::utils::{ARP_LEN, MIN_ETH_FRAME_NO_FCS};
+use crate::adapters::outbound::network::datalink::ethernet;
+use crate::adapters::outbound::network::utils::{ARP_LEN, MIN_ETH_FRAME_NO_FCS};
 use anyhow::Context;
 use pnet::datalink::MacAddr;
 use pnet::packet::Packet;

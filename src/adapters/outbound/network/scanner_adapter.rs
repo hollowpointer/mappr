@@ -9,13 +9,14 @@ use crate::domain::models::host::Host;
 use crate::domain::models::target::Target;
 use crate::ports::outbound::network_scanner::NetworkScanner;
 
-// Internal dependencies only!
-use crate::engine::{
+use crate::utils::ip;
+
+// Internal dependencies from the same network adapter module
+use crate::adapters::outbound::network::{
     datalink::interface::{self, NetworkInterfaceExtension},
-    ip,
     scanner,
     sender::SenderConfig,
-    tcp_connect,
+    tcp_scanner as tcp_connect,
 };
 
 pub struct NetworkScannerAdapter;
@@ -38,21 +39,7 @@ impl NetworkScanner for NetworkScannerAdapter {
                 tokio::task::spawn_blocking(move || scanner::discover_lan(intf, sender_cfg))
                     .await??;
             
-            // MAP ENGINE HOST TO HOST
-            discovered_hosts.into_iter().map(|eh| {
-                let primary_ip = eh.ips.iter()
-                    .find(|ip| ip.is_ipv4())
-                    .or_else(|| eh.ips.iter().next())
-                    .cloned()
-                    .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::new(0,0,0,0)));
-                let mut host = Host::new(primary_ip);
-                host.ips = eh.ips.into_iter().collect();
-                host.mac = Some(eh.mac);
-                if let Some(h) = eh.hostname {
-                    host.hostname = Some(h);
-                }
-                host
-            }).collect()
+            discovered_hosts
         } else {
             // Root but no LAN -> Fallback to TCP
               let external_hosts: Vec<Host> = tcp_connect::handshake_range_discovery(targets, tcp_connect::handshake_probe).await?;

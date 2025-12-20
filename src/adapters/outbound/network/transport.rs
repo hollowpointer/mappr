@@ -6,7 +6,7 @@ use pnet::{
 };
 use std::{net::IpAddr, sync::mpsc, thread};
 
-use crate::engine::protocol::{dns, udp};
+use crate::adapters::outbound::network::protocol::{dns, udp};
 
 const TRANSPORT_BUFFER_SIZE: usize = 4096;
 const CHANNEL_TYPE_UDP: TransportChannelType =

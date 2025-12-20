@@ -15,7 +15,6 @@
 //!     * *Outside the Hexagon*.
 //!
 //! ## Helper Modules
-//! * **[`engine`]**: Low-level networking logic (scanning, packet crafting). Ideally hidden behind Adapters.
 //! * **[`utils`]**: Shared utilities.
 
 pub mod adapters; 
@@ -23,5 +22,5 @@ pub mod application;
 pub mod domain;
 pub mod ports; 
 pub mod utils;
-pub mod engine;
+
 

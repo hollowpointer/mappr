@@ -2,7 +2,7 @@ use anyhow::Context;
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 
-use crate::engine::utils::ETH_HDR_LEN;
+use crate::adapters::outbound::network::utils::ETH_HDR_LEN;
 
 pub fn make_header(src_mac: MacAddr, dst_mac: MacAddr, et: EtherType) -> anyhow::Result<Vec<u8>> {
     let mut buffer: [u8; ETH_HDR_LEN] = [0; ETH_HDR_LEN];

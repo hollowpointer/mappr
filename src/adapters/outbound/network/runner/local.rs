@@ -13,13 +13,14 @@ use pnet::{
     util::MacAddr,
 };
 
-use crate::engine::{
+use crate::domain::models::host::Host;
+
+use crate::utils::ip;
+use crate::adapters::outbound::network::{
     datalink::{channel::{self, EthernetHandle}, ethernet}, 
-    ip,
     protocol::{self, dns},
     sender::SenderConfig, 
     transport::{self, UdpHandle},
-    models::EngineHost,
 };
 
 use crate::{
@@ -31,7 +32,7 @@ const DNS_PORT: u16 = 53;
 const MDNS_PORT: u16 = 5353;
 
 pub(crate) struct LocalRunner {
-    hosts_map: HashMap<MacAddr, EngineHost>,
+    hosts_map: HashMap<MacAddr, Host>,
     dns_map: HashMap<u16, MacAddr>,
     sender_cfg: SenderConfig,
     input_handle: InputHandle,
@@ -113,9 +114,9 @@ impl LocalRunner {
         let host = self
             .hosts_map
             .entry(source_mac)
-            .or_insert_with(|| EngineHost::new(source_mac, source_addr));
+            .or_insert_with(|| Host::new(source_addr).with_mac(source_mac));
 
-        host.add_ip(source_addr);
+        host.ips.insert(source_addr);
         if host.hostname.is_none() {
              self.send_dns_ptr_query(&source_addr, source_mac);
         }
@@ -144,7 +145,7 @@ impl LocalRunner {
             return;
         };
         if let Some(host) = self.hosts_map.get_mut(mac_addr) {
-            host.set_hostname(name);
+            host.hostname = Some(name);
         }
     }
 
@@ -169,7 +170,7 @@ impl LocalRunner {
         self.trans_id_counter.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub fn get_hosts(self) -> Vec<EngineHost> {
+    pub fn get_hosts(self) -> Vec<Host> {
         self.hosts_map.into_values().collect()
     }
 }

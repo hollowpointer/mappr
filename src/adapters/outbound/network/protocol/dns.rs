@@ -5,7 +5,8 @@ use pnet::packet::dns::{
     DnsClass, DnsPacket, DnsQuery, DnsTypes, MutableDnsPacket, Opcode, Retcode,
 };
 
-use crate::engine::{ip, utils::DNS_HDR_LEN};
+use crate::utils::ip;
+use crate::adapters::outbound::network::utils::DNS_HDR_LEN;
 
 pub fn get_hostname(payload: &[u8]) -> anyhow::Result<Option<(u16, String)>> {
     let dns: DnsPacket =
