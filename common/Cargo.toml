@@ -1,0 +1,13 @@
+[package]
+name = "mappr-common"
+version = "0.2.5"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+pnet = { workspace = true }
+crossterm = { workspace = true }
+async-trait = { workspace = true }
+
+

@@ -1,0 +1,10 @@
+[package]
+name = "mappr-plugins"
+version = "0.2.5"
+edition = "2024"
+
+[dependencies]
+mappr-common = { workspace = true }
+mappr-protocols = { workspace = true }
+async-trait = { workspace = true }
+anyhow = { workspace = true }

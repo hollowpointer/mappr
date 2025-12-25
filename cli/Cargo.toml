@@ -1,0 +1,22 @@
+[package]
+name = "mappr-cli"
+version = "0.2.5"
+edition = "2024"
+
+[dependencies]
+mappr-core = { workspace = true }
+mappr-common = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+console = { workspace = true }
+indicatif = { workspace = true }
+colored = { workspace = true }
+async-trait = { workspace = true }
+rand = { workspace = true }
+pnet = { workspace = true }
+unicode-width = "0.1"
+sys-info = "0.9"
+is-root = "0.1.3"
+
+

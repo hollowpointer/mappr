@@ -1,0 +1,21 @@
+[package]
+name = "mappr-core"
+version = "0.2.5"
+edition = "2024"
+
+[dependencies]
+mappr-common = { workspace = true }
+mappr-protocols = { workspace = true }
+mappr-plugins = { workspace = true }
+tokio = { workspace = true }
+pnet = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+rand = { workspace = true }
+is-root = "0.1.3"
+mac_oui = { version = "0.4.7", features = ["with-db"] }
+
+
+sysinfo = "0.29.10"
+
+

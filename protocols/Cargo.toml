@@ -1,0 +1,12 @@
+[package]
+name = "mappr-protocols"
+version = "0.2.5"
+edition = "2024"
+
+[dependencies]
+mappr-common = { workspace = true }
+pnet = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+rand = { workspace = true }
+
