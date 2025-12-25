@@ -19,4 +19,6 @@ unicode-width = "0.1"
 sys-info = "0.9"
 is-root = "0.1.3"
 
-
+[[bin]]
+name = "mappr"
+path = "src/main.rs"
