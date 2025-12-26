@@ -6,11 +6,12 @@
 //! * **Unified Model**: A `Host` represents both devices on the local LAN (Layer 2) and remote devices (Layer 3).
 //! * **Identity**: A host is primarily identified by its IP address for the duration of a scan.
 //! * **Enrichment**: The model is mutable and strictly additive; scans populate optional fields (hostname, vendor) as data becomes available.
+
 use pnet::datalink::MacAddr;
 use std::{
-    collections::{BTreeSet, HashSet, VecDeque},
-    net::IpAddr, time::Duration,
+    collections::{BTreeSet, HashSet, VecDeque}, net::IpAddr, time::Duration
 };
+use crate::network::mac;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum NetworkRole {
@@ -69,6 +70,7 @@ impl Host {
     /// Sets the MAC address.
     pub fn with_mac(mut self, mac: MacAddr) -> Self {
         self.mac = Some(mac);
+        self.vendor = mac::get_vendor(mac);
         self
     }
 

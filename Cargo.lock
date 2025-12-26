@@ -545,6 +545,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "crossterm",
+ "mac_oui",
  "pnet",
  "thiserror",
 ]
@@ -556,7 +557,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "is-root",
- "mac_oui",
  "mappr-common",
  "mappr-plugins",
  "mappr-protocols",

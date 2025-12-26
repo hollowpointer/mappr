@@ -3,7 +3,6 @@ use std::time::Instant;
 use anyhow;
 use colored::*;
 
-
 use mappr_common::network::target::Target;
 use mappr_common::network::host::Host; 
 use crate::terminal::spinner::get_spinner;
@@ -14,7 +13,6 @@ use crate::terminal::{
 };
 
 use mappr_core::discovery::DiscoveryService;
-use mappr_core::vendors::MacOuiRepo;
 use mappr_core::scanning::NetworkScannerBackend;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
@@ -24,9 +22,8 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     let start_time: Instant = Instant::now();
 
     // 1. Instantiate Dependencies
-    let vendor_repo = Box::new(MacOuiRepo);
     let scanner_backend = Box::new(NetworkScannerBackend);
-    let service = DiscoveryService::new(vendor_repo, scanner_backend);
+    let service = DiscoveryService::new(scanner_backend);
 
     // 2. Execute Service
     let mut hosts = service.perform_discovery(target).await?;
