@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use mappr_common::network::host::Host;
 use mappr_common::network::range::IpCollection;
 use pnet::datalink::NetworkInterface;
+use tracing::error;
 
 mod local;
 
@@ -73,12 +74,12 @@ pub fn perform_discovery(
                 Ok(mut scanner) => {
                     scanner.start_listening();
                     if let Err(e) = scanner.send_discovery_packets() {
-                        eprintln!("Failed to send discovery packets: {}", e);
+                        error!("Failed to send discovery packets: {}", e);
                     }
                     scanner.finish()
                 }
                 Err(e) => {
-                    eprintln!(
+                    error!(
                         "Failed to initialize scanner for interface {}: {}",
                         intf.name, e
                     );

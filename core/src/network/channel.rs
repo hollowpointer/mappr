@@ -1,5 +1,5 @@
-use mappr_protocols as protocol;
 use mappr_common::config::SenderConfig;
+use mappr_protocols as protocol;
 // use crate::adapters::outbound::terminal::print;
 use anyhow::{self, Context};
 use pnet::datalink;
@@ -7,6 +7,7 @@ use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkI
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tracing::info;
 
 const READ_TIMEOUT_MS: u64 = 50;
 
@@ -42,9 +43,10 @@ where
 {
     let ch: Channel =
         channel_opener(intf, get_config()).with_context(|| format!("opening on {}", intf.name))?;
+
     match ch {
         Channel::Ethernet(tx, rx) => {
-            // print::print_status("Connection established successfully");
+            info!("Connection established successfully");
             Ok((tx, rx))
         }
         _ => anyhow::bail!("non-ethernet channel for {}", intf.name),

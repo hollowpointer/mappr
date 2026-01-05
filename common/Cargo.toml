@@ -10,6 +10,7 @@ pnet = { workspace = true }
 crossterm = { workspace = true }
 async-trait = { workspace = true }
 rayon = { workspace = true }
+tracing = { workspace = true }
 mac_oui = { version = "0.4.7", features = ["with-db"] }
 
 

@@ -10,12 +10,18 @@
 mod commands;
 mod terminal;
 
-use commands::{Commands, discover, info, listen, scan, CommandLine};
+use commands::{CommandLine, Commands, discover, info, listen, scan};
 use terminal::print;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let commands = CommandLine::parse_args();
+
+    tracing_subscriber::fmt()
+        .with_writer(|| terminal::spinner::SpinnerWriter)
+        .event_format(terminal::logging::MapprFormatter)
+        .init();
+
     print::initialize();
     match commands.command {
         Commands::Info => {

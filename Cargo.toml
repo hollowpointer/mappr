@@ -21,6 +21,7 @@ console = "0.16.1"
 thiserror = "2.0.11"
 crossterm = "0.29.0"
 rayon = "1.11.0"
+tracing = "0.1.44"
 
 mappr-core = { path = "./core" }
 mappr-common = { path = "./common" }

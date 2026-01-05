@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use anyhow;
 use colored::*;
+use tracing::info;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -17,7 +18,7 @@ use pnet::datalink::NetworkInterface;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     get_spinner().set_message("Performing discovery...".to_owned());
-    print::print_status("Initializing discovery...");
+    info!("Initializing discovery...");
 
     let ips: IpCollection = target::to_collection(target)?;
     let intf_ip_map: HashMap<NetworkInterface, IpCollection> =

@@ -1,5 +1,5 @@
-use std::sync::mpsc::{self, Sender, RecvTimeoutError};
 use std::sync::OnceLock;
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -8,9 +8,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 const TIP_DURATION: Duration = Duration::from_secs(1);
 const MESSAGE_READ_TIME: Duration = Duration::from_secs(1);
-const TIPS: &[&str] = &[
-    "You can press 'q' to finish early",
-];
+const TIPS: &[&str] = &["You can press 'q' to finish early"];
 
 pub struct SpinnerHandle {
     pub spinner: ProgressBar,
@@ -37,19 +35,23 @@ impl SpinnerHandle {
 pub(crate) static SPINNER: OnceLock<SpinnerHandle> = OnceLock::new();
 
 pub fn get_spinner() -> &'static SpinnerHandle {
-    SPINNER.get_or_init(|| {
-        init_spinner()
-    })
+    SPINNER.get_or_init(|| init_spinner())
 }
 
 fn init_spinner() -> SpinnerHandle {
     let pb = ProgressBar::new_spinner();
-    const MIN_TIP_VISIBILITY: Duration = Duration::from_millis(750); 
+    const MIN_TIP_VISIBILITY: Duration = Duration::from_millis(750);
     let style = ProgressStyle::with_template("{spinner:.blue} {msg}")
         .unwrap()
         .tick_strings(&[
-            "▁▁▁▁▁", "▁▂▂▂▁", "▁▄▂▄▁", "▂▄▆▄▂",
-            "▄▆█▆▄", "▂▄▆▄▂", "▁▄▂▄▁", "▁▂▂▂▁",
+            "▁▁▁▁▁",
+            "▁▂▂▂▁",
+            "▁▄▂▄▁",
+            "▂▄▆▄▂",
+            "▄▆█▆▄",
+            "▂▄▆▄▂",
+            "▁▄▂▄▁",
+            "▁▂▂▂▁",
         ]);
 
     pb.set_style(style);
@@ -65,7 +67,9 @@ fn init_spinner() -> SpinnerHandle {
         let mut last_tip_time = Instant::now();
 
         loop {
-            if pb_clone.is_finished() { break; }
+            if pb_clone.is_finished() {
+                break;
+            }
 
             let now = Instant::now();
             let wait_time = if now >= next_action_time {
@@ -92,31 +96,41 @@ fn init_spinner() -> SpinnerHandle {
                 Err(RecvTimeoutError::Timeout) => {
                     let tip = TIPS[tip_index % TIPS.len()];
                     pb_clone.set_message(format!("{}", tip.italic().white()));
-                    
+
                     tip_index += 1;
                     is_showing_tip = true;
                     last_tip_time = Instant::now();
-                    
+
                     next_action_time = Instant::now() + TIP_DURATION;
                 }
                 Err(RecvTimeoutError::Disconnected) => {
                     break;
-                },
+                }
             }
         }
     });
 
-    SpinnerHandle {
-        spinner: pb,
-        tx,
-    }
+    SpinnerHandle { spinner: pb, tx }
 }
 
 pub fn report_discovery_progress(count: usize) {
-    get_spinner().send_to_queue(
-        format!(
-            "Identified {} hosts so far...",
-            count.to_string().green().bold()
-        )
-    );
+    get_spinner().send_to_queue(format!(
+        "Identified {} hosts so far...",
+        count.to_string().green().bold()
+    ));
+}
+
+pub struct SpinnerWriter;
+
+impl std::io::Write for SpinnerWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let msg = String::from_utf8_lossy(buf);
+        let msg = msg.trim_end();
+        get_spinner().println(&msg.to_string());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
