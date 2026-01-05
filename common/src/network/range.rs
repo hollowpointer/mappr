@@ -41,7 +41,7 @@ pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<Ipv4Range> {
 #[derive(Debug, Clone, Default)]
 pub struct IpCollection {
     pub ranges: Vec<Ipv4Range>,
-    pub singles: HashSet<IpAddr>, // Use HashSet for deduplication of singles
+    pub singles: HashSet<IpAddr>,
 }
 
 impl IpCollection {
@@ -50,8 +50,6 @@ impl IpCollection {
     }
 
     pub fn add_single(&mut self, ip: IpAddr) {
-        // Optimization: check if it's already in a range? 
-        // For now, simpler to just add. We can optimize "compact" later if needed.
         self.singles.insert(ip);
     }
 
@@ -69,26 +67,18 @@ impl IpCollection {
          for range in &self.ranges {
              let start: u32 = range.start_addr.into();
              let end: u32 = range.end_addr.into();
-             // Avoid overflow, though u32 won't overflow usize on 64bit
              count += (end - start + 1) as usize;
          }
          count
     }
 }
 
-// Iterator implementation to support iterating over ALL IPs
 impl IntoIterator for IpCollection {
     type Item = IpAddr;
-    type IntoIter = std::vec::IntoIter<IpAddr>; // Simplified for now, or custom iterator
+    type IntoIter = std::vec::IntoIter<IpAddr>;
 
-    // Requires collecting to a vec which defeats the purpose of ranges for huge scans.
-    // For now, let's provide a custom iterator or implement it carefully.
-    // Actually, `scanner::perform_discovery` likely iterates them. 
-    // If we want to support 10k addresses without allocation, we need a custom iterator.
     fn into_iter(self) -> Self::IntoIter {
-        // For compatibility with usages that expect a linear list of all IPs.
-        // Warn: This expands ranges!
-        let mut all_ips = Vec::with_capacity(self.singles.len()); // Guess capacity
+        let mut all_ips = Vec::with_capacity(self.singles.len());
         all_ips.extend(self.singles.into_iter());
         for range in self.ranges {
             all_ips.extend(range.to_iter());
@@ -96,9 +86,3 @@ impl IntoIterator for IpCollection {
         all_ips.into_iter()
     }
 }
-
-// Helper to iterate without consuming (cloning ranges, etc)
-// Note: We might want a dedicated ref-iterator later.
-
-
-
