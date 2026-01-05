@@ -70,7 +70,7 @@ pub fn aligned_line<V>(key: &str, value: V)
 where
     V: Display + WithDefaultColor,
 {
-    let whitespace: String = ".".repeat(GLOBAL_KEY_WIDTH.get() + 1 - key.len());
+    let whitespace: String = ".".repeat((GLOBAL_KEY_WIDTH.get() + 1).saturating_sub(key.len()));
     let colon: String = format!(
         "{}{}",
         whitespace.color(colors::SEPARATOR),

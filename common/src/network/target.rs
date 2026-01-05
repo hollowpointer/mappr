@@ -10,7 +10,8 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
-use crate::network::range::{self, Ipv4Range};
+use crate::network::interface;
+use crate::network::range::{self, Ipv4Range, IpCollection};
 
 /// Represents a distinct target to be scanned.
 #[derive(Clone, Debug)]
@@ -57,6 +58,34 @@ impl FromStr for Target {
         Err(format!("invalid target: {s}"))
     }
 }
+
+
+
+pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
+    let mut collection = IpCollection::new();
+
+    match target {
+        Target::LAN => {
+            if let Some(net) = interface::get_lan_network()? {
+                let start = net.network();
+                let end = net.broadcast();
+                collection.add_range(Ipv4Range::new(start, end));
+            }
+        },
+        Target::Host { target_addr } => {
+            collection.add_single(target_addr);
+        },
+        Target::Range { ipv4_range } => {
+            collection.add_range(ipv4_range);
+        },
+        Target::VPN => {
+            // Placeholder: VPN logic would go here
+        },
+    }
+
+    Ok(collection)
+}
+
 
 /// Parses special keywords like "lan" or "vpn".
 fn parse_keyword(s_lower: &str) -> Option<Target> {
@@ -142,6 +171,15 @@ fn parse_cidr_range(s: &str) -> Result<Option<Target>, String> {
 
     Ok(Some(Target::Range { ipv4_range }))
 }
+
+// ╔════════════════════════════════════════════╗
+// ║ ████████╗███████╗███████╗████████╗███████╗ ║
+// ║ ╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██╔════╝ ║
+// ║    ██║   █████╗  ███████╗   ██║   ███████╗ ║
+// ║    ██║   ██╔══╝  ╚════██║   ██║   ╚════██║ ║
+// ║    ██║   ███████╗███████║   ██║   ███████║ ║
+// ║    ╚═╝   ╚══════╝╚══════╝   ╚═╝   ╚══════╝ ║
+// ╚════════════════════════════════════════════╝
 
 #[cfg(test)]
 mod tests {

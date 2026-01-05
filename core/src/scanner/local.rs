@@ -1,34 +1,50 @@
+//! A **local area network (LAN)** scanner.
+//!
+//! Primarily used for discovering and scanning hosts on the same physical network,
+//! using protocols like ARP, NDP, and ICMP for discovery and TCP/UDP for port scanning.
+//!
+//! This scanner requires **root privileges** to construct and intercept raw
+//! Layer 2 packets via the operating system's network sockets.
+
 use std::{
     collections::HashMap,
     net::IpAddr,
     ops::ControlFlow,
-    sync::{
-        atomic::{AtomicU16, Ordering},
-        mpsc,
-    },
+    sync::atomic::{AtomicU16, Ordering},
+    sync::mpsc,
+    time::Duration,
 };
 
 use pnet::{
+    datalink::NetworkInterface,
     packet::{Packet, udp::UdpPacket},
     util::MacAddr,
 };
 
-use mappr_common::network::host::Host;
+use mappr_common::{
+    config::SenderConfig,
+    network::{host::Host, range::IpCollection},
+    utils::{input::InputHandle, timing::ScanTimer},
+};
 
-use mappr_common::utils::ip;
-
-use crate::network::channel::{self, EthernetHandle};
-use crate::network::transport::{self, UdpHandle};
 use mappr_protocols as protocol;
 use protocol::{dns, ethernet};
-use mappr_common::config::SenderConfig;
 
-use mappr_common::utils::{input::InputHandle, timing::ScanTimer};
+use crate::network::{
+    channel::{self, EthernetHandle},
+    transport::{self, UdpHandle},
+};
+
+use crate::scanner::{Identifier, NetworkExplorer, Scanner, Scout};
+use async_trait::async_trait;
 
 const DNS_PORT: u16 = 53;
 const MDNS_PORT: u16 = 5353;
+const MAX_CHANNEL_TIME: Duration = Duration::from_millis(7_500);
+const MIN_CHANNEL_TIME: Duration = Duration::from_millis(2_500);
+const MAX_SILENCE: Duration = Duration::from_millis(500);
 
-pub(crate) struct LocalRunner {
+pub struct LocalScanner {
     hosts_map: HashMap<MacAddr, Host>,
     dns_map: HashMap<u16, MacAddr>,
     sender_cfg: SenderConfig,
@@ -37,16 +53,36 @@ pub(crate) struct LocalRunner {
     udp_handle: UdpHandle,
     timer: ScanTimer,
     trans_id_counter: AtomicU16,
+    global_count: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
+    on_found: Option<std::sync::Arc<dyn Fn(usize) + Send + Sync + 'static>>,
 }
 
-impl LocalRunner {
+impl LocalScanner {
     pub fn new(
-        sender_cfg: SenderConfig,
-        input_handle: InputHandle,
-        eth_handle: EthernetHandle,
-        udp_handle: UdpHandle,
-        timer: ScanTimer,
+        intf: NetworkInterface,
+        collection: IpCollection,
+        global_count: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
+        on_found: Option<std::sync::Arc<dyn Fn(usize) + Send + Sync + 'static>>,
     ) -> anyhow::Result<Self> {
+        let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
+        let udp_handle: UdpHandle = transport::start_capture()?;
+        let input_handle: InputHandle = InputHandle::new();
+        let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
+
+        let mut sender_cfg = SenderConfig::from(&intf);
+
+        // Populate sender_cfg with targets
+        let mut target_ips = std::collections::HashSet::new();
+        for single in collection.singles {
+            target_ips.insert(single);
+        }
+        for range in collection.ranges {
+            for ip in range.to_iter() {
+                target_ips.insert(ip);
+            }
+        }
+        sender_cfg.add_targets(target_ips);
+
         Ok(Self {
             hosts_map: HashMap::new(),
             dns_map: HashMap::new(),
@@ -56,19 +92,12 @@ impl LocalRunner {
             udp_handle,
             timer,
             trans_id_counter: AtomicU16::new(0),
+            global_count,
+            on_found,
         })
     }
 
-    pub fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
-        channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg)?;
-        Ok(())
-    }
-
-    pub fn start_input_listener(&mut self) {
-        self.input_handle.start();
-    }
-
-    pub fn process_packets(&mut self) -> ControlFlow<()> {
+    fn process_packets(&mut self) -> ControlFlow<()> {
         if self.timer.is_expired() || self.input_handle.should_interrupt() {
             return ControlFlow::Break(());
         }
@@ -114,14 +143,22 @@ impl LocalRunner {
 
         let source_mac = eth_frame.get_source();
 
-        let host = self
-            .hosts_map
-            .entry(source_mac)
-            .or_insert_with(|| Host::new(source_addr).with_mac(source_mac));
+        let mut new_host_found = false;
+        let host = self.hosts_map.entry(source_mac).or_insert_with(|| {
+            new_host_found = true;
+            Host::new(source_addr).with_mac(source_mac)
+        });
+
+        if new_host_found {
+            if let (Some(count), Some(cb)) = (&self.global_count, &self.on_found) {
+                let current_total = count.fetch_add(1, Ordering::Relaxed) + 1;
+                cb(current_total);
+            }
+        }
 
         host.ips.insert(source_addr);
         if host.hostname.is_none() {
-             self.send_dns_ptr_query(&source_addr, source_mac);
+            self.send_dns_ptr_query(&source_addr, source_mac);
         }
     }
 
@@ -152,7 +189,7 @@ impl LocalRunner {
     }
 
     fn send_dns_ptr_query(&mut self, target_addr: &IpAddr, target_mac: MacAddr) {
-        if !target_addr.is_ipv4() && !ip::is_global_unicast(&target_addr) {
+        if !target_addr.is_ipv4() && !mappr_common::utils::ip::is_global_unicast(target_addr) {
             return;
         }
         let id = self.get_next_trans_id();
@@ -163,7 +200,7 @@ impl LocalRunner {
         transport::send_dns_query(
             dns::create_ptr_packet,
             id,
-            &target_addr,
+            target_addr,
             &mut self.udp_handle.tx,
         );
     }
@@ -171,8 +208,31 @@ impl LocalRunner {
     fn get_next_trans_id(&self) -> u16 {
         self.trans_id_counter.fetch_add(1, Ordering::Relaxed)
     }
+}
 
-    pub fn get_hosts(self) -> Vec<Host> {
+impl Scanner for LocalScanner {
+    fn start_listening(&mut self) {
+        self.input_handle.start();
+        loop {
+            if let ControlFlow::Break(_) = self.process_packets() {
+                break;
+            }
+        }
+    }
+
+    fn finish(self) -> Vec<Host> {
         self.hosts_map.into_values().collect()
     }
 }
+
+impl Scout for LocalScanner {
+    fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
+        channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg)
+    }
+}
+
+#[async_trait]
+impl Identifier for LocalScanner {}
+
+#[async_trait]
+impl NetworkExplorer for LocalScanner {}

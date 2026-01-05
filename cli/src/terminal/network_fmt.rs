@@ -1,31 +1,8 @@
-use mappr_common::utils::ip::{self, Ipv6AddressType};
 use crate::terminal::{colors, print};
 use colored::*;
-use pnet::ipnetwork::IpNetwork;
+use mappr_common::utils::ip::{self, Ipv6AddressType};
 use pnet::datalink::NetworkInterface;
-use std::collections::BTreeSet;
-use std::net::IpAddr;
-
-pub fn to_key_value_pair(ips: &BTreeSet<IpAddr>) -> Vec<(String, ColoredString)> {
-    ips.iter()
-        .map(|ip| match ip {
-            IpAddr::V4(ipv4_addr) => {
-                let value = ipv4_addr.to_string().color(colors::IPV4_ADDR);
-                (String::from("IPv4"), value)
-            }
-            IpAddr::V6(ipv6_addr) => {
-                let ipv6_type = match ip::get_ipv6_type(ipv6_addr) {
-                    Ipv6AddressType::GlobalUnicast => "GUA",
-                    Ipv6AddressType::UniqueLocal => "ULA",
-                    Ipv6AddressType::LinkLocal => "LLA",
-                    _ => "IPv6",
-                };
-                let ipv6_addr = ipv6_addr.to_string().color(colors::IPV6_ADDR);
-                (String::from(ipv6_type), ipv6_addr)
-            }
-        })
-        .collect()
-}
+use pnet::ipnetwork::IpNetwork;
 
 pub fn to_key_value_pair_net(ip_net: &[IpNetwork]) -> Vec<(String, ColoredString)> {
     ip_net

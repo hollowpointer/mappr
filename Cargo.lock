@@ -547,6 +547,7 @@ dependencies = [
  "crossterm",
  "mac_oui",
  "pnet",
+ "rayon",
  "thiserror",
 ]
 

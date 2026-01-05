@@ -1,4 +1,5 @@
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ipv4Range {
@@ -14,10 +15,17 @@ impl Ipv4Range {
         }
     }
 
-    pub fn to_iter(&self) -> impl Iterator<Item = std::net::IpAddr> {
+    pub fn to_iter(&self) -> impl Iterator<Item = IpAddr> {
         let start: u32 = self.start_addr.into();
         let end: u32 = self.end_addr.into();
-        (start..=end).map(|ip| std::net::IpAddr::V4(Ipv4Addr::from(ip)))
+        (start..=end).map(|ip| IpAddr::V4(Ipv4Addr::from(ip)))
+    }
+
+    pub fn contains(&self, ip: &Ipv4Addr) -> bool {
+        let start: u32 = self.start_addr.into();
+        let end: u32 = self.end_addr.into();
+        let ip_u32: u32 = (*ip).into();
+        ip_u32 >= start && ip_u32 <= end
     }
 }
 
@@ -28,3 +36,69 @@ pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<Ipv4Range> {
     
     Ok(Ipv4Range::new(start, end))
 }
+
+
+#[derive(Debug, Clone, Default)]
+pub struct IpCollection {
+    pub ranges: Vec<Ipv4Range>,
+    pub singles: HashSet<IpAddr>, // Use HashSet for deduplication of singles
+}
+
+impl IpCollection {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add_single(&mut self, ip: IpAddr) {
+        // Optimization: check if it's already in a range? 
+        // For now, simpler to just add. We can optimize "compact" later if needed.
+        self.singles.insert(ip);
+    }
+
+    pub fn add_range(&mut self, range: Ipv4Range) {
+        self.ranges.push(range);
+    }
+
+    pub fn extend(&mut self, other: IpCollection) {
+        self.ranges.extend(other.ranges);
+        self.singles.extend(other.singles);
+    }
+    
+    pub fn len_estimate(&self) -> usize {
+         let mut count = self.singles.len();
+         for range in &self.ranges {
+             let start: u32 = range.start_addr.into();
+             let end: u32 = range.end_addr.into();
+             // Avoid overflow, though u32 won't overflow usize on 64bit
+             count += (end - start + 1) as usize;
+         }
+         count
+    }
+}
+
+// Iterator implementation to support iterating over ALL IPs
+impl IntoIterator for IpCollection {
+    type Item = IpAddr;
+    type IntoIter = std::vec::IntoIter<IpAddr>; // Simplified for now, or custom iterator
+
+    // Requires collecting to a vec which defeats the purpose of ranges for huge scans.
+    // For now, let's provide a custom iterator or implement it carefully.
+    // Actually, `scanner::perform_discovery` likely iterates them. 
+    // If we want to support 10k addresses without allocation, we need a custom iterator.
+    fn into_iter(self) -> Self::IntoIter {
+        // For compatibility with usages that expect a linear list of all IPs.
+        // Warn: This expands ranges!
+        let mut all_ips = Vec::with_capacity(self.singles.len()); // Guess capacity
+        all_ips.extend(self.singles.into_iter());
+        for range in self.ranges {
+            all_ips.extend(range.to_iter());
+        }
+        all_ips.into_iter()
+    }
+}
+
+// Helper to iterate without consuming (cloning ranges, etc)
+// Note: We might want a dedicated ref-iterator later.
+
+
+

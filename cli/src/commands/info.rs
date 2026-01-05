@@ -37,7 +37,8 @@ pub fn info() -> anyhow::Result<()> {
     if !is_root() {
         print_about_the_tool();
         print_local_system()?;
-        print_network_interfaces(&system_info.interfaces)?;
+        let interfaces = mappr_common::network::interface::get_prioritized_interfaces(5)?;
+        print_network_interfaces(&interfaces)?;
         print::end_of_program();
         get_spinner().finish_and_clear();
         return Ok(());
@@ -54,13 +55,15 @@ pub fn info() -> anyhow::Result<()> {
         }
     }
 
-    GLOBAL_KEY_WIDTH.set(longest_name + 6);
+    GLOBAL_KEY_WIDTH.set(std::cmp::max(longest_name + 6, 10));
 
     print_about_the_tool();
     print_local_system()?;
     print_firewall_status(system_info.firewall)?;
     print_local_services(system_info.services)?;
-    print_network_interfaces(&system_info.interfaces)?;
+
+    let interfaces = mappr_common::network::interface::get_prioritized_interfaces(5)?;
+    print_network_interfaces(&interfaces)?;
 
     print::end_of_program();
     get_spinner().finish_and_clear();

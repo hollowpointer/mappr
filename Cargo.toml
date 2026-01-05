@@ -20,6 +20,7 @@ indicatif = "0.18.0"
 console = "0.16.1"
 thiserror = "2.0.11"
 crossterm = "0.29.0"
+rayon = "1.11.0"
 
 mappr-core = { path = "./core" }
 mappr-common = { path = "./common" }

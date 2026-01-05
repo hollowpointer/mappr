@@ -1,6 +1,5 @@
-pub mod discovery;
 pub mod info;
 pub mod network;
-pub mod scanning;
+pub mod scanner;
 pub mod system;
 

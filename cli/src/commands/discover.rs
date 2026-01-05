@@ -1,37 +1,38 @@
-use std::time::Duration;
-use std::time::Instant;
+use std::collections::HashMap;
+
 use anyhow;
 use colored::*;
+use std::time::Duration;
+use std::time::Instant;
 
-use mappr_common::network::target::Target;
-use mappr_common::network::host::Host; 
 use crate::terminal::spinner::get_spinner;
-use crate::terminal::{
-    colors,
-    print,
-    format,
-};
-
-use mappr_core::discovery::DiscoveryService;
-use mappr_core::scanning::NetworkScannerBackend;
+use crate::terminal::{colors, format, print};
+use mappr_common::network::host::Host;
+use mappr_common::network::interface;
+use mappr_common::network::range::IpCollection;
+use mappr_common::network::target;
+use mappr_common::network::target::Target;
+use mappr_core::scanner;
+use pnet::datalink::NetworkInterface;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     get_spinner().set_message("Performing discovery...".to_owned());
     print::print_status("Initializing discovery...");
 
+    let ips: IpCollection = target::to_collection(target)?;
+    let intf_ip_map: HashMap<NetworkInterface, IpCollection> =
+        interface::map_ips_to_interfaces(ips);
+
     let start_time: Instant = Instant::now();
+    let callback = Box::new(|count: usize| {
+        use crate::terminal::spinner;
+        spinner::report_discovery_progress(count);
+    });
 
-    // 1. Instantiate Dependencies
-    let scanner_backend = Box::new(NetworkScannerBackend);
-    let service = DiscoveryService::new(scanner_backend);
+    let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map, Some(callback));
 
-    // 2. Execute Service
-    let mut hosts = service.perform_discovery(target).await?;
-
-    // 3. Present Results
     Ok(discovery_ends(&mut hosts, start_time.elapsed())?)
 }
-
 
 fn discovery_ends(hosts: &mut Vec<Host>, total_time: Duration) -> anyhow::Result<()> {
     if hosts.is_empty() {
@@ -73,10 +74,8 @@ fn print_host_details(host: &Host, idx: usize) {
     let mut key_value_pair = format::ip_to_key_value_pair(&host.ips);
 
     if let Some(mac) = host.mac {
-        let mac_key_value: (String, ColoredString) = (
-            "MAC".to_string(),
-            mac.to_string().color(colors::MAC_ADDR),
-        );
+        let mac_key_value: (String, ColoredString) =
+            ("MAC".to_string(), mac.to_string().color(colors::MAC_ADDR));
         key_value_pair.push(mac_key_value);
     }
 
@@ -89,16 +88,16 @@ fn print_host_details(host: &Host, idx: usize) {
     }
 
     if !host.network_roles.is_empty() {
-             let joined_roles: String = host.network_roles
-                .iter()
-                .map(|role| format!("{:?}", role))
-                .collect::<Vec<String>>()
-                .join(", ");
+        let joined_roles: String = host
+            .network_roles
+            .iter()
+            .map(|role| format!("{:?}", role))
+            .collect::<Vec<String>>()
+            .join(", ");
 
-            let roles_key_value: (String, ColoredString) =
-                ("Roles".to_string(), joined_roles.normal());
+        let roles_key_value: (String, ColoredString) = ("Roles".to_string(), joined_roles.normal());
 
-            key_value_pair.push(roles_key_value);
+        key_value_pair.push(roles_key_value);
     }
 
     print::as_tree_one_level(key_value_pair);
