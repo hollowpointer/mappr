@@ -35,7 +35,7 @@ use crate::network::{
     transport::{self, UdpHandle},
 };
 
-use crate::scanner::{Identifier, NetworkExplorer, Scanner, Scout};
+use super::{Identifier, NetworkExplorer, Scanner, Scout};
 use async_trait::async_trait;
 
 const DNS_PORT: u16 = 53;
@@ -210,18 +210,19 @@ impl LocalScanner {
     }
 }
 
+#[async_trait]
+impl NetworkExplorer for LocalScanner { }
+
 impl Scanner for LocalScanner {
-    fn start_listening(&mut self) {
+    fn scan(&mut self) -> Vec<Host> {
         self.input_handle.start();
         loop {
             if let ControlFlow::Break(_) = self.process_packets() {
                 break;
             }
         }
-    }
 
-    fn finish(self) -> Vec<Host> {
-        self.hosts_map.into_values().collect()
+        self.hosts_map.drain().map(|(_, v)| v).collect()
     }
 }
 
@@ -232,7 +233,4 @@ impl Scout for LocalScanner {
 }
 
 #[async_trait]
-impl Identifier for LocalScanner {}
-
-#[async_trait]
-impl NetworkExplorer for LocalScanner {}
+impl Identifier for LocalScanner { }

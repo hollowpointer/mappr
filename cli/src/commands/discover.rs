@@ -30,7 +30,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
         spinner::report_discovery_progress(count);
     });
 
-    let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map, Some(callback));
+    let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map, Some(callback))?;
 
     Ok(discovery_ends(&mut hosts, start_time.elapsed())?)
 }
