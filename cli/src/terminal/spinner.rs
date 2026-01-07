@@ -1,24 +1,18 @@
 use std::sync::OnceLock;
-use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 
-const TIP_DURATION: Duration = Duration::from_secs(1);
-const MESSAGE_READ_TIME: Duration = Duration::from_secs(1);
 const TIPS: &[&str] = &["You can press 'q' to finish early"];
 
 pub struct SpinnerHandle {
     pub spinner: ProgressBar,
-    tx: Sender<String>,
 }
 
 impl SpinnerHandle {
-    pub fn send_to_queue(&self, message: String) {
-        let _ = self.tx.send(message);
-    }
 
     pub fn println(&self, msg: &String) {
         self.spinner.println(msg);
@@ -40,84 +34,50 @@ pub fn get_spinner() -> &'static SpinnerHandle {
 
 fn init_spinner() -> SpinnerHandle {
     let pb = ProgressBar::new_spinner();
-    const MIN_TIP_VISIBILITY: Duration = Duration::from_millis(750);
+    
     let style = ProgressStyle::with_template("{spinner:.blue} {msg}")
         .unwrap()
-        .tick_strings(&[
-            "▁▁▁▁▁",
-            "▁▂▂▂▁",
-            "▁▄▂▄▁",
-            "▂▄▆▄▂",
-            "▄▆█▆▄",
-            "▂▄▆▄▂",
-            "▁▄▂▄▁",
-            "▁▂▂▂▁",
-        ]);
-
+        .tick_strings(&["▁▁▁▁▁", "▁▂▂▂▁", "▁▄▂▄▁", "▂▄▆▄▂", "▄▆█▆▄", "▂▄▆▄▂", "▁▄▂▄▁", "▁▂▂▂▁"]);
     pb.set_style(style);
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    let (tx, rx) = mpsc::channel::<String>();
+    let (_, rx) = mpsc::channel::<String>();
     let pb_clone = pb.clone();
 
     thread::spawn(move || {
         let mut tip_index = 0;
-        let mut next_action_time = Instant::now() + TIP_DURATION;
-        let mut is_showing_tip = false;
-        let mut last_tip_time = Instant::now();
+        let mut last_phase = 0;
 
         loop {
-            if pb_clone.is_finished() {
-                break;
-            }
+            if pb_clone.is_finished() { break; }
+            while let Ok(_) = rx.try_recv() {}
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
 
-            let now = Instant::now();
-            let wait_time = if now >= next_action_time {
-                Duration::ZERO
+            let phase = (secs / 2) % 2;
+
+            if phase == 0 {
+                let tip = TIPS[tip_index % TIPS.len()];
+                pb_clone.set_message(format!("{}", tip.italic().white()));
+                
+                if phase != last_phase {
+                    tip_index = (tip_index + 1) % TIPS.len();
+                }
             } else {
-                next_action_time - now
-            };
-
-            match rx.recv_timeout(wait_time) {
-                Ok(mut msg) => {
-                    if is_showing_tip {
-                        let elapsed = last_tip_time.elapsed();
-                        if elapsed < MIN_TIP_VISIBILITY {
-                            thread::sleep(MIN_TIP_VISIBILITY - elapsed);
-                        }
-                        is_showing_tip = false;
-                    }
-                    while let Ok(newer_msg) = rx.try_recv() {
-                        msg = newer_msg;
-                    }
-                    pb_clone.set_message(msg);
-                    next_action_time = Instant::now() + MESSAGE_READ_TIME;
-                }
-                Err(RecvTimeoutError::Timeout) => {
-                    let tip = TIPS[tip_index % TIPS.len()];
-                    pb_clone.set_message(format!("{}", tip.italic().white()));
-
-                    tip_index += 1;
-                    is_showing_tip = true;
-                    last_tip_time = Instant::now();
-
-                    next_action_time = Instant::now() + TIP_DURATION;
-                }
-                Err(RecvTimeoutError::Disconnected) => {
-                    break;
-                }
+                let count = mappr_core::scanner::get_host_count();
+                pb_clone.set_message(format!(
+                    "Identified {} hosts so far...",
+                    count.to_string().green().bold()
+                ));
             }
+            last_phase = phase;
+            thread::sleep(Duration::from_millis(100));
         }
     });
 
-    SpinnerHandle { spinner: pb, tx }
-}
-
-pub fn report_discovery_progress(count: usize) {
-    get_spinner().send_to_queue(format!(
-        "Identified {} hosts so far...",
-        count.to_string().green().bold()
-    ));
+    SpinnerHandle { spinner: pb }
 }
 
 pub struct SpinnerWriter;

@@ -25,12 +25,8 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
         interface::map_ips_to_interfaces(ips);
 
     let start_time: Instant = Instant::now();
-    let callback = Box::new(|count: usize| {
-        use crate::terminal::spinner;
-        spinner::report_discovery_progress(count);
-    });
 
-    let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map, Some(callback))?;
+    let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map)?;
 
     Ok(discovery_ends(&mut hosts, start_time.elapsed())?)
 }

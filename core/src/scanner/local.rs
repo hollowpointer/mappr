@@ -35,7 +35,7 @@ use crate::network::{
     transport::{self, UdpHandle},
 };
 
-use super::{Identifier, NetworkExplorer, Scanner, Scout};
+use super::NetworkExplorer;
 use async_trait::async_trait;
 
 const DNS_PORT: u16 = 53;
@@ -53,16 +53,12 @@ pub struct LocalScanner {
     udp_handle: UdpHandle,
     timer: ScanTimer,
     trans_id_counter: AtomicU16,
-    global_count: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
-    on_found: Option<std::sync::Arc<dyn Fn(usize) + Send + Sync + 'static>>,
 }
 
 impl LocalScanner {
     pub fn new(
         intf: NetworkInterface,
         collection: IpCollection,
-        global_count: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
-        on_found: Option<std::sync::Arc<dyn Fn(usize) + Send + Sync + 'static>>,
     ) -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
         let udp_handle: UdpHandle = transport::start_capture()?;
@@ -92,9 +88,11 @@ impl LocalScanner {
             udp_handle,
             timer,
             trans_id_counter: AtomicU16::new(0),
-            global_count,
-            on_found,
         })
+    }
+
+    fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
+        channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg)
     }
 
     fn process_packets(&mut self) -> ControlFlow<()> {
@@ -143,18 +141,10 @@ impl LocalScanner {
 
         let source_mac = eth_frame.get_source();
 
-        let mut new_host_found = false;
         let host = self.hosts_map.entry(source_mac).or_insert_with(|| {
-            new_host_found = true;
+            super::increment_host_count();
             Host::new(source_addr).with_mac(source_mac)
         });
-
-        if new_host_found {
-            if let (Some(count), Some(cb)) = (&self.global_count, &self.on_found) {
-                let current_total = count.fetch_add(1, Ordering::Relaxed) + 1;
-                cb(current_total);
-            }
-        }
 
         host.ips.insert(source_addr);
         if host.hostname.is_none() {
@@ -211,26 +201,16 @@ impl LocalScanner {
 }
 
 #[async_trait]
-impl NetworkExplorer for LocalScanner { }
-
-impl Scanner for LocalScanner {
-    fn scan(&mut self) -> Vec<Host> {
+impl NetworkExplorer for LocalScanner {
+    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
         self.input_handle.start();
+        self.send_discovery_packets()?;
         loop {
             if let ControlFlow::Break(_) = self.process_packets() {
                 break;
             }
         }
 
-        self.hosts_map.drain().map(|(_, v)| v).collect()
+        Ok(self.hosts_map.drain().map(|(_, v)| v).collect())
     }
 }
-
-impl Scout for LocalScanner {
-    fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
-        channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg)
-    }
-}
-
-#[async_trait]
-impl Identifier for LocalScanner { }
