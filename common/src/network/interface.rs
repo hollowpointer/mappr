@@ -69,6 +69,38 @@ pub fn get_prioritized_interfaces(limit: usize) -> anyhow::Result<Vec<NetworkInt
     Ok(interfaces.into_iter().take(limit).collect())
 }
 
+pub fn is_layer_2_capable(intf: &NetworkInterface) -> bool {
+    return !intf.is_point_to_point() && !intf.is_loopback() && intf.mac.is_some()
+}
+
+pub fn is_on_link(intf: &NetworkInterface, ips: &IpCollection) -> bool {
+    for range in &ips.ranges {
+        let mut range_covered = false;
+        for iface_ipnet in &intf.ips {
+            if let pnet::ipnetwork::IpNetwork::V4(network) = iface_ipnet {
+                if network.contains(range.start_addr) && network.contains(range.end_addr) {
+                    range_covered = true;
+                    break;
+                }
+            }
+        }
+        if !range_covered { return false; }
+    }
+
+    for single_ip in &ips.singles {
+        let mut ip_covered = false;
+        for iface_ipnet in &intf.ips {
+            if iface_ipnet.contains(*single_ip) {
+                ip_covered = true;
+                break;
+            }
+        }
+        if !ip_covered { return false; }
+    }
+
+    true
+}
+
 fn is_viable_lan_interface(
     interface: &NetworkInterface,
     is_physical: impl Fn(&NetworkInterface) -> bool,

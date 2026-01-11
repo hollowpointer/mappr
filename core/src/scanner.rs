@@ -8,12 +8,16 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mappr_common::network::host::Host;
+use mappr_common::network::interface;
 use mappr_common::network::range::IpCollection;
 use pnet::datalink::NetworkInterface;
 
 mod local;
+mod routed;
 
 use local::LocalScanner;
+
+use crate::scanner::routed::RoutedScanner;
 
 pub static FOUND_HOST_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -25,7 +29,7 @@ pub fn get_host_count() -> usize {
     FOUND_HOST_COUNT.load(Ordering::Relaxed)
 }
 
-pub trait NetworkExplorer {
+trait NetworkExplorer {
    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>>;
 }
 
@@ -54,8 +58,11 @@ pub fn perform_discovery(
     Ok(hosts)
 }
 
-fn create_explorer(intf: NetworkInterface, ip_collection: IpCollection) 
+fn create_explorer(intf: NetworkInterface, ips: IpCollection) 
 -> anyhow::Result<Box<dyn NetworkExplorer>> 
 {
-    Ok(Box::new(LocalScanner::new(intf, ip_collection)?))
+    match interface::is_layer_2_capable(&intf) && interface::is_on_link(&intf, &ips) {
+        true => Ok(Box::new(LocalScanner::new(intf, ips)?)),
+        false => Ok(Box::new(RoutedScanner::new(intf, ips))),
+    }
 }
