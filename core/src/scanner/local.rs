@@ -143,6 +143,14 @@ impl LocalScanner {
 
         if source_addr.is_ipv4() && !self.sender_cfg.has_addr(&source_addr) {
             return;
+        } 
+        
+        if source_addr.is_ipv6() {
+            if !IS_LAN_SCAN.load(Ordering::Relaxed) {
+                if !self.hosts_map.contains_key(&eth_frame.get_source()) {
+                    return
+                }
+            }
         }
 
         let source_mac = eth_frame.get_source();
