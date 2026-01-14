@@ -10,8 +10,11 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use crate::network::interface;
 use crate::network::range::{self, Ipv4Range, IpCollection};
+
+pub static IS_LAN_SCAN: AtomicBool = AtomicBool::new(false);
 
 /// Represents a distinct target to be scanned.
 #[derive(Clone, Debug)]
@@ -59,8 +62,6 @@ impl FromStr for Target {
     }
 }
 
-
-
 pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
     let mut collection = IpCollection::new();
 
@@ -69,6 +70,7 @@ pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
             if let Some(net) = interface::get_lan_network()? {
                 let start = net.network();
                 let end = net.broadcast();
+                IS_LAN_SCAN.store(true, Ordering::Relaxed);
                 collection.add_range(Ipv4Range::new(start, end));
             }
         },

@@ -3,12 +3,19 @@ use pnet::{
     ipnetwork::{Ipv4Network, Ipv6Network},
     util::MacAddr,
 };
+
 use std::{
     collections::HashSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 use crate::utils::interface::NetworkInterfaceExtension;
+
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
+pub enum PacketType {
+    ARP,
+    ICMPv6
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct SenderConfig {
@@ -17,6 +24,7 @@ pub struct SenderConfig {
     ipv6_nets: Vec<Ipv6Network>,
     targets_v4: HashSet<Ipv4Addr>,
     targets_v6: HashSet<Ipv6Addr>,
+    packet_types: HashSet<PacketType>
 }
 
 impl From<&NetworkInterface> for SenderConfig {
@@ -27,6 +35,7 @@ impl From<&NetworkInterface> for SenderConfig {
             ipv6_nets: interface.get_ipv6_nets(),
             targets_v4: HashSet::new(),
             targets_v6: HashSet::new(),
+            packet_types: HashSet::new()
         }
     }
 }
@@ -81,9 +90,6 @@ impl SenderConfig {
         }
     }
 
-    /// Checks if the address belongs to the same subnet.
-    ///
-    /// Useful for filtering out the address for a gateway or off-link traffic.
     pub fn is_addr_in_subnet(&self, ip_addr: IpAddr) -> bool {
         match ip_addr {
             IpAddr::V4(ipv4_addr) => {
@@ -95,5 +101,13 @@ impl SenderConfig {
                 self.ipv6_nets.iter().any(|net| net.contains(ipv6_addr))
             },
         }
+    }
+
+    pub fn add_packet_type(&mut self, packet_type: PacketType) {
+        self.packet_types.insert(packet_type);
+    }
+
+    pub fn has_packet_type(&self, packet_type: PacketType) -> bool {
+        self.packet_types.contains(&packet_type)
     }
 }

@@ -7,8 +7,7 @@ pub mod udp;
 pub mod utils;
 pub mod ethernet;
 
-
-use mappr_common::config::SenderConfig;
+use mappr_common::config::{PacketType, SenderConfig};
 
 use anyhow::Context;
 use pnet::ipnetwork::Ipv4Network;
@@ -20,25 +19,23 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 pub fn create_packets(sender_config: &SenderConfig) -> anyhow::Result<Vec<Vec<u8>>> {
     let mut packets: Vec<Vec<u8>> = Vec::new();
 
-    // ARP
-    if let Ok(arp_packets) = create_arp_packets(sender_config) {
+    if sender_config.has_packet_type(PacketType::ARP) {
+        let arp_packets: Vec<Vec<u8>> = create_arp_packets(sender_config)
+            .context("Failed to create ARP packets")?;
         packets.extend(arp_packets);
     }
 
-    // ICMPv6
-    if let Ok(icmpv6_packet) = create_icmpv6_packet(sender_config) {
-        if !icmpv6_packet.is_empty() {
-             packets.push(icmpv6_packet);
-        }
+    if sender_config.has_packet_type(PacketType::ICMPv6) {
+        let icmpv6_packet: Vec<u8> = create_icmpv6_packet(sender_config)
+            .context("Failed to create ICMPv6 packet")?;
+        packets.push(icmpv6_packet);
     }
 
     if packets.is_empty() {
-        Err(anyhow::anyhow!(
-            "No discovery packets could be created."
-        ))
-    } else {
-        Ok(packets)
+        anyhow::bail!("No discovery packets could be created.");
     }
+
+    Ok(packets)
 }
 
 fn create_arp_packets(sender_config: &SenderConfig) -> anyhow::Result<Vec<Vec<u8>>> {

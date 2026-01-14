@@ -51,7 +51,7 @@ pub fn perform_discovery(
         match handle.join() {
             Ok(Ok(res)) => hosts.extend(res),
             Ok(Err(e)) => return Err(e),
-            Err(_) => return Err(anyhow::anyhow!("Thread panicked")),
+            Err(_) => anyhow::bail!("Thread panicked"),
         }
     }
 

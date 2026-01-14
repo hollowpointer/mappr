@@ -22,8 +22,8 @@ use pnet::{
 };
 
 use mappr_common::{
-    config::SenderConfig,
-    network::{host::Host, range::IpCollection},
+    config::{PacketType, SenderConfig},
+    network::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
     utils::{input::InputHandle, timing::ScanTimer},
 };
 
@@ -66,17 +66,23 @@ impl LocalScanner {
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
 
         let mut sender_cfg = SenderConfig::from(&intf);
+        sender_cfg.add_packet_type(PacketType::ARP);
+        if IS_LAN_SCAN.load(Ordering::Relaxed) {
+            sender_cfg.add_packet_type(PacketType::ICMPv6);
+        }
 
-        // Populate sender_cfg with targets
         let mut target_ips = std::collections::HashSet::new();
+
         for single in collection.singles {
             target_ips.insert(single);
         }
+
         for range in collection.ranges {
             for ip in range.to_iter() {
                 target_ips.insert(ip);
             }
         }
+
         sender_cfg.add_targets(target_ips);
 
         Ok(Self {
