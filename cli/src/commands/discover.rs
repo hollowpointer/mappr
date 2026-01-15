@@ -1,24 +1,27 @@
 use std::collections::HashMap;
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+use std::time::{Duration, Instant};
 
 use anyhow;
 use colored::*;
-use tracing::info;
-use std::time::Duration;
-use std::time::Instant;
+use tracing::{info, info_span};
 
-use crate::terminal::spinner::get_spinner;
-use crate::terminal::{colors, format, print};
+use crate::terminal::{colors, format, print, spinner};
 use mappr_common::network::host::Host;
 use mappr_common::network::interface;
 use mappr_common::network::range::IpCollection;
-use mappr_common::network::target;
-use mappr_common::network::target::Target;
+use mappr_common::network::target::{self, Target};
 use mappr_core::scanner;
 use pnet::datalink::NetworkInterface;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
-    get_spinner().set_message("Performing discovery...".to_owned());
+    let span = info_span!("discovery", indicatif.pb_show = true);
+    let guard = span.enter();
+
     info!("Initializing discovery...");
+
+    let running: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+    let spinner_handle = spinner::start_discovery_spinner(span.clone(), running.clone());
 
     let ips: IpCollection = target::to_collection(target)?;
     let intf_ip_map: HashMap<NetworkInterface, IpCollection> =
@@ -27,6 +30,12 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     let start_time: Instant = Instant::now();
 
     let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map)?;
+
+    running.store(false, Ordering::Relaxed);
+    let _ = spinner_handle.join();
+
+    drop(guard);
+    eprint!("\r\x1b[2K");
 
     Ok(discovery_ends(&mut hosts, start_time.elapsed())?)
 }
@@ -54,7 +63,6 @@ fn discovery_ends(hosts: &mut Vec<Host>, total_time: Duration) -> anyhow::Result
         .color(colors::TEXT_DEFAULT),
     );
     print::end_of_program();
-    get_spinner().finish_and_clear();
     Ok(())
 }
 
@@ -62,7 +70,6 @@ fn no_hosts_found() {
     print::header("ZERO HOSTS DETECTED");
     print::no_results();
     print::end_of_program();
-    get_spinner().finish_and_clear();
 }
 
 fn print_host_details(host: &Host, idx: usize) {

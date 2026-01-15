@@ -5,7 +5,6 @@ use pnet::datalink::NetworkInterface;
 use std::env;
 use sys_info;
 
-use crate::terminal::spinner::get_spinner;
 use crate::terminal::{
     colors,
     print::{self, GLOBAL_KEY_WIDTH},
@@ -25,13 +24,9 @@ pub fn info() -> anyhow::Result<()> {
     print::println("");
     GLOBAL_KEY_WIDTH.set(10);
     
-    // Wiring
     let system_repo = Box::new(SystemRepo);
     let service = InfoService::new(system_repo);
     
-    // Execution (Fetch Data)
-    // We need data even for non-root print_network_interfaces?
-    // The original code ran chunks.
     let system_info = service.get_system_info()?;
 
     if !is_root() {
@@ -40,11 +35,9 @@ pub fn info() -> anyhow::Result<()> {
         let interfaces = mappr_common::network::interface::get_prioritized_interfaces(5)?;
         print_network_interfaces(&interfaces)?;
         print::end_of_program();
-        get_spinner().finish_and_clear();
         return Ok(());
     }
 
-    // Presentation Logic for Longest Name
     let mut longest_name = 0;
     for group in &system_info.services {
         for s in &group.tcp_services {
@@ -66,7 +59,6 @@ pub fn info() -> anyhow::Result<()> {
     print_network_interfaces(&interfaces)?;
 
     print::end_of_program();
-    get_spinner().finish_and_clear();
     Ok(())
 }
 

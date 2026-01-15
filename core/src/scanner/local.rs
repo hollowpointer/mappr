@@ -29,6 +29,7 @@ use mappr_common::{
 
 use mappr_protocols as protocol;
 use protocol::{dns, ethernet};
+use tracing::{error, info};
 
 use crate::network::{
     channel::{self, EthernetHandle},
@@ -98,7 +99,11 @@ impl LocalScanner {
     }
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
-        channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg)
+        match channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg) {
+            Ok(_) => info!("Discovery packets have been sent successfully"),
+            Err(e) => error!("Failed to send discovery packets: {e}"),
+        }
+        Ok(())
     }
 
     fn process_packets(&mut self) -> ControlFlow<()> {

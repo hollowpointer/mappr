@@ -1,28 +1,18 @@
-//! # Mappr Binary
-//!
-//! The entry point for the `mappr` CLI application.
-//!
-//! ## Responsibility
-//! * Parses command line arguments.
-//! * Initializes the terminal interface.
-//! * Dispatches commands to the appropriate Inbound Adapter (`src/adapters/inbound/cli`).
-
 mod commands;
 mod terminal;
 
 use commands::{CommandLine, Commands, discover, info, listen, scan};
 use terminal::print;
 
+use crate::terminal::spinner;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let commands = CommandLine::parse_args();
 
-    tracing_subscriber::fmt()
-        .with_writer(|| terminal::spinner::SpinnerWriter)
-        .event_format(terminal::logging::MapprFormatter)
-        .init();
-
+    spinner::init_logging();
     print::initialize();
+    
     match commands.command {
         Commands::Info => {
             print::header("about the tool");

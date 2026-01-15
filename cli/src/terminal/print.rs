@@ -1,8 +1,9 @@
 use std::{cell::Cell, fmt::Display};
 
-use crate::terminal::{banner, colors, spinner::get_spinner};
+use crate::terminal::{banner, colors};
 use colored::*;
 use unicode_width::UnicodeWidthStr;
+use tracing::info;
 
 const TOTAL_WIDTH: usize = 64;
 
@@ -32,13 +33,18 @@ impl WithDefaultColor for ColoredString {
     }
 }
 
+fn safe_print(msg: &str) {
+    info!(target: "mappr::print", raw_msg = msg);
+}
+
 pub fn initialize() {
     let text_content: String = format!("⟦ INITIALIZING MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
     let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
     let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
     let output: String = format!("{}{}{}", sep, text, sep);
-    println(&output);
+    
+    safe_print(&output);
     banner::print();
 }
 
@@ -58,12 +64,12 @@ pub fn header(msg: &str) {
     )
     .bright_black();
 
-    get_spinner().println(&format!("{line}"));
+    safe_print(&format!("{}", line));
 }
 
 pub fn fat_separator() {
     let sep: ColoredString = "═".repeat(TOTAL_WIDTH).bright_black();
-    get_spinner().println(&format!("{}", sep));
+    safe_print(&format!("{}", sep));
 }
 
 pub fn aligned_line<V>(key: &str, value: V)
@@ -83,7 +89,7 @@ where
 pub fn print_status<T: AsRef<str>>(msg: T) {
     let prefix: ColoredString = ">".color(colors::SEPARATOR);
     let message: String = format!("{} {}", prefix, msg.as_ref().color(colors::TEXT_DEFAULT));
-    get_spinner().println(&message);
+    safe_print(&message);
 }
 
 pub fn tree_head(idx: usize, name: &str) {
@@ -93,7 +99,7 @@ pub fn tree_head(idx: usize, name: &str) {
         idx_str.color(colors::SEPARATOR),
         name.color(colors::PRIMARY)
     );
-    println(&output);
+    safe_print(&output);
 }
 
 pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
@@ -109,21 +115,21 @@ pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
             " {} {}{}{} {}",
             branch,
             key,
-            ".".repeat(7 - key.len()).color(colors::SEPARATOR), // 7 what? bananas?
+            ".".repeat(7 - key.len()).color(colors::SEPARATOR), 
             ":".color(colors::SEPARATOR),
             value
         );
-        println(&output);
+        safe_print(&output);
     }
 }
 
 pub fn centerln(msg: &str) {
     let space = " ".repeat((TOTAL_WIDTH - console::measure_text_width(msg)) / 2);
-    get_spinner().println(&format!("{}{}{}", space, msg, space));
+    safe_print(&format!("{}{}{}", space, msg, space));
 }
 
 pub fn println(msg: &str) {
-    get_spinner().println(&format!("{}", msg));
+    safe_print(msg);
 }
 
 const NO_RESULTS_0: &str = r#"
@@ -139,9 +145,9 @@ const NO_RESULTS_0: &str = r#"
 "#;
 
 pub fn no_results() {
-    println(&format!("{}", NO_RESULTS_0.red().bold()));
+    safe_print(&format!("{}", NO_RESULTS_0.red().bold()));
 }
 
 pub fn end_of_program() {
-    println(format!("{}", "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)).as_str());
+    safe_print(&format!("{}", "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)));
 }
