@@ -51,7 +51,7 @@ impl SenderConfig {
             .ipv4_nets
             .first()
             .copied()
-            .ok_or_else(|| anyhow::anyhow!("No IPv4 networks available in configuration"))?;
+            .ok_or_else(|| anyhow::anyhow!("no IPv4 networks available in configuration"))?;
 
         Ok(ipv4_net)
     }
@@ -63,7 +63,7 @@ impl SenderConfig {
                 let ip = ipv6_net.ip();
                 ip.is_unicast_link_local().then_some(ip)
             })
-            .ok_or_else(|| anyhow::anyhow!("Failed to find a link local address"))
+            .ok_or_else(|| anyhow::anyhow!("missing link local address"))
     }
 
     pub fn get_targets_v4(&self) -> HashSet<Ipv4Addr> {
@@ -93,11 +93,9 @@ impl SenderConfig {
     pub fn is_addr_in_subnet(&self, ip_addr: IpAddr) -> bool {
         match ip_addr {
             IpAddr::V4(ipv4_addr) => {
-                // Check if ANY of the assigned IPv4 networks contain this address
                 self.ipv4_nets.iter().any(|net| net.contains(ipv4_addr))
             },
             IpAddr::V6(ipv6_addr) => {
-                // Check if ANY of the assigned IPv6 networks contain this address
                 self.ipv6_nets.iter().any(|net| net.contains(ipv6_addr))
             },
         }
