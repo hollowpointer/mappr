@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use is_root::is_root;
 use mappr_common::network::host::Host;
 use mappr_common::network::interface;
 use mappr_common::network::range::IpCollection;
@@ -17,6 +18,7 @@ mod routed;
 
 use local::LocalScanner;
 
+use crate::network::tcp::{handshake_probe, handshake_range_discovery};
 use crate::scanner::routed::RoutedScanner;
 
 pub static FOUND_HOST_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -33,20 +35,27 @@ trait NetworkExplorer {
    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>>;
 }
 
-pub fn perform_discovery(
+pub async fn perform_discovery(
     targets: HashMap<NetworkInterface, IpCollection>,
 ) -> anyhow::Result<Vec<Host>> {
     let mut handles = Vec::new();
+    let mut hosts: Vec<Host> = Vec::new();
+
+    if !is_root() {
+        return handshake_range_discovery(
+            targets.into_values().collect(), 
+            handshake_probe
+        ).await;
+    }
 
     for (intf, collection) in targets {
         let handle = std::thread::spawn(move || -> anyhow::Result<Vec<Host>> {
             let mut scanner: Box<dyn NetworkExplorer> = create_explorer(intf, collection)?;
-            Ok(scanner.discover_hosts()?)
+            scanner.discover_hosts()
         });
         handles.push(handle);
     }
 
-    let mut hosts = Vec::new();
     for handle in handles {
         match handle.join() {
             Ok(Ok(res)) => hosts.extend(res),

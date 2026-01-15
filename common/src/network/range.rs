@@ -79,10 +79,20 @@ impl IntoIterator for IpCollection {
 
     fn into_iter(self) -> Self::IntoIter {
         let mut all_ips = Vec::with_capacity(self.singles.len());
-        all_ips.extend(self.singles.into_iter());
+        all_ips.extend(self.singles);
         for range in self.ranges {
             all_ips.extend(range.to_iter());
         }
         all_ips.into_iter()
+    }
+}
+
+impl FromIterator<IpCollection> for IpCollection {
+    fn from_iter<I: IntoIterator<Item = IpCollection>>(iter: I) -> Self {
+        let mut master = IpCollection::new();
+        for collection in iter {
+            master.extend(collection);
+        }
+        master
     }
 }

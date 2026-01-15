@@ -1,13 +1,15 @@
 use mappr_common::network::host::Host;
-use std::collections::HashSet;
+use mappr_common::network::range::IpCollection;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
+use crate::scanner::increment_host_count;
+
 pub async fn handshake_range_discovery<F, Fut>(
-    ip_addrs: HashSet<IpAddr>,
+    targets: IpCollection,
     mut prober: F,
 ) -> anyhow::Result<Vec<Host>>
 where
@@ -15,9 +17,8 @@ where
     Fut: Future<Output = anyhow::Result<Option<Host>>>,
 {
     let mut result: Vec<Host> = Vec::new();
-    for ip in ip_addrs {
-        if let Some(found) = prober(ip).await? {
-            result.push(found);
+    for target in targets {
+        if let Some(found) = prober(target).await? { result.push(found);
         }
     }
     Ok(result)
@@ -28,7 +29,10 @@ pub async fn handshake_probe(addr: IpAddr) -> anyhow::Result<Option<Host>> {
     let probe_timeout: Duration = Duration::from_millis(100);
 
     match timeout(probe_timeout, TcpStream::connect(socket_addr)).await {
-        Ok(Ok(_)) | Ok(Err(_)) => Ok(Some(Host::new(addr))),
+        Ok(Ok(_)) | Ok(Err(_)) => {
+            increment_host_count();
+            Ok(Some(Host::new(addr)))
+        },
         Err(_elapsed) => Ok(None),
     }
 }

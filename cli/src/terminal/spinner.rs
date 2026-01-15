@@ -57,10 +57,15 @@ pub fn start_discovery_spinner(span: Span, running: Arc<AtomicBool>) -> JoinHand
                     tip_index = (tip_index + 1) % TIPS.len();
                 }
             } else {
-                let count = mappr_core::scanner::get_host_count();
+                let count: usize = mappr_core::scanner::get_host_count();
+                let host_str: &str = match count {
+                    1 => "host",
+                    _ => "hosts"
+                };
                 span.pb_set_message(&format!(
-                    "Identified {} hosts so far...",
-                    count.to_string().green().bold()
+                    "Identified {} {} so far...",
+                    count.to_string().green().bold(),
+                    host_str
                 ));
             }
 

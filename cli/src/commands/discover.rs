@@ -29,20 +29,20 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
 
     let start_time: Instant = Instant::now();
 
-    let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map)?;
+    let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map).await?;
 
     running.store(false, Ordering::Relaxed);
     let _ = spinner_handle.join();
 
     drop(guard);
-    eprint!("\r\x1b[2K");
 
-    Ok(discovery_ends(&mut hosts, start_time.elapsed())?)
+    discovery_ends(&mut hosts, start_time.elapsed())
 }
 
-fn discovery_ends(hosts: &mut Vec<Host>, total_time: Duration) -> anyhow::Result<()> {
+fn discovery_ends(hosts: &mut [Host], total_time: Duration) -> anyhow::Result<()> {
     if hosts.is_empty() {
-        return Ok(no_hosts_found());
+        no_hosts_found();
+        return Ok(());
     }
     print::header("Network Discovery");
     hosts.sort_by_key(|host| *host.ips.iter().next().unwrap_or(&host.ip));
