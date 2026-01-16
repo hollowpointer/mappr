@@ -36,19 +36,19 @@ trait NetworkExplorer {
 }
 
 pub async fn perform_discovery(
-    targets: HashMap<NetworkInterface, IpCollection>,
+    targets: IpCollection,
 ) -> anyhow::Result<Vec<Host>> {
     let mut handles = Vec::new();
     let mut hosts: Vec<Host> = Vec::new();
 
     if !is_root() {
-        return handshake_range_discovery(
-            targets.into_values().collect(), 
-            handshake_probe
-        ).await;
+        return handshake_range_discovery(targets, handshake_probe).await;
     }
 
-    for (intf, collection) in targets {
+    let intf_ip_map: HashMap<NetworkInterface, IpCollection> =
+        interface::map_ips_to_interfaces(targets);
+
+    for (intf, collection) in intf_ip_map {
         let handle = std::thread::spawn(move || -> anyhow::Result<Vec<Host>> {
             let mut scanner: Box<dyn NetworkExplorer> = create_explorer(intf, collection)?;
             scanner.discover_hosts()

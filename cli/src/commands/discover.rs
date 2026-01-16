@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::time::{Duration, Instant};
 
@@ -8,11 +7,9 @@ use tracing::{info, info_span};
 
 use crate::terminal::{colors, format, print, spinner};
 use mappr_common::network::host::Host;
-use mappr_common::network::interface;
 use mappr_common::network::range::IpCollection;
 use mappr_common::network::target::{self, Target};
 use mappr_core::scanner;
-use pnet::datalink::NetworkInterface;
 
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     let span = info_span!("discovery", indicatif.pb_show = true);
@@ -24,12 +21,8 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
     let spinner_handle = spinner::start_discovery_spinner(span.clone(), running.clone());
 
     let ips: IpCollection = target::to_collection(target)?;
-    let intf_ip_map: HashMap<NetworkInterface, IpCollection> =
-        interface::map_ips_to_interfaces(ips);
-
     let start_time: Instant = Instant::now();
-
-    let mut hosts: Vec<Host> = scanner::perform_discovery(intf_ip_map).await?;
+    let mut hosts: Vec<Host> = scanner::perform_discovery(ips).await?;
 
     running.store(false, Ordering::Relaxed);
     let _ = spinner_handle.join();
