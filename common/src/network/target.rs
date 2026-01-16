@@ -11,7 +11,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::network::interface;
 use crate::network::range::{self, Ipv4Range, IpCollection};
@@ -70,11 +70,23 @@ pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
     match target {
         Target::LAN => {
             if let Some(net) = interface::get_lan_network()? {
-                let start = net.network();
-                let end = net.broadcast();
-                IS_LAN_SCAN.store(true, Ordering::Relaxed);
-                info!("Searching for hosts from {start} to {end}");
-                collection.add_range(Ipv4Range::new(start, end));
+                let net_u32: u32 = u32::from(net.network());
+                let broadcast_u32: u32 = u32::from(net.broadcast());
+
+                let start_u32 = net_u32.saturating_add(1);
+                let end_u32 = broadcast_u32.saturating_sub(1);
+
+                let start_ip = Ipv4Addr::from(start_u32);
+                let end_ip = Ipv4Addr::from(end_u32);
+
+                if start_u32 <= end_u32 {
+                    IS_LAN_SCAN.store(true, Ordering::Relaxed);
+                    info!("Searching for hosts from {start_ip} to {end_ip}");
+                    collection.add_range(Ipv4Range::new(start_ip, end_ip));
+                } else {
+                    warn!("Network too small to strip broadcast, scanning full range.");
+                    collection.add_range(Ipv4Range::new(net.network(), net.broadcast()));
+                }
             }
         },
         Target::Host { target_addr } => {
@@ -84,7 +96,7 @@ pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
             collection.add_range(ipv4_range);
         },
         Target::VPN => {
-            // Placeholder: VPN logic would go here
+            // TODO
         },
     }
 

@@ -24,7 +24,7 @@ use pnet::{
 use mappr_common::{
     config::{PacketType, SenderConfig},
     network::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
-    utils::{input::InputHandle, timing::ScanTimer},
+    utils::timing::ScanTimer,
 };
 
 use mappr_protocols as protocol;
@@ -49,7 +49,6 @@ pub struct LocalScanner {
     hosts_map: HashMap<MacAddr, Host>,
     dns_map: HashMap<u16, MacAddr>,
     sender_cfg: SenderConfig,
-    input_handle: InputHandle,
     eth_handle: EthernetHandle,
     udp_handle: UdpHandle,
     timer: ScanTimer,
@@ -63,7 +62,6 @@ impl LocalScanner {
     ) -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
         let udp_handle: UdpHandle = transport::start_capture()?;
-        let input_handle: InputHandle = InputHandle::new();
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
 
         let mut sender_cfg = SenderConfig::from(&intf);
@@ -90,7 +88,6 @@ impl LocalScanner {
             hosts_map: HashMap::new(),
             dns_map: HashMap::new(),
             sender_cfg,
-            input_handle,
             eth_handle,
             udp_handle,
             timer,
@@ -107,7 +104,7 @@ impl LocalScanner {
     }
 
     fn process_packets(&mut self) -> ControlFlow<()> {
-        if self.timer.is_expired() || self.input_handle.should_interrupt() {
+        if self.timer.is_expired() || super::STOP_SIGNAL.load(Ordering::Relaxed) {
             return ControlFlow::Break(());
         }
 
@@ -222,7 +219,6 @@ impl LocalScanner {
 #[async_trait]
 impl NetworkExplorer for LocalScanner {
     fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
-        self.input_handle.start();
         self.send_discovery_packets()?;
         loop {
             if let ControlFlow::Break(_) = self.process_packets() {

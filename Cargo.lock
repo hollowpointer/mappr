@@ -556,7 +556,7 @@ dependencies = [
 
 [[package]]
 name = "mappr-common"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "mappr-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
