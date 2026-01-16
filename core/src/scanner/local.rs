@@ -33,7 +33,7 @@ use tracing::{error, info};
 
 use crate::network::{
     channel::{self, EthernetHandle},
-    transport::{self, UdpHandle},
+    transport::{self, TransportHandle, TransportType},
 };
 
 use super::NetworkExplorer;
@@ -50,7 +50,7 @@ pub struct LocalScanner {
     dns_map: HashMap<u16, MacAddr>,
     sender_cfg: SenderConfig,
     eth_handle: EthernetHandle,
-    udp_handle: UdpHandle,
+    udp_handle: TransportHandle,
     timer: ScanTimer,
     trans_id_counter: AtomicU16,
 }
@@ -61,7 +61,7 @@ impl LocalScanner {
         collection: IpCollection,
     ) -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
-        let udp_handle: UdpHandle = transport::start_capture()?;
+        let udp_handle: TransportHandle = transport::start_packet_capture(TransportType::UdpLayer4)?;
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
 
         let mut sender_cfg = SenderConfig::from(&intf);
