@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::{info, warn};
 
 use crate::network::interface;
-use crate::network::range::{self, Ipv4Range, IpCollection};
+use crate::network::range::{self, IpCollection, Ipv4Range};
 
 pub static IS_LAN_SCAN: AtomicBool = AtomicBool::new(false);
 
@@ -29,6 +29,8 @@ pub enum Target {
     Range { ipv4_range: Ipv4Range },
     /// Scan via VPN interface (placeholder).
     VPN,
+    /// Holds a list of different targets
+    Multi { targets: Vec<Target> },
 }
 
 impl FromStr for Target {
@@ -48,6 +50,12 @@ impl FromStr for Target {
             return Ok(target);
         }
 
+        if s.contains(',') {
+            if let Some(target) = parse_commas(s).ok() {
+                return Ok(target);
+            }
+        }
+
         if let Some(target) = parse_host(s) {
             return Ok(target);
         }
@@ -64,15 +72,15 @@ impl FromStr for Target {
     }
 }
 
-pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
-    let mut collection = IpCollection::new();
-
+/// This prevents code duplication between single-target and multi-target parsing.
+fn resolve_target(target: Target, collection: &mut IpCollection) -> anyhow::Result<()> {
     match target {
         Target::LAN => {
             if let Some(net) = interface::get_lan_network()? {
                 let net_u32: u32 = u32::from(net.network());
                 let broadcast_u32: u32 = u32::from(net.broadcast());
 
+                // Calculate usable range (exclude network and broadcast)
                 let start_u32 = net_u32.saturating_add(1);
                 let end_u32 = broadcast_u32.saturating_sub(1);
 
@@ -88,21 +96,52 @@ pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
                     collection.add_range(Ipv4Range::new(net.network(), net.broadcast()));
                 }
             }
-        },
+        }
         Target::Host { target_addr } => {
             collection.add_single(target_addr);
-        },
+        }
         Target::Range { ipv4_range } => {
             collection.add_range(ipv4_range);
-        },
+        }
         Target::VPN => {
-            // TODO
-        },
+            // TODO: Implement VPN logic
+            warn!("VPN scan target not yet implemented");
+        }
+        Target::Multi { targets } => {
+            for target in targets {
+                resolve_target(target, collection)?;
+            }
+        }
     }
+    Ok(())
+}
 
+/// Converts a single target into an IP collection.
+pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
+    let mut collection = IpCollection::new();
+    resolve_target(target, &mut collection)?;
     Ok(collection)
 }
 
+/// Parses a comma-separated list of targets (e.g., "192.168.1.5, 10.0.0.1-50, lan").
+pub fn parse_commas(s: &str) -> anyhow::Result<Target> {
+    let mut targets = Vec::new();
+
+    for part in s.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+
+        // Parse the string into a Target (Host, Range, LAN, etc.)
+        let target = Target::from_str(part)
+            .map_err(|e| anyhow::anyhow!("Failed to parse target '{}': {}", part, e))?;
+
+        targets.push(target);
+    }
+
+    Ok(Target::Multi { targets })
+}
 
 /// Parses special keywords like "lan" or "vpn".
 fn parse_keyword(s_lower: &str) -> Option<Target> {

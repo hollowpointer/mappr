@@ -1,9 +1,9 @@
 use colored::*;
+use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::fmt::FormatEvent;
 use tracing_subscriber::fmt::format::{self, Writer};
 use tracing_subscriber::registry::LookupSpan;
-use tracing::field::{Visit, Field};
 
 pub struct MapprFormatter;
 
@@ -23,7 +23,7 @@ where
         if meta.target() == "mappr::print" {
             let mut visitor = RawVisitor::new(writer.by_ref());
             event.record(&mut visitor);
-            return write!(writer, "\r\n"); 
+            return write!(writer, "\r\n");
         }
 
         let (symbol, color_func): (&str, fn(ColoredString) -> ColoredString) = match *meta.level() {
@@ -55,7 +55,8 @@ impl<'a> Visit for RawVisitor<'a> {
 
     fn record_str(&mut self, field: &Field, value: &str) {
         if field.name() == "raw_msg" {
-            let _ = write!(self.writer, "{}", value);
+            let replaced = value.replace('\n', "\r\n");
+            let _ = write!(self.writer, "{}", replaced);
         }
     }
 }
