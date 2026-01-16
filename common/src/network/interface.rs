@@ -30,7 +30,13 @@ pub enum ViabilityError {
 /// Finds the primary LAN network and returns the ipv4 network
 pub fn get_lan_network() -> anyhow::Result<Option<Ipv4Network>> {
     let interfaces: Vec<NetworkInterface> = pnet::datalink::interfaces();
-    info!("Identified {} network interface(s)", interfaces.len());
+
+    let interfaces_str: &str = match interfaces.len() {
+        1 => "interface",
+        _ => "interfaces"
+    };
+
+    info!("Identified {} network {}", interfaces.len(), interfaces_str);
 
     let interfaces: Vec<NetworkInterface> = interfaces
         .into_iter()

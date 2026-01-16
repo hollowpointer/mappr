@@ -20,6 +20,7 @@ mod routed;
 mod handshake;
 
 use local::LocalScanner;
+use tracing::{info, warn};
 
 use crate::scanner::routed::RoutedScanner;
 
@@ -42,7 +43,7 @@ pub async fn perform_discovery(
     targets: IpCollection,
 ) -> anyhow::Result<Vec<Host>> {
 
-    // Thread handles user inputs mid scan
+    // Listens for user inputs mid scan
     std::thread::spawn(|| {
         let mut input_handle: InputHandle = InputHandle::new();
         input_handle.start();
@@ -57,8 +58,11 @@ pub async fn perform_discovery(
 
     // Non root scans can only do a full tcp connection scan
     if !is_root() {
+        warn!("Root privileges missing, defaulting to unprivileged TCP scan");
         return handshake::range_discovery(targets, handshake::prober).await;
     }
+
+    info!("Root privileges detected, raw socket scan enabled");
 
     let mut handles = Vec::new();
     let mut hosts: Vec<Host> = Vec::new();

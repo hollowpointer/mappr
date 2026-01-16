@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use anyhow;
 use colored::*;
-use tracing::{info, info_span};
+use tracing::info_span;
 
 use crate::terminal::{colors, format, print, spinner};
 use mappr_common::network::host::Host;
@@ -14,8 +14,6 @@ use mappr_core::scanner;
 pub async fn discover(target: Target) -> anyhow::Result<()> {
     let span = info_span!("discovery", indicatif.pb_show = true);
     let guard = span.enter();
-
-    info!("Initializing discovery...");
 
     let running: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let spinner_handle = spinner::start_discovery_spinner(span.clone(), running.clone());

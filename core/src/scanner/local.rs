@@ -96,9 +96,9 @@ impl LocalScanner {
     }
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
-        match channel::send_packets(&mut self.eth_handle.tx, &self.sender_cfg) {
-            Ok(_) => info!("Discovery packets have been sent successfully"),
-            Err(e) => error!("Failed to send discovery packets: {e}"),
+        let packets: Vec<Vec<u8>> = protocol::create_ethernet_packets(&self.sender_cfg)?;
+        for packet in packets {
+            self.eth_handle.tx.send_to(&packet, None);
         }
         Ok(())
     }
@@ -219,7 +219,10 @@ impl LocalScanner {
 #[async_trait]
 impl NetworkExplorer for LocalScanner {
     fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
-        self.send_discovery_packets()?;
+        match self.send_discovery_packets() {
+            Ok(_) => info!("Discovery packets have been sent successfully"),
+            Err(e) => error!("Failed to send discovery packets: {e}"),
+        };
         loop {
             if let ControlFlow::Break(_) = self.process_packets() {
                 break;

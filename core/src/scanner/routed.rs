@@ -14,7 +14,7 @@ pub struct RoutedScanner {
 #[async_trait]
 impl NetworkExplorer for RoutedScanner {
     fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
-        self.send_discovery_packets()?;
+        self.send_discovery_packets();
         info!("Scanning externally...");
         Ok(vec![])
     }
@@ -27,7 +27,7 @@ impl RoutedScanner {
         Ok(Self { _ips, _tcp_handle })
     }
 
-    fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
-        Ok(())
+    fn send_discovery_packets(&mut self) {
+
     }
 }
