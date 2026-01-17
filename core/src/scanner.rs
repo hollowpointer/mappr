@@ -94,6 +94,6 @@ fn create_explorer(intf: NetworkInterface, ips: IpCollection)
 {
     match interface::is_layer_2_capable(&intf) && interface::is_on_link(&intf, &ips) {
         true => Ok(Box::new(LocalScanner::new(intf, ips)?)),
-        false => Ok(Box::new(RoutedScanner::new(ips)?)),
+        false => Ok(Box::new(RoutedScanner::new(intf, ips)?)),
     }
 }

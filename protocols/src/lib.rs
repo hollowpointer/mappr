@@ -4,6 +4,7 @@ pub mod ethernet;
 pub mod icmp;
 pub mod ip;
 pub mod ndp;
+pub mod tcp;
 pub mod udp;
 pub mod utils;
 
@@ -16,6 +17,10 @@ use pnet::util::MacAddr;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tracing::{error, info};
+
+pub fn create_transport_packets() -> anyhow::Result<Vec<Vec<u8>>> {
+    Ok(vec![])
+}
 
 pub fn create_ethernet_packets(sender_config: &SenderConfig) -> anyhow::Result<Vec<Vec<u8>>> {
     let mut packets = Vec::new();
@@ -42,10 +47,6 @@ pub fn create_ethernet_packets(sender_config: &SenderConfig) -> anyhow::Result<V
     ensure!(!packets.is_empty(), "No discovery packets could be created.");
 
     Ok(packets)
-}
-
-pub fn create_transport_packets() -> anyhow::Result<Vec<Vec<u8>>> {
-    Ok(vec![])
 }
 
 fn create_arp_packets(sender_config: &SenderConfig) -> anyhow::Result<Vec<Vec<u8>>> {
