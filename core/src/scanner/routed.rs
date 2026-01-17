@@ -1,20 +1,26 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{collections::HashSet, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::atomic::Ordering, time::{Duration, Instant}};
 
-use anyhow::{bail, ensure};
+use anyhow::ensure;
 use async_trait::async_trait;
 use pnet::{datalink::NetworkInterface, packet::tcp::TcpPacket};
-use tracing::info;
+use tracing::error;
 
-use mappr_common::network::{host::Host, range::IpCollection};
+use mappr_common::{network::{host::Host, range::IpCollection}};
 use mappr_protocols as protocol;
 
 use crate::network::transport::{self, TransportHandle, TransportType};
 
 use super::NetworkExplorer;
 
+// this shit needs improvement
+const MIN_SCAN_DURATION: Duration = Duration::from_millis(500);
+const MAX_SCAN_DURATION: Duration = Duration::from_millis(3000);
+const MS_PER_IP: f64 = 0.5;
+
 pub struct RoutedScanner {
     src_v4: Option<Ipv4Addr>,
     src_v6: Option<Ipv6Addr>,
+    responded_ips: HashSet<IpAddr>,
     ips: IpCollection,
     tcp_handle: TransportHandle,
 }
@@ -22,9 +28,38 @@ pub struct RoutedScanner {
 #[async_trait]
 impl NetworkExplorer for RoutedScanner {
     fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
-        self.send_discovery_packets()?;
-        info!("Scanning externally...");
-        Ok(vec![])
+        if let Err(e) = self.send_discovery_packets() {
+            error!("Failed to send packets: {e}");
+        }
+
+        let deadline: Instant = calculate_deadline(self.ips.len_estimate());
+
+        while Instant::now() < deadline && !super::STOP_SIGNAL.load(Ordering::Relaxed) {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+
+            if remaining.is_zero() {
+                break;
+            }
+
+            match self.tcp_handle.rx.recv_timeout(remaining) {
+                Ok((_, source_ip)) => {
+                    if !self.ips.contains(&source_ip) {
+                        continue;
+                    }
+                    if self.responded_ips.insert(source_ip) {
+                        super::increment_host_count();
+                    }
+                }
+                Err(_) => { }
+            }
+        }
+
+        let hosts: Vec<Host> = self.responded_ips
+            .drain()
+            .map(|ip| Host::new(ip))
+            .collect();
+
+        Ok(hosts)
     }
 }
 
@@ -48,7 +83,8 @@ impl RoutedScanner {
 
         ensure!(src_v4.is_some() || src_v6.is_some(), "interface has no ip addresses");
 
-        Ok(Self { src_v4, src_v6, ips, tcp_handle })
+        let responded_ips: HashSet<IpAddr> = HashSet::new();
+        Ok(Self { src_v4, src_v6, responded_ips, ips, tcp_handle })
     }
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
@@ -56,15 +92,11 @@ impl RoutedScanner {
         for dst_ip in self.ips.clone() {
             let src_ip: IpAddr = match dst_ip {
                 IpAddr::V4(_) => {
-                    if self.src_v4.is_none() {
-                        bail!("interface has no ipv4 address")
-                    }
+                    ensure!(self.src_v4.is_some(), "interface has no ipv4 address");
                     IpAddr::V4(self.src_v4.unwrap())
                 },
                 IpAddr::V6(_) => {
-                    if self.src_v6.is_none() {
-                        bail!("interface has no ipv6 address")
-                    }
+                    ensure!(self.src_v6.is_some(), "interface has no ipv6 address");
                     IpAddr::V6(self.src_v6.unwrap())
                 }
             };
@@ -76,4 +108,13 @@ impl RoutedScanner {
         }
         Ok(())
     }
+}
+
+fn calculate_deadline(ips_len: usize) -> Instant {
+    let variable_ms = (ips_len as f64 * MS_PER_IP) as u64;
+
+    let scan_duration = (MIN_SCAN_DURATION + Duration::from_millis(variable_ms))
+        .clamp(MIN_SCAN_DURATION, MAX_SCAN_DURATION);
+
+    Instant::now() + scan_duration
 }

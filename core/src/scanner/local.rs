@@ -169,7 +169,7 @@ impl LocalScanner {
     }
 
     fn process_udp_packets(&mut self) {
-        while let Ok(bytes) = self.udp_handle.rx.try_recv() {
+        while let Ok((bytes, _)) = self.udp_handle.rx.try_recv() {
             self.timer.mark_seen();
             let Some(udp_packet) = UdpPacket::new(&bytes) else {
                 continue;

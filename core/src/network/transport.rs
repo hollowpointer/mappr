@@ -26,7 +26,7 @@ pub enum TransportType {
 
 pub struct TransportHandle {
     pub tx: TransportSender,
-    pub rx: mpsc::Receiver<Vec<u8>>,
+    pub rx: mpsc::Receiver<(Vec<u8>, IpAddr)>,
 }
 
 macro_rules! spawn_listener {
@@ -34,8 +34,8 @@ macro_rules! spawn_listener {
         std::thread::spawn(move || {
             let mut iterator = $iter_func(&mut $rx);
             loop {
-                if let Ok((packet, _)) = iterator.next() {
-                    if $tx.send(packet.packet().to_vec()).is_err() {
+                if let Ok((packet, source_ip)) = iterator.next() {
+                    if $tx.send((packet.packet().to_vec(), source_ip)).is_err() {
                         break;
                     }
                 }

@@ -71,6 +71,20 @@ impl IpCollection {
          }
          count
     }
+
+    pub fn contains(&self, ip: &IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(ipv4_addr) => {
+                for range in &self.ranges {
+                    if range.contains(ipv4_addr) {
+                        return true;
+                    }
+                }
+            },
+            _ => { }
+        }
+        self.singles.contains(ip)
+    }
 }
 
 impl IntoIterator for IpCollection {

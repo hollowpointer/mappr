@@ -35,3 +35,7 @@ pub fn create_packet(src_addr: &IpAddr, dst_addr: &IpAddr, src_port: u16, dst_po
     }
     Ok(buffer)
 }
+
+pub fn from_u8(bytes: &'_ [u8]) -> anyhow::Result<TcpPacket<'_>> {
+    TcpPacket::new(bytes).context("truncated or invalid TCP packet")
+}
