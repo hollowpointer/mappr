@@ -101,7 +101,7 @@ impl RoutedScanner {
                 }
             };
             
-            let packet: Vec<u8> = protocol::tcp::create_packet(&src_ip, &dst_ip, src_port, 80)?;
+            let packet: Vec<u8> = protocol::tcp::create_packet(&src_ip, &dst_ip, src_port, 443)?;
             if let Some(packet) = TcpPacket::new(&packet) {
                 let _ = self.tcp_handle.tx.send_to(packet, dst_ip);
             }

@@ -6,7 +6,7 @@ use pnet::datalink::{self, NetworkInterface};
 use pnet::ipnetwork::{IpNetwork, Ipv4Network};
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::net::{IpAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use tracing::{info, warn};
 
 use crate::network::range::IpCollection;
@@ -158,11 +158,11 @@ fn select_best_lan_interface(
     }
 }
 
-/// Maps target IPs to the local interface used to route to them.
-/// Supports both individual IPs and Ranges for efficiency.
+/// Maps target IPs to the interface used to reach them, split by Local vs Routed.
+/// Returns: Map<Interface, (Local_Targets, Routed_Targets)>
 pub fn map_ips_to_interfaces(
     mut collection: IpCollection,
-) -> HashMap<NetworkInterface, IpCollection> {
+) -> HashMap<NetworkInterface, (IpCollection, IpCollection)> {
     let interfaces: Vec<NetworkInterface> = datalink::interfaces()
         .into_iter()
         .filter(|i| i.is_up() && !i.is_loopback() && !i.ips.is_empty())
@@ -174,35 +174,26 @@ pub fn map_ips_to_interfaces(
         .flat_map(|(idx, iface)| iface.ips.iter().map(move |ip_net| (ip_net.ip(), idx)))
         .collect();
 
-    let mut result_map: HashMap<usize, IpCollection> = HashMap::new();
+    let mut result_map: HashMap<usize, (IpCollection, IpCollection)> = HashMap::new();
 
-    // Process Ranges
     for range in collection.ranges {
-        let start = range.start_addr;
-        let end = range.end_addr;
-
+        let start: Ipv4Addr = range.start_addr;
+        let end: Ipv4Addr = range.end_addr;
         let mut owner_idx: Option<usize> = None;
 
-        // Find if any interface strictly contains this entire range
         for (idx, iface) in interfaces.iter().enumerate() {
-            let contains_range = iface.ips.iter().any(|ip_net| {
-                match ip_net {
-                    IpNetwork::V4(v4) => {
-                        // Check if start and end are in this subnet
-                        v4.contains(start) && v4.contains(end)
-                    }
-                    _ => false,
-                }
+            let is_local_subnet = iface.ips.iter().any(|ip_net| {
+                ip_net.contains(IpAddr::V4(start)) && ip_net.contains(IpAddr::V4(end))
             });
 
-            if contains_range {
+            if is_local_subnet {
                 owner_idx = Some(idx);
                 break;
             }
         }
 
         if let Some(idx) = owner_idx {
-            result_map.entry(idx).or_default().add_range(range);
+            result_map.entry(idx).or_default().0.add_range(range);
         } else {
             for ip in range.to_iter() {
                 collection.singles.insert(ip);
@@ -210,39 +201,45 @@ pub fn map_ips_to_interfaces(
         }
     }
 
-    // Process Singles (Parallelized)
     type ThreadSockets = (Option<UdpSocket>, Option<UdpSocket>);
+    
+    enum RouteType { Local, Routed }
 
-    // Extract singles for processing
     let singles: Vec<IpAddr> = collection.singles.into_iter().collect();
 
-    let routed_singles: Vec<(usize, IpAddr)> = singles
+    let routed_singles: Vec<(usize, RouteType, IpAddr)> = singles
         .par_iter()
         .map_init(
             || -> ThreadSockets { (None, None) },
             |sockets, &target_ip| {
                 if let Some(idx) = find_local_index(&interfaces, target_ip) {
-                    return Some((idx, target_ip));
+                    return Some((idx, RouteType::Local, target_ip));
                 }
 
                 let source_ip = resolve_route_source_ip(target_ip, sockets)?;
-
+                
                 ip_to_idx
                     .get(&source_ip)
                     .copied()
-                    .map(|idx| (idx, target_ip))
+                    .map(|idx| (idx, RouteType::Routed, target_ip))
             },
         )
         .filter_map(|res| res)
         .collect();
 
-    for (idx, ip) in routed_singles {
-        result_map.entry(idx).or_default().add_single(ip);
+    for (idx, route_type, ip) in routed_singles {
+        let entry = result_map.entry(idx).or_default();
+        match route_type {
+            RouteType::Local => entry.0.add_single(ip),
+            RouteType::Routed => entry.1.add_single(ip),
+        }
     }
 
     result_map
         .into_iter()
-        .map(|(idx, collection)| (interfaces[idx].clone(), collection))
+        .map(|(idx, (local_ips, routed_ips))| {
+            (interfaces[idx].clone(), (local_ips, routed_ips))
+        })
         .collect()
 }
 

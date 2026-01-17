@@ -4,7 +4,6 @@
 //! the [`local`] scanner) must implement. It standardizes the lifecycle of
 //! network probes, including packet construction, transmission, and response handling.
 
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -13,7 +12,6 @@ use mappr_common::network::host::Host;
 use mappr_common::network::interface;
 use mappr_common::network::range::IpCollection;
 use mappr_common::utils::input::InputHandle;
-use pnet::datalink::NetworkInterface;
 
 mod local;
 mod routed;
@@ -39,6 +37,17 @@ trait NetworkExplorer {
    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>>;
 }
 
+macro_rules! spawn_scanner {
+    ($intf:expr, $ips:expr, $handles:expr, $scanner:ident) => {
+        let scan_intf = $intf.clone();
+        let handle = std::thread::spawn(move || -> anyhow::Result<Vec<Host>> {
+            let mut scanner = $scanner::new(scan_intf, $ips)?;
+            scanner.discover_hosts()
+        }); 
+        $handles.push(handle);
+    };
+}
+
 pub async fn perform_discovery(
     targets: IpCollection,
 ) -> anyhow::Result<Vec<Host>> {
@@ -56,7 +65,7 @@ pub async fn perform_discovery(
         }
     });
 
-    // Non root scans can only do a full tcp connection scan
+    // Non root users can only scan via full tcp handshakes
     if !is_root() {
         warn!("Root privileges missing, defaulting to unprivileged TCP scan");
         return handshake::range_discovery(targets, handshake::prober).await;
@@ -67,33 +76,25 @@ pub async fn perform_discovery(
     let mut handles = Vec::new();
     let mut hosts: Vec<Host> = Vec::new();
 
-    let intf_ip_map: HashMap<NetworkInterface, IpCollection> =
-        interface::map_ips_to_interfaces(targets);
+    for (intf, (local_ips, routed_ips)) in interface::map_ips_to_interfaces(targets) {
+        // Local Scanner (ARP/ICMP)
+        if !local_ips.is_empty() {
+            spawn_scanner!(intf, local_ips, handles, LocalScanner);
+        }
 
-    for (intf, collection) in intf_ip_map {
-        let handle = std::thread::spawn(move || -> anyhow::Result<Vec<Host>> {
-            let mut scanner: Box<dyn NetworkExplorer> = create_explorer(intf, collection)?;
-            scanner.discover_hosts()
-        });
-        handles.push(handle);
+        // Routed Scanner (Syn Scan via Gateway)
+        if !routed_ips.is_empty() {
+            spawn_scanner!(intf, routed_ips, handles, RoutedScanner);
+        }
     }
 
     for handle in handles {
         match handle.join() {
             Ok(Ok(res)) => hosts.extend(res),
-            Ok(Err(e)) => return Err(e),
+            Ok(Err(e)) => warn!("Scanner thread failed: {}", e),
             Err(_) => anyhow::bail!("Thread panicked"),
         }
     }
 
     Ok(hosts)
-}
-
-fn create_explorer(intf: NetworkInterface, ips: IpCollection) 
--> anyhow::Result<Box<dyn NetworkExplorer>> 
-{
-    match interface::is_layer_2_capable(&intf) && interface::is_on_link(&intf, &ips) {
-        true => Ok(Box::new(LocalScanner::new(intf, ips)?)),
-        false => Ok(Box::new(RoutedScanner::new(intf, ips)?)),
-    }
 }

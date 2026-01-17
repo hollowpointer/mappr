@@ -85,6 +85,10 @@ impl IpCollection {
         }
         self.singles.contains(ip)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty() && self.singles.is_empty()
+    }
 }
 
 impl IntoIterator for IpCollection {
