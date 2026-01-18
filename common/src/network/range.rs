@@ -89,6 +89,15 @@ impl IpCollection {
     pub fn is_empty(&self) -> bool {
         self.ranges.is_empty() && self.singles.is_empty()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = IpAddr> + '_ {
+        let range_iter = self.ranges.iter()
+            .flat_map(|range| range.to_iter());
+        
+        let single_iter = self.singles.iter().copied();
+
+        range_iter.chain(single_iter)
+    }
 }
 
 impl IntoIterator for IpCollection {

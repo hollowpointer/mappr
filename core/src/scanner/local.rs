@@ -9,7 +9,6 @@
 use std::{
     collections::HashMap,
     net::IpAddr,
-    ops::ControlFlow,
     sync::atomic::{AtomicU16, Ordering},
     sync::mpsc,
     time::Duration,
@@ -29,7 +28,7 @@ use mappr_common::{
 
 use mappr_protocols as protocol;
 use protocol::{dns, ethernet};
-use tracing::{error, info};
+use tracing::error;
 
 use crate::network::{
     channel::{self, EthernetHandle},
@@ -53,6 +52,42 @@ pub struct LocalScanner {
     udp_handle: TransportHandle,
     timer: ScanTimer,
     trans_id_counter: AtomicU16,
+}
+
+#[async_trait]
+impl NetworkExplorer for LocalScanner {
+    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
+        if let Err(e) = self.send_discovery_packets() {
+            error!("Failed to send discovery packets: {e}");
+        }
+        
+        while self.should_continue() {
+            let wait = self.timer.next_wait();
+            match self.eth_handle.rx.recv_timeout(wait) {
+                Ok(bytes) => {
+                    self.timer.mark_seen();
+                    self.process_eth_packet(&bytes);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if self.timer.should_break_on_timeout() {
+                        break;
+                    }
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    continue;
+                }
+            }
+            self.process_udp_packets();
+        }
+
+        let hosts: Vec<Host> = self.hosts_map
+            .drain()
+            .map(|(_, v)| v)
+            .collect();
+
+        Ok(hosts)
+    }
 }
 
 impl LocalScanner {
@@ -101,33 +136,6 @@ impl LocalScanner {
             self.eth_handle.tx.send_to(&packet, None);
         }
         Ok(())
-    }
-
-    fn process_packets(&mut self) -> ControlFlow<()> {
-        if self.timer.is_expired() || super::STOP_SIGNAL.load(Ordering::Relaxed) {
-            return ControlFlow::Break(());
-        }
-
-        let wait = self.timer.next_wait();
-
-        match self.eth_handle.rx.recv_timeout(wait) {
-            Ok(bytes) => {
-                self.timer.mark_seen();
-                self.process_eth_packet(&bytes);
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                if self.timer.should_break_on_timeout() {
-                    return ControlFlow::Break(());
-                }
-                return ControlFlow::Continue(());
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                return ControlFlow::Break(());
-            }
-        }
-
-        self.process_udp_packets();
-        ControlFlow::Continue(())
     }
 
     fn process_eth_packet(&mut self, bytes: &[u8]) {
@@ -214,21 +222,12 @@ impl LocalScanner {
     fn get_next_trans_id(&self) -> u16 {
         self.trans_id_counter.fetch_add(1, Ordering::Relaxed)
     }
-}
 
-#[async_trait]
-impl NetworkExplorer for LocalScanner {
-    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
-        match self.send_discovery_packets() {
-            Ok(_) => info!("Discovery packets have been sent successfully"),
-            Err(e) => error!("Failed to send discovery packets: {e}"),
-        };
-        loop {
-            if let ControlFlow::Break(_) = self.process_packets() {
-                break;
-            }
-        }
+    fn should_continue(&self) -> bool {
+        let not_stopped: bool = !super::STOP_SIGNAL.load(Ordering::Relaxed);
+        let time_expired: bool = !self.timer.is_expired();
+        let work_remains: bool = self.sender_cfg.len() > self.hosts_map.len();
 
-        Ok(self.hosts_map.drain().map(|(_, v)| v).collect())
+        not_stopped && time_expired && work_remains
     }
 }

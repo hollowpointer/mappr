@@ -70,6 +70,10 @@ impl SenderConfig {
         self.targets_v4.clone()
     }
 
+    pub fn len(&self) -> usize {
+        self.targets_v4.len() + self.targets_v6.len()
+    }
+
     pub fn add_target(&mut self, target_addr: IpAddr) {
         match target_addr {
             IpAddr::V4(ipv4_addr) => self.targets_v4.insert(ipv4_addr),

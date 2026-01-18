@@ -13,7 +13,7 @@ use crate::network::transport::{self, TransportHandle, TransportType};
 use super::NetworkExplorer;
 
 // this shit needs improvement
-const MIN_SCAN_DURATION: Duration = Duration::from_millis(500);
+const MIN_SCAN_DURATION: Duration = Duration::from_millis(200);
 const MAX_SCAN_DURATION: Duration = Duration::from_millis(3000);
 const MS_PER_IP: f64 = 0.5;
 
@@ -34,12 +34,8 @@ impl NetworkExplorer for RoutedScanner {
 
         let deadline: Instant = calculate_deadline(self.ips.len_estimate());
 
-        while Instant::now() < deadline && !super::STOP_SIGNAL.load(Ordering::Relaxed) {
+        while self.should_continue(deadline) {
             let remaining = deadline.saturating_duration_since(Instant::now());
-
-            if remaining.is_zero() {
-                break;
-            }
 
             match self.tcp_handle.rx.recv_timeout(remaining) {
                 Ok((_, source_ip)) => {
@@ -89,7 +85,7 @@ impl RoutedScanner {
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
         let src_port: u16 = rand::random_range(50_000..u16::max_value());
-        for dst_ip in self.ips.clone() {
+        for dst_ip in self.ips.iter() {
             let src_ip: IpAddr = match dst_ip {
                 IpAddr::V4(_) => {
                     ensure!(self.src_v4.is_some(), "interface has no ipv4 address");
@@ -107,6 +103,14 @@ impl RoutedScanner {
             }
         }
         Ok(())
+    }
+
+    fn should_continue(&self, deadline: Instant) -> bool {
+        let has_time: bool = Instant::now() < deadline;
+        let not_stopped: bool = !super::STOP_SIGNAL.load(Ordering::Relaxed);
+        let work_remains: bool = self.ips.len_estimate() > self.responded_ips.len();
+
+        has_time && not_stopped && work_remains
     }
 }
 
