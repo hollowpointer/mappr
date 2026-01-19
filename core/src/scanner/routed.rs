@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::atomic::Ordering, time::{Duration, Instant}};
+use std::{collections::HashSet, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::{atomic::Ordering, mpsc::Sender}, time::{Duration, Instant}};
 
 use anyhow::ensure;
 use async_trait::async_trait;
@@ -23,6 +23,7 @@ pub struct RoutedScanner {
     responded_ips: HashSet<IpAddr>,
     ips: IpCollection,
     tcp_handle: TransportHandle,
+    _dns_tx: Sender<IpAddr>
 }
 
 #[async_trait]
@@ -35,10 +36,8 @@ impl NetworkExplorer for RoutedScanner {
         let deadline: Instant = calculate_deadline(self.ips.len_estimate());
 
         while self.should_continue(deadline) {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-
-            match self.tcp_handle.rx.recv_timeout(remaining) {
-                Ok((_, source_ip)) => {
+            match self.tcp_handle.rx.try_recv() {
+                Ok((_bytes, source_ip)) => {
                     if !self.ips.contains(&source_ip) {
                         continue;
                     }
@@ -60,7 +59,7 @@ impl NetworkExplorer for RoutedScanner {
 }
 
 impl RoutedScanner {
-    pub fn new(intf: NetworkInterface, ips: IpCollection) -> anyhow::Result<Self> {
+    pub fn new(intf: NetworkInterface, ips: IpCollection, _dns_tx: Sender<IpAddr>) -> anyhow::Result<Self> {
         let tcp_handle: TransportHandle = transport::start_packet_capture(TransportType::TcpLayer4)?;
 
         let src_v4: Option<Ipv4Addr> = intf.ips.iter().find_map(|ip_net| {
@@ -80,7 +79,15 @@ impl RoutedScanner {
         ensure!(src_v4.is_some() || src_v6.is_some(), "interface has no ip addresses");
 
         let responded_ips: HashSet<IpAddr> = HashSet::new();
-        Ok(Self { src_v4, src_v6, responded_ips, ips, tcp_handle })
+
+        Ok(Self { 
+            src_v4, 
+            src_v6, 
+            responded_ips, 
+            ips, 
+            tcp_handle,
+            _dns_tx
+         })
     }
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {

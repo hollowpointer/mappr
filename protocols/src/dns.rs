@@ -1,42 +1,30 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 
 use anyhow::Context;
 use pnet::packet::dns::{
-    DnsClass, DnsPacket, DnsQuery, DnsTypes, MutableDnsPacket, Opcode, Retcode,
+    DnsClass, DnsPacket, DnsQuery, DnsResponse, DnsTypes, MutableDnsPacket, Opcode, Retcode
 };
 
 use mappr_common::utils::ip;
 
 pub const DNS_HDR_LEN: usize = 12;
 
-
-pub fn get_hostname(payload: &[u8]) -> anyhow::Result<Option<(u16, String)>> {
-    let dns: DnsPacket =
-        DnsPacket::new(payload).ok_or_else(|| anyhow::anyhow!("Failed to parse DNS packet"))?;
-    let (transaction_id, hostname_res) = dns
+pub fn get_hostname(payload: &[u8]) -> anyhow::Result<(u16, String)> {
+    let dns = DnsPacket::new(payload).context("Failed to parse DNS packet")?;
+    let transaction_id = dns.get_id();
+    let hostname_res = dns
         .get_responses()
         .iter()
         .find_map(|response| {
-            if response.rtype == DnsTypes::PTR {
-                let hostname: String = decode_dns_name(&response.data)?;
-                let transaction_id: u16 = u16::from_be_bytes([payload[0], payload[1]]);
-                Some((transaction_id, hostname))
-            } else {
-                None
+            match response.rtype {
+                DnsTypes::A => response_from_a(response),
+                DnsTypes::PTR => response_from_ptr(response),
+                _ => None
             }
         })
-        .ok_or_else(|| anyhow::anyhow!("No PTR record found"))?;
-    Ok(Some((transaction_id, hostname_res)))
-}
+        .ok_or_else(|| anyhow::anyhow!("No valid A or PTR record found"))?;
 
-pub fn get_dns_server_socket_addr(ip_addr: &IpAddr) -> anyhow::Result<(IpAddr, u16)> {
-    let dst_port: u16 = 53; // Needs improvement
-    if ip::is_private(&ip_addr) {
-        let gateway_addr: IpAddr = ip::get_gateway_addr(&ip_addr);
-        return Ok((gateway_addr, dst_port));
-    }
-    let dst_addr: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
-    return Ok((dst_addr, dst_port));
+    Ok((transaction_id, hostname_res))
 }
 
 pub fn create_ptr_packet(ip_addr: &IpAddr, id: u16) -> anyhow::Result<Vec<u8>> {
@@ -79,6 +67,22 @@ pub fn create_ptr_packet(ip_addr: &IpAddr, id: u16) -> anyhow::Result<Vec<u8>> {
     buffer[cursor..cursor + 2].copy_from_slice(&class_bytes);
 
     Ok(Vec::from(buffer))
+}
+
+fn response_from_a(response: &DnsResponse) -> Option<String> {
+    if response.data.len() == 4 {
+        let ip = std::net::Ipv4Addr::new(
+            response.data[0], response.data[1], 
+            response.data[2], response.data[3]
+        );
+        Some(ip.to_string())
+    } else {
+        None
+    }
+}
+
+fn response_from_ptr(response: &DnsResponse) -> Option<String> {
+    decode_dns_name(&response.data)
 }
 
 fn create_ptr_query(ip_addr: &IpAddr) -> anyhow::Result<DnsQuery> {

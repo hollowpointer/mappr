@@ -1,5 +1,8 @@
 use pnet::{
-    packet::{Packet, ip::IpNextHeaderProtocols, udp::UdpPacket},
+    packet::{
+        Packet,
+        ip::IpNextHeaderProtocols
+    },
     transport::{
         self, 
         TransportChannelType,
@@ -9,8 +12,6 @@ use pnet::{
     },
 };
 use std::{net::IpAddr, sync::mpsc};
-
-use mappr_protocols::{dns, udp};
 
 const TRANSPORT_BUFFER_SIZE: usize = 4096;
 const CHANNEL_TYPE_UDP: TransportChannelType =
@@ -64,33 +65,3 @@ fn open_channel(transport_type: TransportType) -> anyhow::Result<(TransportSende
     let (tx, rx) = transport::transport_channel(TRANSPORT_BUFFER_SIZE, channel_type)?;
     Ok((tx, rx))
 }
-
-pub fn send_dns_query<F>(
-    dns_packet_creator_fn: F,
-    id: u16,
-    target_addr: &IpAddr,
-    udp_tx: &mut TransportSender,
-) where
-    F: Fn(&IpAddr, u16) -> anyhow::Result<Vec<u8>>,
-{
-    let Ok(bytes) = dns_packet_creator_fn(target_addr, id) else {
-        return;
-    };
-
-    let Ok((dst_addr, dst_port)) = dns::get_dns_server_socket_addr(&target_addr) else {
-        return;
-    };
-
-    let src_port = rand::random_range(50_000..u16::max_value());
-
-    let Ok(udp_bytes) = udp::create_packet(src_port, dst_port, bytes) else {
-        return;
-    };
-
-    let Some(udp_pkt) = UdpPacket::new(&udp_bytes) else {
-        return;
-    };
-
-    let _ = udp_tx.send_to(udp_pkt, dst_addr);
-}
-

@@ -7,16 +7,12 @@
 //! Layer 2 packets via the operating system's network sockets.
 
 use std::{
-    collections::HashMap,
-    net::IpAddr,
-    sync::atomic::{AtomicU16, Ordering},
-    sync::mpsc,
-    time::Duration,
+    collections::HashMap, net::IpAddr, sync::{atomic::Ordering, mpsc::{self, Sender}}, time::Duration
 };
 
+use anyhow::ensure;
 use pnet::{
     datalink::NetworkInterface,
-    packet::{Packet, udp::UdpPacket},
     util::MacAddr,
 };
 
@@ -27,31 +23,26 @@ use mappr_common::{
 };
 
 use mappr_protocols as protocol;
-use protocol::{dns, ethernet};
+use protocol::ethernet;
 use tracing::error;
 
 use crate::network::{
     channel::{self, EthernetHandle},
-    transport::{self, TransportHandle, TransportType},
 };
 
 use super::NetworkExplorer;
 use async_trait::async_trait;
 
-const DNS_PORT: u16 = 53;
-const MDNS_PORT: u16 = 5353;
 const MAX_CHANNEL_TIME: Duration = Duration::from_millis(7_500);
 const MIN_CHANNEL_TIME: Duration = Duration::from_millis(2_500);
 const MAX_SILENCE: Duration = Duration::from_millis(500);
 
 pub struct LocalScanner {
     hosts_map: HashMap<MacAddr, Host>,
-    dns_map: HashMap<u16, MacAddr>,
     sender_cfg: SenderConfig,
     eth_handle: EthernetHandle,
-    udp_handle: TransportHandle,
     timer: ScanTimer,
-    trans_id_counter: AtomicU16,
+    dns_tx: Sender<IpAddr>
 }
 
 #[async_trait]
@@ -66,7 +57,7 @@ impl NetworkExplorer for LocalScanner {
             match self.eth_handle.rx.recv_timeout(wait) {
                 Ok(bytes) => {
                     self.timer.mark_seen();
-                    self.process_eth_packet(&bytes);
+                    let _ = self.process_eth_packet(&bytes);
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if self.timer.should_break_on_timeout() {
@@ -78,7 +69,6 @@ impl NetworkExplorer for LocalScanner {
                     continue;
                 }
             }
-            self.process_udp_packets();
         }
 
         let hosts: Vec<Host> = self.hosts_map
@@ -91,12 +81,9 @@ impl NetworkExplorer for LocalScanner {
 }
 
 impl LocalScanner {
-    pub fn new(
-        intf: NetworkInterface,
-        collection: IpCollection,
-    ) -> anyhow::Result<Self> {
+    pub fn new(intf: NetworkInterface, collection: IpCollection, dns_tx: Sender<IpAddr>)
+    -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
-        let udp_handle: TransportHandle = transport::start_packet_capture(TransportType::UdpLayer4)?;
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
 
         let mut sender_cfg = SenderConfig::from(&intf);
@@ -121,12 +108,10 @@ impl LocalScanner {
 
         Ok(Self {
             hosts_map: HashMap::new(),
-            dns_map: HashMap::new(),
             sender_cfg,
             eth_handle,
-            udp_handle,
             timer,
-            trans_id_counter: AtomicU16::new(0),
+            dns_tx
         })
     }
 
@@ -138,27 +123,16 @@ impl LocalScanner {
         Ok(())
     }
 
-    fn process_eth_packet(&mut self, bytes: &[u8]) {
-        let Ok(eth_frame) = ethernet::get_packet_from_u8(bytes) else {
-            return;
-        };
-
-        let Ok(source_addr) = protocol::get_ip_addr_from_eth(&eth_frame) else {
-            return;
-        };
-
-        if !self.sender_cfg.is_addr_in_subnet(source_addr) {
-            return;
-        }
-
-        if source_addr.is_ipv4() && !self.sender_cfg.has_addr(&source_addr) {
-            return;
-        } 
+    fn process_eth_packet(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
+        let eth_frame = ethernet::get_packet_from_u8(bytes)?;
+        let source_addr = protocol::get_ip_addr_from_eth(&eth_frame)?;
+        ensure!(self.sender_cfg.is_addr_in_subnet(source_addr), "{source_addr} is not in range");
         
+        // Needs rework
         if source_addr.is_ipv6() {
             if !IS_LAN_SCAN.load(Ordering::Relaxed) {
                 if !self.hosts_map.contains_key(&eth_frame.get_source()) {
-                    return
+                    return Ok(());
                 }
             }
         }
@@ -172,55 +146,9 @@ impl LocalScanner {
 
         host.ips.insert(source_addr);
         if host.hostname.is_none() {
-            self.send_dns_ptr_query(&source_addr, source_mac);
+            self.dns_tx.send(source_addr)?;
         }
-    }
-
-    fn process_udp_packets(&mut self) {
-        while let Ok((bytes, _)) = self.udp_handle.rx.try_recv() {
-            self.timer.mark_seen();
-            let Some(udp_packet) = UdpPacket::new(&bytes) else {
-                continue;
-            };
-            match udp_packet.get_source() {
-                DNS_PORT => self.handle_dns_response(udp_packet),
-                MDNS_PORT => { /* Implement mDNS next */ }
-                _ => continue,
-            }
-        }
-    }
-
-    fn handle_dns_response(&mut self, packet: UdpPacket) {
-        let Ok(Some((response_id, name))) = dns::get_hostname(packet.payload()) else {
-            return;
-        };
-        let Some(mac_addr) = self.dns_map.get(&response_id) else {
-            return;
-        };
-        if let Some(host) = self.hosts_map.get_mut(mac_addr) {
-            host.hostname = Some(name);
-        }
-    }
-
-    fn send_dns_ptr_query(&mut self, target_addr: &IpAddr, target_mac: MacAddr) {
-        if !target_addr.is_ipv4() && !mappr_common::utils::ip::is_global_unicast(target_addr) {
-            return;
-        }
-        let id = self.get_next_trans_id();
-        if self.dns_map.contains_key(&id) {
-            return;
-        }
-        self.dns_map.insert(id, target_mac);
-        transport::send_dns_query(
-            dns::create_ptr_packet,
-            id,
-            target_addr,
-            &mut self.udp_handle.tx,
-        );
-    }
-
-    fn get_next_trans_id(&self) -> u16 {
-        self.trans_id_counter.fetch_add(1, Ordering::Relaxed)
+        Ok(())
     }
 
     fn should_continue(&self) -> bool {
