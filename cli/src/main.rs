@@ -2,6 +2,7 @@ mod commands;
 mod terminal;
 
 use commands::{CommandLine, Commands, discover, info, listen, scan};
+use mappr_common::config::Config;
 use terminal::print;
 
 use crate::terminal::spinner;
@@ -12,6 +13,10 @@ async fn main() -> anyhow::Result<()> {
 
     spinner::init_logging();
     print::initialize();
+
+    let cfg = Config {
+        no_dns: commands.no_dns,
+    };
     
     match commands.command {
         Commands::Info => {
@@ -24,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Discover { target } => {
             print::header("getting ready for discovery");
-            discover::discover(target).await
+            discover::discover(target, &cfg).await
         }
         Commands::Scan { target } => {
             print::header("starting scanner");

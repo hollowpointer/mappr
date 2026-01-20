@@ -6,12 +6,12 @@ use colored::*;
 use tracing::info_span;
 
 use crate::terminal::{colors, format, print, spinner};
-use mappr_common::network::host::Host;
+use mappr_common::{config::Config, network::host::Host};
 use mappr_common::network::range::IpCollection;
 use mappr_common::network::target::{self, Target};
 use mappr_core::scanner;
 
-pub async fn discover(target: Target) -> anyhow::Result<()> {
+pub async fn discover(target: Target, cfg: &Config) -> anyhow::Result<()> {
     let span = info_span!("discovery", indicatif.pb_show = true);
     let guard = span.enter();
 
@@ -20,7 +20,7 @@ pub async fn discover(target: Target) -> anyhow::Result<()> {
 
     let ips: IpCollection = target::to_collection(target)?;
     let start_time: Instant = Instant::now();
-    let mut hosts: Vec<Host> = scanner::perform_discovery(ips).await?;
+    let mut hosts: Vec<Host> = scanner::perform_discovery(ips, cfg).await?;
 
     running.store(false, Ordering::Relaxed);
     let _ = spinner_handle.join();

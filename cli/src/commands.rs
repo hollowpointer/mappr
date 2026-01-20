@@ -13,6 +13,10 @@ use mappr_common::network::target::Target;
 pub struct CommandLine {
     #[command(subcommand)]
     pub command: Commands,
+
+    /// Disable DNS resolution
+    #[arg(short = 'n', long = "no-dns", global = true)]
+    pub no_dns: bool,
 }
 
 #[derive(Subcommand)]

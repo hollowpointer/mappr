@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use is_root::is_root;
+use mappr_common::config::Config;
 use mappr_common::network::host::Host;
 use mappr_common::network::interface;
 use mappr_common::network::range::IpCollection;
@@ -40,7 +41,7 @@ trait NetworkExplorer {
     async fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>>;
 }
 
-pub async fn perform_discovery(targets: IpCollection) -> anyhow::Result<Vec<Host>> {
+pub async fn perform_discovery(targets: IpCollection, cfg: &Config) -> anyhow::Result<Vec<Host>> {
     spawn_user_input_listener();
 
     if !is_root() {
@@ -49,8 +50,15 @@ pub async fn perform_discovery(targets: IpCollection) -> anyhow::Result<Vec<Host
     }
     info!("Root privileges detected, raw socket scan enabled");
 
-    let (dns_tx, dns_rx) = mpsc::unbounded_channel::<IpAddr>();
-    let resolver_task = spawn_resolver(dns_rx).await;
+    let (dns_tx, resolver_task) = if !cfg.no_dns {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let task = spawn_resolver(rx).await; 
+        (Some(tx), Some(task))
+    } else {
+        info!("DNS resolution skipped by user flag");
+        (None, None)
+    };
+    
     let scanner_handles = spawn_explorers(targets, dns_tx).await;
 
     let mut hosts = Vec::new();
@@ -62,8 +70,10 @@ pub async fn perform_discovery(targets: IpCollection) -> anyhow::Result<Vec<Host
         }
     }
 
-    if let Ok(Some(mut resolver)) = resolver_task.await {
-        resolver.resolve_hosts(&mut hosts);
+    if let Some(task) = resolver_task {
+        if let Ok(Some(mut resolver)) = task.await {
+            resolver.resolve_hosts(&mut hosts);
+        }
     }
 
     Ok(hosts)
@@ -71,7 +81,7 @@ pub async fn perform_discovery(targets: IpCollection) -> anyhow::Result<Vec<Host
 
 async fn spawn_explorers(
     targets: IpCollection, 
-    dns_tx: mpsc::UnboundedSender<IpAddr>
+    dns_tx: Option<mpsc::UnboundedSender<IpAddr>>
 ) -> Vec<JoinHandle<anyhow::Result<Vec<Host>>>> {
     let mut handles = Vec::new();
     

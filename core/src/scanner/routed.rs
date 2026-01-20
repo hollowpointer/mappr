@@ -24,7 +24,7 @@ pub struct RoutedScanner {
     responded_ips: HashSet<IpAddr>,
     ips: IpCollection,
     tcp_handle: TransportHandle,
-    dns_tx: UnboundedSender<IpAddr>
+    dns_tx: Option<UnboundedSender<IpAddr>>
 }
 
 #[async_trait]
@@ -43,7 +43,7 @@ impl NetworkExplorer for RoutedScanner {
                         continue;
                     }
                     if self.responded_ips.insert(ip) {
-                        let _ = self.dns_tx.send(ip);
+                        let _ = self.dns_tx.as_ref().map(|tx| tx.send(ip));
                         super::increment_host_count();
                     }
                 }
@@ -61,7 +61,7 @@ impl NetworkExplorer for RoutedScanner {
 }
 
 impl RoutedScanner {
-    pub fn new(intf: NetworkInterface, ips: IpCollection, dns_tx: UnboundedSender<IpAddr>) -> anyhow::Result<Self> {
+    pub fn new(intf: NetworkInterface, ips: IpCollection, dns_tx: Option<UnboundedSender<IpAddr>>) -> anyhow::Result<Self> {
         let tcp_handle: TransportHandle = transport::start_packet_capture(TransportType::TcpLayer4)?;
 
         let src_v4: Option<Ipv4Addr> = intf.ips.iter().find_map(|ip_net| {

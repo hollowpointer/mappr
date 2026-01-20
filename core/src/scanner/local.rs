@@ -17,7 +17,7 @@ use pnet::{
 };
 
 use mappr_common::{
-    config::{PacketType, SenderConfig},
+    sender::{PacketType, SenderConfig},
     network::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
     utils::timing::ScanTimer,
 };
@@ -43,7 +43,7 @@ pub struct LocalScanner {
     sender_cfg: SenderConfig,
     eth_handle: EthernetHandle,
     timer: ScanTimer,
-    dns_tx: UnboundedSender<IpAddr>
+    dns_tx: Option<UnboundedSender<IpAddr>>
 }
 
 #[async_trait]
@@ -89,7 +89,7 @@ impl NetworkExplorer for LocalScanner {
 }
 
 impl LocalScanner {
-    pub fn new(intf: NetworkInterface, collection: IpCollection, dns_tx: UnboundedSender<IpAddr>)
+    pub fn new(intf: NetworkInterface, collection: IpCollection, dns_tx: Option<UnboundedSender<IpAddr>>)
     -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
@@ -158,7 +158,7 @@ impl LocalScanner {
         let is_new_ip = host.ips.insert(source_addr);
 
         if is_new_host || is_new_ip {
-            _ = self.dns_tx.send(source_addr);
+            self.dns_tx.as_ref().map(|tx| tx.send(source_addr));
         }
 
         Ok(())
