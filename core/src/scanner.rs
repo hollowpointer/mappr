@@ -15,6 +15,7 @@ use mappr_common::network::host::Host;
 use mappr_common::network::interface;
 use mappr_common::network::range::IpCollection;
 use mappr_common::utils::input::InputHandle;
+use mappr_common::{error, info, success, warn};
 
 mod handshake;
 mod local;
@@ -26,7 +27,6 @@ use routed::RoutedScanner;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
 
 use crate::scanner::resolver::HostnameResolver;
 
@@ -48,7 +48,7 @@ pub async fn perform_discovery(targets: IpCollection, cfg: &Config) -> anyhow::R
         warn!("Root privileges missing, defaulting to unprivileged TCP scan");
         return handshake::range_discovery(targets, handshake::prober).await;
     }
-    info!("Root privileges detected, raw socket scan enabled");
+    success!("Root privileges detected, raw socket scan enabled");
 
     let (dns_tx, resolver_task) = if !cfg.no_dns {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -118,7 +118,7 @@ async fn spawn_resolver(dns_rx: UnboundedReceiver<IpAddr>) -> JoinHandle<Option<
     tokio::spawn(async move {
         match HostnameResolver::new(dns_rx) {
             Ok(resolver) => {
-                info!("Successfully initialized hostname resolver");    
+                success!("Successfully initialized hostname resolver");    
                 Some(resolver.run().await)
             },
             Err(e) => {

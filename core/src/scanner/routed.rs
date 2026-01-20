@@ -4,7 +4,7 @@ use anyhow::ensure;
 use async_trait::async_trait;
 use pnet::{datalink::NetworkInterface, packet::tcp::TcpPacket};
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::error;
+use mappr_common::error;
 
 use mappr_common::{network::{host::Host, range::IpCollection}};
 use mappr_protocols as protocol;

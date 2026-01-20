@@ -17,15 +17,22 @@ use pnet::{
 };
 
 use mappr_common::{
-    sender::{PacketType, SenderConfig},
-    network::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
-    utils::timing::ScanTimer,
+    error, 
+    network::{
+        host::Host, 
+        range::IpCollection, 
+        target::IS_LAN_SCAN
+    }, 
+    sender::{
+        PacketType, 
+        SenderConfig
+    }, 
+    utils::timing::ScanTimer
 };
 
 use mappr_protocols as protocol;
 use protocol::ethernet;
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::error;
 
 use crate::network::{
     channel::{self, EthernetHandle},

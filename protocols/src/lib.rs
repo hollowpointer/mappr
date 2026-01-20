@@ -9,6 +9,7 @@ pub mod udp;
 pub mod utils;
 
 use anyhow::ensure;
+use mappr_common::{debug, error};
 use mappr_common::sender::{PacketType, SenderConfig};
 
 use pnet::ipnetwork::Ipv4Network;
@@ -16,7 +17,6 @@ use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::util::MacAddr;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use tracing::{debug, error};
 
 pub fn create_transport_packets() -> anyhow::Result<Vec<Vec<u8>>> {
     Ok(vec![])

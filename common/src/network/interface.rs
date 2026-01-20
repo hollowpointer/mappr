@@ -7,7 +7,7 @@ use pnet::ipnetwork::{IpNetwork, Ipv4Network};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
-use tracing::{info, warn};
+use crate::{info, warn};
 
 use crate::network::range::IpCollection;
 

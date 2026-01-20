@@ -11,7 +11,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tracing::{info, warn};
+use crate::{info, warn};
 
 use crate::network::interface;
 use crate::network::range::{self, IpCollection, Ipv4Range};
