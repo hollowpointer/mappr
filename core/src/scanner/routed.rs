@@ -1,8 +1,9 @@
-use std::{collections::HashSet, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::{atomic::Ordering, mpsc::Sender}, time::{Duration, Instant}};
+use std::{collections::HashSet, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::{atomic::Ordering}, time::{Duration, Instant}};
 
 use anyhow::ensure;
 use async_trait::async_trait;
 use pnet::{datalink::NetworkInterface, packet::tcp::TcpPacket};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::error;
 
 use mappr_common::{network::{host::Host, range::IpCollection}};
@@ -23,12 +24,12 @@ pub struct RoutedScanner {
     responded_ips: HashSet<IpAddr>,
     ips: IpCollection,
     tcp_handle: TransportHandle,
-    _dns_tx: Sender<IpAddr>
+    dns_tx: UnboundedSender<IpAddr>
 }
 
 #[async_trait]
 impl NetworkExplorer for RoutedScanner {
-    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
+    async fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
         if let Err(e) = self.send_discovery_packets() {
             error!("Failed to send packets: {e}");
         }
@@ -37,11 +38,12 @@ impl NetworkExplorer for RoutedScanner {
 
         while self.should_continue(deadline) {
             match self.tcp_handle.rx.try_recv() {
-                Ok((_bytes, source_ip)) => {
-                    if !self.ips.contains(&source_ip) {
+                Ok((_bytes, ip)) => {
+                    if !self.ips.contains(&ip) {
                         continue;
                     }
-                    if self.responded_ips.insert(source_ip) {
+                    if self.responded_ips.insert(ip) {
+                        let _ = self.dns_tx.send(ip);
                         super::increment_host_count();
                     }
                 }
@@ -59,7 +61,7 @@ impl NetworkExplorer for RoutedScanner {
 }
 
 impl RoutedScanner {
-    pub fn new(intf: NetworkInterface, ips: IpCollection, _dns_tx: Sender<IpAddr>) -> anyhow::Result<Self> {
+    pub fn new(intf: NetworkInterface, ips: IpCollection, dns_tx: UnboundedSender<IpAddr>) -> anyhow::Result<Self> {
         let tcp_handle: TransportHandle = transport::start_packet_capture(TransportType::TcpLayer4)?;
 
         let src_v4: Option<Ipv4Addr> = intf.ips.iter().find_map(|ip_net| {
@@ -86,7 +88,7 @@ impl RoutedScanner {
             responded_ips, 
             ips, 
             tcp_handle,
-            _dns_tx
+            dns_tx
          })
     }
 

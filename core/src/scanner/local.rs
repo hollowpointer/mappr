@@ -7,7 +7,7 @@
 //! Layer 2 packets via the operating system's network sockets.
 
 use std::{
-    collections::HashMap, net::IpAddr, sync::{atomic::Ordering, mpsc::{self, Sender}}, time::Duration
+    collections::HashMap, net::IpAddr, sync::{atomic::Ordering}, time::Duration
 };
 
 use anyhow::ensure;
@@ -24,6 +24,7 @@ use mappr_common::{
 
 use mappr_protocols as protocol;
 use protocol::ethernet;
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::error;
 
 use crate::network::{
@@ -42,46 +43,53 @@ pub struct LocalScanner {
     sender_cfg: SenderConfig,
     eth_handle: EthernetHandle,
     timer: ScanTimer,
-    dns_tx: Sender<IpAddr>
+    dns_tx: UnboundedSender<IpAddr>
 }
 
 #[async_trait]
 impl NetworkExplorer for LocalScanner {
-    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
+    async fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
         if let Err(e) = self.send_discovery_packets() {
             error!("Failed to send discovery packets: {e}");
         }
         
-        while self.should_continue() {
-            let wait = self.timer.next_wait();
-            match self.eth_handle.rx.recv_timeout(wait) {
-                Ok(bytes) => {
-                    self.timer.mark_seen();
-                    let _ = self.process_eth_packet(&bytes);
+        let scan_deadline = tokio::time::sleep(MAX_CHANNEL_TIME);
+        tokio::pin!(scan_deadline);
+
+        loop {
+            if !self.should_continue() || super::STOP_SIGNAL.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let silence_timeout = tokio::time::sleep(MAX_SILENCE);
+
+            tokio::select! {
+                pkt = self.eth_handle.rx.recv() => {
+                    match pkt {
+                        Some(bytes) => _ = self.process_eth_packet(&bytes),
+                        None => break,
+                    }
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
+                
+                _ = &mut scan_deadline => {
+                    break;
+                }
+
+                _ = silence_timeout => {
                     if self.timer.should_break_on_timeout() {
                         break;
                     }
-                    continue;
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    continue;
                 }
             }
         }
 
-        let hosts: Vec<Host> = self.hosts_map
-            .drain()
-            .map(|(_, v)| v)
-            .collect();
-
+        let hosts: Vec<Host> = self.hosts_map.drain().map(|(_, v)| v).collect();
         Ok(hosts)
     }
 }
 
 impl LocalScanner {
-    pub fn new(intf: NetworkInterface, collection: IpCollection, dns_tx: Sender<IpAddr>)
+    pub fn new(intf: NetworkInterface, collection: IpCollection, dns_tx: UnboundedSender<IpAddr>)
     -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
@@ -139,15 +147,20 @@ impl LocalScanner {
 
         let source_mac = eth_frame.get_source();
 
+        let mut is_new_host = false;
         let host = self.hosts_map.entry(source_mac).or_insert_with(|| {
+            self.timer.mark_seen();
             super::increment_host_count();
+            is_new_host = true;
             Host::new(source_addr).with_mac(source_mac)
         });
 
-        host.ips.insert(source_addr);
-        if host.hostname.is_none() {
-            self.dns_tx.send(source_addr)?;
+        let is_new_ip = host.ips.insert(source_addr);
+
+        if is_new_host || is_new_ip {
+            _ = self.dns_tx.send(source_addr);
         }
+
         Ok(())
     }
 

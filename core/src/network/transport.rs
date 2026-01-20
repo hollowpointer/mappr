@@ -11,7 +11,8 @@ use pnet::{
         TransportSender,
     },
 };
-use std::{net::IpAddr, sync::mpsc};
+use tokio::sync::mpsc;
+use std::net::IpAddr;
 
 const TRANSPORT_BUFFER_SIZE: usize = 4096;
 const CHANNEL_TYPE_UDP: TransportChannelType =
@@ -27,7 +28,7 @@ pub enum TransportType {
 
 pub struct TransportHandle {
     pub tx: TransportSender,
-    pub rx: mpsc::Receiver<(Vec<u8>, IpAddr)>,
+    pub rx: mpsc::UnboundedReceiver<(Vec<u8>, IpAddr)>,
 }
 
 macro_rules! spawn_listener {
@@ -47,7 +48,7 @@ macro_rules! spawn_listener {
 
 pub fn start_packet_capture(transport_type: TransportType) -> anyhow::Result<TransportHandle> {
     let (tx, mut rx_socket) = open_channel(transport_type)?;
-    let (queue_tx, queue_rx) = mpsc::channel();
+    let (queue_tx, queue_rx) = mpsc::unbounded_channel();
 
     match transport_type {
         TransportType::TcpLayer4 => spawn_listener!(queue_tx, rx_socket, pnet::transport::tcp_packet_iter),

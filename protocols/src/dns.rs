@@ -17,7 +17,6 @@ pub fn get_hostname(payload: &[u8]) -> anyhow::Result<(u16, String)> {
         .iter()
         .find_map(|response| {
             match response.rtype {
-                DnsTypes::A => response_from_a(response),
                 DnsTypes::PTR => response_from_ptr(response),
                 _ => None
             }
@@ -67,18 +66,6 @@ pub fn create_ptr_packet(ip_addr: &IpAddr, id: u16) -> anyhow::Result<Vec<u8>> {
     buffer[cursor..cursor + 2].copy_from_slice(&class_bytes);
 
     Ok(Vec::from(buffer))
-}
-
-fn response_from_a(response: &DnsResponse) -> Option<String> {
-    if response.data.len() == 4 {
-        let ip = std::net::Ipv4Addr::new(
-            response.data[0], response.data[1], 
-            response.data[2], response.data[3]
-        );
-        Some(ip.to_string())
-    } else {
-        None
-    }
 }
 
 fn response_from_ptr(response: &DnsResponse) -> Option<String> {

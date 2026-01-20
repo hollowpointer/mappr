@@ -6,10 +6,9 @@
 
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread::JoinHandle;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use is_root::is_root;
 use mappr_common::network::host::Host;
 use mappr_common::network::interface;
@@ -23,6 +22,9 @@ mod routed;
 
 use local::LocalScanner;
 use routed::RoutedScanner;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::task::JoinHandle;
+use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
 use crate::scanner::resolver::HostnameResolver;
@@ -33,8 +35,9 @@ pub static STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 pub fn increment_host_count() { FOUND_HOST_COUNT.fetch_add(1, Ordering::Relaxed); }
 pub fn get_host_count() -> usize { FOUND_HOST_COUNT.load(Ordering::Relaxed) }
 
+#[async_trait]
 trait NetworkExplorer {
-    fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>>;
+    async fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>>;
 }
 
 pub async fn perform_discovery(targets: IpCollection) -> anyhow::Result<Vec<Host>> {
@@ -46,52 +49,54 @@ pub async fn perform_discovery(targets: IpCollection) -> anyhow::Result<Vec<Host
     }
     info!("Root privileges detected, raw socket scan enabled");
 
-    let (dns_tx, dns_rx) = mpsc::channel();
-    let resolver = spawn_resolver(dns_rx);
-    let handles = spawn_explorers(targets, &dns_tx);
-    drop(dns_tx);
+    let (dns_tx, dns_rx) = mpsc::unbounded_channel::<IpAddr>();
+    let resolver_task = spawn_resolver(dns_rx).await;
+    let scanner_handles = spawn_explorers(targets, dns_tx).await;
 
-    let mut hosts: Vec<Host> = Vec::new();
-    for handle in handles {
-        match handle.join() {
+    let mut hosts = Vec::new();
+    for handle in scanner_handles {
+        match handle.await {
             Ok(Ok(res)) => hosts.extend(res),
-            Ok(Err(e)) => error!("Scanner thread failed: {}", e),
-            Err(_) => anyhow::bail!("Thread panicked"),
+            Ok(Err(e)) => error!("Scanner task failed: {e}"),
+            Err(e) => error!("Task panicked: {e}"),
         }
     }
-    
-    if let Some(handle) = resolver {
-        match handle.join() {
-            Ok(mut r) => r.resolve_hosts(&mut hosts),
-            Err(e) => error!("Failed to join resolver: {:?}", e),
-        }
+
+    if let Ok(Some(mut resolver)) = resolver_task.await {
+        resolver.resolve_hosts(&mut hosts);
     }
 
     Ok(hosts)
 }
 
-fn spawn_explorers(targets: IpCollection, dns_tx: &Sender<IpAddr>) 
--> Vec<JoinHandle<Result<Vec<Host>, anyhow::Error>>> {
+async fn spawn_explorers(
+    targets: IpCollection, 
+    dns_tx: mpsc::UnboundedSender<IpAddr>
+) -> Vec<JoinHandle<anyhow::Result<Vec<Host>>>> {
     let mut handles = Vec::new();
     
     for (intf, (local_ips, routed_ips)) in interface::map_ips_to_interfaces(targets) {
+        
         // Local Scanner (ARP/ICMP)
         if !local_ips.is_empty() {
+            let tx = dns_tx.clone();
             let intf_c = intf.clone();
-            let dns_tx_local = dns_tx.clone(); 
-            let handle = std::thread::spawn(move || {
-                let mut scanner = LocalScanner::new(intf_c, local_ips, dns_tx_local)?;
-                scanner.discover_hosts()
+            
+            let handle = tokio::spawn(async move {
+                let mut scanner = LocalScanner::new(intf_c, local_ips, tx)?;
+                scanner.discover_hosts().await 
             });
             handles.push(handle);
         }
 
-        // Routed Scanner (Syn Scan via Gateway)
+        // Routed Scanner (TCP Syn Scan)
         if !routed_ips.is_empty() {
-            let dns_tx_routed = dns_tx.clone();
-            let handle = std::thread::spawn(move || {
-                let mut scanner = RoutedScanner::new(intf, routed_ips, dns_tx_routed)?;
-                scanner.discover_hosts()
+            let tx = dns_tx.clone();
+            let intf_c = intf.clone();
+            
+            let handle = tokio::spawn(async move {
+                let mut scanner = RoutedScanner::new(intf_c, routed_ips, tx)?;
+                scanner.discover_hosts().await
             });
             handles.push(handle);
         }
@@ -99,17 +104,19 @@ fn spawn_explorers(targets: IpCollection, dns_tx: &Sender<IpAddr>)
     handles
 }
 
-fn spawn_resolver(dns_rx: Receiver<IpAddr>) -> Option<JoinHandle<HostnameResolver>> {
-    match HostnameResolver::new(dns_rx) {
-        Ok(resolver) => {
-            info!("Successfully initialized hostname resolver");
-            Some(resolver.spawn())
+async fn spawn_resolver(dns_rx: UnboundedReceiver<IpAddr>) -> JoinHandle<Option<HostnameResolver>> {
+    tokio::spawn(async move {
+        match HostnameResolver::new(dns_rx) {
+            Ok(resolver) => {
+                info!("Successfully initialized hostname resolver");    
+                Some(resolver.run().await)
+            },
+            Err(e) => {
+                error!("Resolver failed to start: {e}");
+                None
+            }
         }
-        Err(e) => {
-            error!("Critical failure during hostname resolver startup: {e}");
-            None
-        }
-    }
+    })
 }
 
 fn spawn_user_input_listener() {
