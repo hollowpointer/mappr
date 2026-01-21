@@ -36,7 +36,7 @@ pub fn get_lan_network() -> anyhow::Result<Option<Ipv4Network>> {
         _ => "interfaces"
     };
 
-    info!("Identified {} network {}", interfaces.len(), interfaces_str);
+    info!(verbosity = 1, "Identified {} network {}", interfaces.len(), interfaces_str);
 
     let interfaces: Vec<NetworkInterface> = interfaces
         .into_iter()

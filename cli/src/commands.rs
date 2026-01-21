@@ -3,7 +3,7 @@ pub mod info;
 pub mod listen;
 pub mod scan;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 use mappr_common::network::target::Target;
 
 
@@ -14,9 +14,13 @@ pub struct CommandLine {
     #[command(subcommand)]
     pub command: Commands,
 
-    /// Disable DNS resolution
+    /// Disables sending of DNS packets
     #[arg(short = 'n', long = "no-dns", global = true)]
     pub no_dns: bool,
+
+    /// Verbosity level (-v, -vv, -vvv)
+    #[arg(short = 'v', long = "verbose", action = ArgAction::Count, global = true)]
+    pub verbosity: u8,
 }
 
 #[derive(Subcommand)]

@@ -11,7 +11,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::{info, warn};
+use crate::{info, success, warn};
 
 use crate::network::interface;
 use crate::network::range::{self, IpCollection, Ipv4Range};
@@ -80,7 +80,7 @@ fn resolve_target(target: Target, collection: &mut IpCollection) -> anyhow::Resu
                 let net_u32: u32 = u32::from(net.network());
                 let broadcast_u32: u32 = u32::from(net.broadcast());
 
-                // Calculate usable range (exclude network and broadcast)
+                // Calculates usable range (exclude network and broadcast)
                 let start_u32 = net_u32.saturating_add(1);
                 let end_u32 = broadcast_u32.saturating_sub(1);
 
@@ -105,7 +105,7 @@ fn resolve_target(target: Target, collection: &mut IpCollection) -> anyhow::Resu
         }
         Target::VPN => {
             // TODO: Implement VPN logic
-            warn!("VPN scan target not yet implemented");
+            anyhow::bail!("VPN scan target not yet implemented");
         }
         Target::Multi { targets } => {
             for target in targets {
@@ -119,7 +119,13 @@ fn resolve_target(target: Target, collection: &mut IpCollection) -> anyhow::Resu
 /// Converts a single target into an IP collection.
 pub fn to_collection(target: Target) -> anyhow::Result<IpCollection> {
     let mut collection = IpCollection::new();
+
     resolve_target(target, &mut collection)?;
+
+    let len: usize = collection.len();
+    let unit: &str = if len == 1 { "IP address has been" } else { "IP addresses have been" };
+    success!("{len} {unit} parsed successfully");
+
     Ok(collection)
 }
 

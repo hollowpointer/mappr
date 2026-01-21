@@ -38,7 +38,7 @@ fn safe_print(msg: &str) {
 }
 
 pub fn initialize() {
-    let text_content: String = format!("⟦ INITIALIZING MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
+    let text_content: String = format!("⟦ MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
     let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
     let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
@@ -146,6 +146,7 @@ const NO_RESULTS_0: &str = r#"
 
 pub fn no_results() {
     safe_print(&format!("{}", NO_RESULTS_0.red().bold()));
+    end_of_program();
 }
 
 pub fn end_of_program() {

@@ -9,7 +9,7 @@ pub mod udp;
 pub mod utils;
 
 use anyhow::ensure;
-use mappr_common::{debug, error};
+use mappr_common::{error, success};
 use mappr_common::sender::{PacketType, SenderConfig};
 
 use pnet::ipnetwork::Ipv4Network;
@@ -33,7 +33,7 @@ pub fn create_ethernet_packets(sender_config: &SenderConfig) -> anyhow::Result<V
                         1 => "packet",
                         _ => "packets"
                     };
-                    debug!("Created {} {} {}", new_pkts.len(), name, packets_str);
+                    success!(verbosity = 1, "Created {} {} {}", new_pkts.len(), name, packets_str);
                     packets.extend(new_pkts);
                 }
                 Err(e) => error!("Failed to create {} packets: {}", name, e),

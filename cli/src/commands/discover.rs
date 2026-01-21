@@ -12,13 +12,13 @@ use mappr_common::network::target::{self, Target};
 use mappr_core::scanner;
 
 pub async fn discover(target: Target, cfg: &Config) -> anyhow::Result<()> {
+    let ips: IpCollection = target::to_collection(target)?;
     let span = info_span!("discovery", indicatif.pb_show = true);
     let guard = span.enter();
 
     let running: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let spinner_handle = spinner::start_discovery_spinner(span.clone(), running.clone());
 
-    let ips: IpCollection = target::to_collection(target)?;
     let start_time: Instant = Instant::now();
     let mut hosts: Vec<Host> = scanner::perform_discovery(ips, cfg).await?;
 
@@ -60,7 +60,6 @@ fn discovery_ends(hosts: &mut [Host], total_time: Duration) -> anyhow::Result<()
 fn no_hosts_found() {
     print::header("ZERO HOSTS DETECTED");
     print::no_results();
-    print::end_of_program();
 }
 
 fn print_host_details(host: &Host, idx: usize) {

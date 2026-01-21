@@ -8,10 +8,14 @@ pub struct Ipv4Range {
 }
 
 impl Ipv4Range {
-    pub fn new(start_addr: Ipv4Addr, end_addr: Ipv4Addr) -> Self {
-        Self {
-            start_addr,
-            end_addr,
+    pub fn new(start: Ipv4Addr, end: Ipv4Addr) -> Self {
+        let s_u32 = u32::from(start);
+        let e_u32 = u32::from(end);
+        
+        if s_u32 <= e_u32 {
+            Self { start_addr: start, end_addr: end }
+        } else {
+            Self { start_addr: end, end_addr: start }
         }
     }
 
@@ -62,14 +66,17 @@ impl IpCollection {
         self.singles.extend(other.singles);
     }
     
-    pub fn len_estimate(&self) -> usize {
-         let mut count = self.singles.len();
-         for range in &self.ranges {
-             let start: u32 = range.start_addr.into();
-             let end: u32 = range.end_addr.into();
-             count += (end - start + 1) as usize;
-         }
-         count
+    pub fn len(&self) -> usize {
+        let mut count = self.singles.len();
+        for range in &self.ranges {
+            let start: u32 = range.start_addr.into();
+            let end: u32 = range.end_addr.into();
+            
+            if end >= start {
+                count += (end - start + 1) as usize;
+            }
+        }
+        count
     }
 
     pub fn contains(&self, ip: &IpAddr) -> bool {

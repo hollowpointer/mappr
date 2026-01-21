@@ -13,7 +13,7 @@ use crate::terminal::logging;
 
 const TIPS: &[&str] = &["You can press 'q' to finish early"];
 
-pub fn init_logging() {
+pub fn init_logging(verbosity: u8) {
     let indicatif_layer = IndicatifLayer::new()
         .with_progress_style(
             ProgressStyle::with_template("{spinner:.blue} {msg}")
@@ -25,7 +25,7 @@ pub fn init_logging() {
         .unwrap_or_else(|_| EnvFilter::new("info,mappr=debug,mio=error"));
 
     let formatting_layer = tracing_subscriber::fmt::layer()
-        .event_format(logging::MapprFormatter)
+        .event_format(logging::MapprFormatter { max_verbosity: verbosity })
         .with_writer(indicatif_layer.get_stderr_writer()); 
 
     tracing_subscriber::registry()
@@ -70,7 +70,7 @@ pub fn start_discovery_spinner(span: Span, running: Arc<AtomicBool>) -> JoinHand
             }
 
             last_phase = phase;
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(50));
         }
     })
 }

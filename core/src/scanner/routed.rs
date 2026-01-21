@@ -34,7 +34,7 @@ impl NetworkExplorer for RoutedScanner {
             error!("Failed to send packets: {e}");
         }
 
-        let deadline: Instant = calculate_deadline(self.ips.len_estimate());
+        let deadline: Instant = calculate_deadline(self.ips.len());
 
         while self.should_continue(deadline) {
             match self.tcp_handle.rx.try_recv() {
@@ -117,7 +117,7 @@ impl RoutedScanner {
     fn should_continue(&self, deadline: Instant) -> bool {
         let has_time: bool = Instant::now() < deadline;
         let not_stopped: bool = !super::STOP_SIGNAL.load(Ordering::Relaxed);
-        let work_remains: bool = self.ips.len_estimate() > self.responded_ips.len();
+        let work_remains: bool = self.ips.len() > self.responded_ips.len();
 
         has_time && not_stopped && work_remains
     }
