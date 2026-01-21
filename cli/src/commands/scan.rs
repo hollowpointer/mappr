@@ -1,5 +1,8 @@
-use mappr_common::network::target::Target;
+use mappr_common::{
+    config::Config,
+    network::range::IpCollection
+};
 
-pub fn scan(target: Target) {
-    println!("Scanning {:?}", target)
+pub fn scan(_ips: IpCollection, _cfg: &Config) -> anyhow::Result<()> {
+    anyhow::bail!("'scan' subcommand not implemented yet");
 }

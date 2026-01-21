@@ -146,7 +146,6 @@ const NO_RESULTS_0: &str = r#"
 
 pub fn no_results() {
     safe_print(&format!("{}", NO_RESULTS_0.red().bold()));
-    end_of_program();
 }
 
 pub fn end_of_program() {

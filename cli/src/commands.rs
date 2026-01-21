@@ -4,8 +4,6 @@ pub mod listen;
 pub mod scan;
 
 use clap::{ArgAction, Parser, Subcommand};
-use mappr_common::network::target::Target;
-
 
 #[derive(Parser)]
 #[command(name = "mappr")]
@@ -31,12 +29,20 @@ pub enum Commands {
     /// Enumerate a network passively
     #[command(alias = "l")]
     Listen,
+    
     /// Discover hosts in a given network
     #[command(alias = "d")]
-    Discover { target: Target },
+    Discover { 
+        #[arg(value_name = "TARGETS", num_args(1..))]
+        targets: Vec<String> 
+    },
+    
     /// Scan one or more hosts
     #[command(alias = "s")]
-    Scan { target: Target },
+    Scan { 
+        #[arg(value_name = "TARGETS", num_args(1..))]
+        targets: Vec<String> 
+    },
 }
 
 impl CommandLine {
@@ -44,4 +50,3 @@ impl CommandLine {
         Self::parse()
     }
 }
-

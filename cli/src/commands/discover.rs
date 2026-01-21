@@ -8,11 +8,9 @@ use tracing::info_span;
 use crate::terminal::{colors, format, print, spinner};
 use mappr_common::{config::Config, network::host::Host};
 use mappr_common::network::range::IpCollection;
-use mappr_common::network::target::{self, Target};
 use mappr_core::scanner;
 
-pub async fn discover(target: Target, cfg: &Config) -> anyhow::Result<()> {
-    let ips: IpCollection = target::to_collection(target)?;
+pub async fn discover(ips: IpCollection, cfg: &Config) -> anyhow::Result<()> {
     let span = info_span!("discovery", indicatif.pb_show = true);
     let guard = span.enter();
 
@@ -53,7 +51,6 @@ fn discovery_ends(hosts: &mut [Host], total_time: Duration) -> anyhow::Result<()
         )
         .color(colors::TEXT_DEFAULT),
     );
-    print::end_of_program();
     Ok(())
 }
 
