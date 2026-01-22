@@ -8,6 +8,8 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use anyhow::{bail, ensure};
+
 use crate::{info, success, warn};
 use crate::network::interface;
 use crate::network::range::{self, IpCollection, Ipv4Range};
@@ -52,16 +54,17 @@ pub fn to_collection<S: AsRef<str>>(inputs: &[S]) -> anyhow::Result<IpCollection
         }
     }
 
-    if collection.is_empty() {
-        anyhow::bail!("No valid targets found.");
-    }
+    ensure!(!collection.is_empty(), "No valid targets found");
+
+    collection.compact();
 
     let len = collection.len();
-    let unit = if len == 1 { "IP address has been" } else { "IP addresses have been" };
-    success!("{len} {unit} parsed successfully");
+    let unit = if len == 1 { " has been" } else { "es have been" };
+    success!("{len} IP address{unit} parsed successfully");
 
     Ok(collection)
 }
+
 /// Helper to parse a list of strings directly into the collection
 fn parse_many_into<S: AsRef<str>>(inputs: &[S], collection: &mut IpCollection) -> anyhow::Result<()> {
     for input in inputs {
@@ -72,24 +75,35 @@ fn parse_many_into<S: AsRef<str>>(inputs: &[S], collection: &mut IpCollection) -
 
 /// Parses a single string and adds it to the collection.
 fn parse_single_into(s: &str, collection: &mut IpCollection) -> anyhow::Result<()> {
-    // 1. Check Keywords
     if s.eq_ignore_ascii_case("lan") {
         return resolve_lan(collection);
     }
+
     if s.eq_ignore_ascii_case("vpn") {
-        anyhow::bail!("VPN scan target not yet implemented");
+        bail!("VPN scan target not yet implemented");
     }
 
-    // 2. Try parsing as specific types
     if let Some(target) = parse_as_target(s)? {
         match target {
-            Target::Host(ip) => collection.add_single(ip),
-            Target::Range(range) => collection.add_range(range),
+            Target::Host(ip) => {
+                info!(verbosity = 2, "Parsed '{s}' as a single host: {ip}");
+                collection.add_single(ip)
+            },
+            Target::Range(range) => {
+                info!(
+                    verbosity = 2, 
+                    "Parsed '{s}' as a range: {} to {} ({} hosts)", 
+                    range.start_addr, 
+                    range.end_addr,
+                    range.len()
+                );
+                collection.add_range(range)
+            },
         }
         return Ok(());
     }
 
-    anyhow::bail!("Invalid target format: '{}'", s);
+    bail!("Invalid target format: '{}'", s);
 }
 
 /// Tries to parse a string into a concrete Target (Host or Range).
@@ -115,7 +129,7 @@ fn parse_as_target(s: &str) -> anyhow::Result<Option<Target>> {
 /// Logic for the "lan" keyword.
 fn resolve_lan(collection: &mut IpCollection) -> anyhow::Result<()> {
     let Some(net) = interface::get_lan_network()? else {
-        anyhow::bail!("Could not detect a valid LAN interface.");
+        bail!("Could not detect a valid LAN interface.");
     };
 
     let net_u32: u32 = u32::from(net.network());
@@ -130,7 +144,7 @@ fn resolve_lan(collection: &mut IpCollection) -> anyhow::Result<()> {
 
     if start_u32 <= end_u32 {
         IS_LAN_SCAN.store(true, Ordering::Relaxed);
-        info!(verbosity = 1, "Detected LAN: Scanning from {start_ip} to {end_ip}");
+        info!(verbosity = 1, "Scanning from {start_ip} to {end_ip}");
         collection.add_range(Ipv4Range::new(start_ip, end_ip));
     } else {
         warn!("Network too small to strip broadcast, scanning full range.");
@@ -151,13 +165,6 @@ fn parse_ip_range(s: &str) -> anyhow::Result<Option<Ipv4Range>> {
         .map_err(|e| anyhow::anyhow!("Invalid start IP in range '{start_str}': {e}"))?;
 
     let end_addr = parse_range_end_addr(end_str, &start_addr, s)?;
-
-    if start_addr > end_addr {
-        anyhow::bail!(
-            "Invalid range: Start IP ({}) is greater than End IP ({})",
-            start_addr, end_addr
-        );
-    }
 
     Ok(Some(Ipv4Range::new(start_addr, end_addr)))
 }
@@ -181,10 +188,10 @@ fn parse_range_end_addr(
         .map_err(|e| anyhow::anyhow!("Invalid end range '{end_str}': {e}"))?;
 
     if partial_octets.is_empty() {
-        anyhow::bail!("End range cannot be empty: {original_s}");
+        bail!("End range cannot be empty: {original_s}");
     }
     if partial_octets.len() > 4 {
-        anyhow::bail!("End range has too many octets: {end_str}");
+        bail!("End range has too many octets: {end_str}");
     }
 
     // Overlays the partial octets onto the end of the start address

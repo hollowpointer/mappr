@@ -24,7 +24,7 @@ use crate::terminal::{
 async fn main() {
     let commands = CommandLine::parse_args();
     spinner::init_logging(commands.verbosity);
-    print::initialize();
+    if !commands.no_banner { print::banner(); };
 
     if let Err(e) = run(commands).await {
         error!("Critical failure: {e}");

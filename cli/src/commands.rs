@@ -11,12 +11,24 @@ use clap::{ArgAction, Parser, Subcommand};
 pub struct CommandLine {
     #[command(subcommand)]
     pub command: Commands,
+    
+    /// Flat text output: removes tree structures, colors, and styling
+    #[arg(long = "minimal", global = true)]
+    pub minimal: bool,
+
+    /// Keep logs and colors but hide the ASCII art
+    #[arg(long = "no-banner", global = true)]
+    pub no_banner: bool,
 
     /// Disables sending of DNS packets
     #[arg(short = 'n', long = "no-dns", global = true)]
     pub no_dns: bool,
 
-    /// Verbosity level (-v, -vv, -vvv)
+    /// Decrease output detail (-q: hide banner/progress, -qq: results only)
+    #[arg(short = 'q', long = "quiet", action = ArgAction::Count, global = true)]
+    pub quiet: u8,
+
+    /// Increase output detail (-v: debug info, -vv: trace/packets)
     #[arg(short = 'v', long = "verbose", action = ArgAction::Count, global = true)]
     pub verbosity: u8,
 }

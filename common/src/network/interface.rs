@@ -7,7 +7,7 @@ use pnet::ipnetwork::{IpNetwork, Ipv4Network};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
-use crate::{info, warn};
+use crate::info;
 
 use crate::network::range::IpCollection;
 
@@ -36,7 +36,7 @@ pub fn get_lan_network() -> anyhow::Result<Option<Ipv4Network>> {
         _ => "interfaces"
     };
 
-    info!(verbosity = 1, "Identified {} network {}", interfaces.len(), interfaces_str);
+    info!(verbosity = 1, "Identified {} network {}, picking the best one...", interfaces.len(), interfaces_str);
 
     let interfaces: Vec<NetworkInterface> = interfaces
         .into_iter()
@@ -50,6 +50,7 @@ pub fn get_lan_network() -> anyhow::Result<Option<Ipv4Network>> {
 
     let interface: NetworkInterface =
         if let Some(interface) = select_best_lan_interface(interfaces, is_wired) {
+            info!(verbosity = 1, "Performing LAN scan on interface {}", interface.name);
             interface
         } else {
             anyhow::bail!("No interfaces available for LAN discovery");
@@ -148,7 +149,6 @@ fn select_best_lan_interface(
         0 => None,
         1 => Some(interfaces[0].clone()),
         _ => {
-            warn!("More than one candidate found, selecting best option...");
             interfaces
                 .iter()
                 .find(|&interface| is_wired(interface))

@@ -37,7 +37,7 @@ fn safe_print(msg: &str) {
     info!(target: "mappr::print", raw_msg = msg);
 }
 
-pub fn initialize() {
+pub fn banner() {
     let text_content: String = format!("⟦ MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
     let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
