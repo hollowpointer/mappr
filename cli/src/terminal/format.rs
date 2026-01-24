@@ -1,5 +1,8 @@
 use crate::terminal::colors;
 use colored::*;
+use mappr_common::config::Config;
+use mappr_common::utils::{ip, redact};
+use pnet::util::MacAddr;
 use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv6Addr};
 
@@ -17,7 +20,32 @@ pub fn ipv6_to_type_str(ipv6_addr: &Ipv6Addr) -> &'static str {
     "IPv6"
 }
 
-// Helper needed because std doesn't have is_global_unicast stable for IPv6? or it's custom logic
+pub fn ip_to_key_value_pair(ips: &BTreeSet<IpAddr>, cfg: &Config) -> Vec<(String, ColoredString)> {
+    ips.iter()
+        .map(|ip| match ip {
+            IpAddr::V4(ipv4_addr) => {
+                let value = ipv4_addr.to_string().color(colors::IPV4_ADDR);
+                (String::from("IPv4"), value)
+            }
+            IpAddr::V6(ipv6_addr) => {
+                let ipv6_type: &str = ipv6_to_type_str(ipv6_addr);
+                let ipv6_addr: ColoredString = if cfg.redact {
+                    let ip_str: String = match ip::get_ipv6_type(ipv6_addr) {
+                        ip::Ipv6AddressType::GlobalUnicast => redact::global_unicast(&ipv6_addr),
+                        ip::Ipv6AddressType::UniqueLocal => redact::unique_local(&ipv6_addr),
+                        ip::Ipv6AddressType::LinkLocal => redact::link_local(&ipv6_addr),
+                        _ => ipv6_addr.to_string()
+                    };
+                    ip_str.color(colors::IPV6_ADDR)
+                } else { 
+                    ipv6_addr.to_string().color(colors::IPV6_ADDR) 
+                };
+                (String::from(ipv6_type), ipv6_addr)
+            }
+        })
+        .collect()
+}
+
 fn is_global_unicast(ip_addr: &IpAddr) -> bool {
     match ip_addr {
         IpAddr::V6(ipv6_addr) => {
@@ -28,18 +56,23 @@ fn is_global_unicast(ip_addr: &IpAddr) -> bool {
     }
 }
 
-pub fn ip_to_key_value_pair(ips: &BTreeSet<IpAddr>) -> Vec<(String, ColoredString)> {
-    ips.iter()
-        .map(|ip| match ip {
-            IpAddr::V4(ipv4_addr) => {
-                let value = ipv4_addr.to_string().color(colors::IPV4_ADDR);
-                (String::from("IPv4"), value)
-            }
-            IpAddr::V6(ipv6_addr) => {
-                let ipv6_type = ipv6_to_type_str(ipv6_addr);
-                let ipv6_addr = ipv6_addr.to_string().color(colors::IPV6_ADDR);
-                (String::from(ipv6_type), ipv6_addr)
-            }
-        })
-        .collect()
+pub fn mac_to_key_value_pair(mac_opt: &Option<MacAddr>, cfg: &Config) -> Option<(String, ColoredString)> {
+    let mut result: Option<(String, ColoredString)> = None;
+
+    if let Some(mac) = mac_opt {
+        let mac_str: String = if cfg.redact {
+            redact::mac_addr(&mac)
+        } else { mac.to_string() };
+        result = Some(("MAC".to_string(), mac_str.color(colors::MAC_ADDR)))
+    }
+
+    result
+}
+
+pub fn vendor_to_key_value_pair(vendor_opt: &Option<String>) -> Option<(String, ColoredString)> {
+    if let Some(vendor) = vendor_opt {
+        Some(("Vendor".to_string(), vendor.to_string().color(colors::MAC_ADDR)))
+    } else {
+        None
+    }
 }

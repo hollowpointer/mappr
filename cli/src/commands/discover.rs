@@ -25,22 +25,24 @@ pub async fn discover(ips: IpCollection, cfg: &Config) -> anyhow::Result<()> {
 
     drop(guard);
 
-    discovery_ends(&mut hosts, start_time.elapsed())
+    discovery_ends(&mut hosts, start_time.elapsed(), cfg)
 }
 
-fn discovery_ends(hosts: &mut [Host], total_time: Duration) -> anyhow::Result<()> {
+fn discovery_ends(hosts: &mut [Host], total_time: Duration, cfg: &Config) -> anyhow::Result<()> {
     if hosts.is_empty() {
         no_hosts_found();
         return Ok(());
     }
     print::header("Network Discovery");
     hosts.sort_by_key(|host| *host.ips.iter().next().unwrap_or(&host.ip));
+
     for (idx, host) in hosts.iter().enumerate() {
-        print_host_details(host, idx);
+        print_host_details(host, idx, cfg);
         if idx + 1 != hosts.len() {
             print::println("");
         }
     }
+
     print::fat_separator();
     let active_hosts: ColoredString = format!("{} active hosts", hosts.len()).bold().green();
     let total_time: ColoredString = format!("{:.2}s", total_time.as_secs_f64()).bold().yellow();
@@ -59,22 +61,16 @@ fn no_hosts_found() {
     print::no_results();
 }
 
-fn print_host_details(host: &Host, idx: usize) {
+fn print_host_details(host: &Host, idx: usize, cfg: &Config) {
     let hostname = host.hostname.as_deref().unwrap_or("No hostname");
     print::tree_head(idx, hostname);
-    let mut key_value_pair = format::ip_to_key_value_pair(&host.ips);
+    let mut key_value_pair: Vec<(String, ColoredString)> = format::ip_to_key_value_pair(&host.ips, cfg);
 
-    if let Some(mac) = host.mac {
-        let mac_key_value: (String, ColoredString) =
-            ("MAC".to_string(), mac.to_string().color(colors::MAC_ADDR));
+    if let Some(mac_key_value) = format::mac_to_key_value_pair(&host.mac, cfg) {
         key_value_pair.push(mac_key_value);
     }
 
-    if let Some(vendor) = &host.vendor {
-        let vendor_key_value: (String, ColoredString) = (
-            "Vendor".to_string(),
-            vendor.to_string().color(colors::MAC_ADDR),
-        );
+    if let Some(vendor_key_value) = format::vendor_to_key_value_pair(&host.vendor) {
         key_value_pair.push(vendor_key_value);
     }
 

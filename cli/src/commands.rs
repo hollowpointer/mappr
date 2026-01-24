@@ -28,6 +28,10 @@ pub struct CommandLine {
     #[arg(short = 'q', long = "quiet", action = ArgAction::Count, global = true)]
     pub quiet: u8,
 
+    /// Redact sensitive info (GUA suffixes, MAC addresses)
+    #[arg(long = "redact", global = true)]
+    pub redact: bool,
+
     /// Increase output detail (-v: debug info, -vv: trace/packets)
     #[arg(short = 'v', long = "verbose", action = ArgAction::Count, global = true)]
     pub verbosity: u8,

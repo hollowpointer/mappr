@@ -36,7 +36,10 @@ async fn main() {
 }
 
 async fn run(commands: CommandLine) -> anyhow::Result<()> {
-    let cfg = Config { no_dns: commands.no_dns };
+    let cfg = Config { 
+        no_dns: commands.no_dns,
+        redact: commands.redact
+    };
 
     match commands.command {
         Commands::Info => {

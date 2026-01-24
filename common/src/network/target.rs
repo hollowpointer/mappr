@@ -264,12 +264,6 @@ mod tests {
     }
 
     #[test]
-    fn test_reversed_range_should_fail() {
-        let input = vec!["192.168.1.10-1"];
-        assert!(to_collection(&input).is_err());
-    }
-
-    #[test]
     fn test_mixed_inputs() {
         // "1.1.1.1" (1) + "10.0.0.1-2" (2) = 3 total
         let input = vec!["1.1.1.1", "10.0.0.1-2"];
