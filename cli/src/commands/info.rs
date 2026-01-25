@@ -11,9 +11,9 @@ use crate::terminal::{
 };
 use mappr_core::info::InfoService;
 use mappr_core::system::SystemRepo;
-use mappr_common::network::localhost::{IpServiceGroup, Service, FirewallStatus};
+use mappr_common::{config::Config, network::localhost::{FirewallStatus, IpServiceGroup, Service}};
 
-pub fn info() -> anyhow::Result<()> {
+pub fn info(cfg: &Config) -> anyhow::Result<()> {
     print::println(
         format!(
             "{}",
@@ -31,9 +31,9 @@ pub fn info() -> anyhow::Result<()> {
 
     if !is_root() {
         print_about_the_tool();
-        print_local_system()?;
+        print_local_system(cfg)?;
         let interfaces = mappr_common::network::interface::get_prioritized_interfaces(5)?;
-        print_network_interfaces(&interfaces)?;
+        print_network_interfaces(&interfaces, cfg)?;
         print::end_of_program();
         return Ok(());
     }
@@ -51,12 +51,12 @@ pub fn info() -> anyhow::Result<()> {
     GLOBAL_KEY_WIDTH.set(std::cmp::max(longest_name + 6, 10));
 
     print_about_the_tool();
-    print_local_system()?;
-    print_firewall_status(system_info.firewall)?;
-    print_local_services(system_info.services)?;
+    print_local_system(cfg)?;
+    print_firewall_status(system_info.firewall, cfg)?;
+    print_local_services(system_info.services, cfg)?;
 
     let interfaces = mappr_common::network::interface::get_prioritized_interfaces(5)?;
-    print_network_interfaces(&interfaces)?;
+    print_network_interfaces(&interfaces, cfg)?;
 
     print::end_of_program();
     Ok(())
@@ -70,8 +70,8 @@ fn print_about_the_tool() {
     print::aligned_line("Repository", "https://github.com/hollowpointer/mappr");
 }
 
-fn print_local_system() -> anyhow::Result<()> {
-    print::header("local system");
+fn print_local_system(cfg: &Config) -> anyhow::Result<()> {
+    print::header("local system", cfg.quiet);
     let hostname: String = sys_info::hostname()?;
     print::aligned_line("Hostname", hostname);
     let release = sys_info::os_release().unwrap_or_else(|_| String::from(""));
@@ -83,8 +83,8 @@ fn print_local_system() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_network_interfaces(interfaces: &[NetworkInterface]) -> anyhow::Result<()> {
-    print::header("network interfaces");
+fn print_network_interfaces(interfaces: &[NetworkInterface], cfg: &Config) -> anyhow::Result<()> {
+    print::header("network interfaces", cfg.quiet);
     
     for (idx, intf) in interfaces.iter().enumerate() {
         crate::terminal::network_fmt::print_interface(intf, idx);
@@ -96,8 +96,8 @@ fn print_network_interfaces(interfaces: &[NetworkInterface]) -> anyhow::Result<(
     Ok(())
 }
 
-fn print_firewall_status(status: FirewallStatus) -> anyhow::Result<()> {
-    print::header("firewall status");
+fn print_firewall_status(status: FirewallStatus, cfg: &Config) -> anyhow::Result<()> {
+    print::header("firewall status", cfg.quiet);
     let status_str = match status {
         FirewallStatus::Active => "active".green().bold(),
         FirewallStatus::Inactive => "inactive".red().bold(),
@@ -119,8 +119,8 @@ fn print_firewall_status(status: FirewallStatus) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_local_services(service_groups: Vec<IpServiceGroup>) -> anyhow::Result<()> {
-    print::header("local services");
+fn print_local_services(service_groups: Vec<IpServiceGroup>, cfg: &Config) -> anyhow::Result<()> {
+    print::header("local services", cfg.quiet);
 
     for (idx, group) in service_groups.iter().enumerate() {
         let ip_addr = group.ip_addr;

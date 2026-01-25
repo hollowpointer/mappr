@@ -3,5 +3,10 @@ pub struct Config {
     /// 
     /// Does not stop the scanners from accepting DNS packets.
     pub no_dns: bool,
-    pub redact: bool
+
+    /// Redact sensitive info (IPv6 suffixes, MAC addresses etc.)
+    pub redact: bool,
+
+    /// Reduce UI visual density (1: reduce styling, 2: raw IPs)
+    pub quiet: u8,
 }

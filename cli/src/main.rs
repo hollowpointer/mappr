@@ -24,7 +24,7 @@ use crate::terminal::{
 async fn main() {
     let commands = CommandLine::parse_args();
     spinner::init_logging(commands.verbosity);
-    if !commands.no_banner { print::banner(); };
+    print::banner(commands.no_banner, commands.quiet);
 
     if let Err(e) = run(commands).await {
         error!("Critical failure: {e}");
@@ -38,25 +38,26 @@ async fn main() {
 async fn run(commands: CommandLine) -> anyhow::Result<()> {
     let cfg = Config { 
         no_dns: commands.no_dns,
-        redact: commands.redact
+        redact: commands.redact,
+        quiet: commands.quiet,
     };
 
     match commands.command {
         Commands::Info => {
-            print::header("about the tool");
-            info()?;
+            print::header("about the tool", cfg.quiet);
+            info(&cfg)?;
         }
         Commands::Listen => {
-            print::header("starting listener");
+            print::header("starting listener", cfg.quiet);
             listen()?;
         }
         Commands::Discover { targets } => {
-            print::header("performing host discovery");
+            print::header("performing host discovery", cfg.quiet);
             let ips = target::to_collection(&targets)?;
             discover(ips, &cfg).await?;
         }
         Commands::Scan { targets } => {
-            print::header("starting scanner");    
+            print::header("starting scanner", cfg.quiet);    
             let ips = target::to_collection(&targets)?;
             scan(ips, &cfg)?;
         }

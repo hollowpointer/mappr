@@ -33,22 +33,30 @@ impl WithDefaultColor for ColoredString {
     }
 }
 
-fn safe_print(msg: &str) {
+fn print(msg: &str) {
     info!(target: "mappr::print", raw_msg = msg);
 }
 
-pub fn banner() {
+pub fn banner(no_banner: bool, q_level: u8) {
+    if no_banner || q_level != 0 {
+        return;
+    }
+
     let text_content: String = format!("⟦ MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
     let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
     let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
     let output: String = format!("{}{}{}", sep, text, sep);
     
-    safe_print(&output);
+    print(&output);
     banner::print();
 }
 
-pub fn header(msg: &str) {
+pub fn header(msg: &str, q_level: u8) {
+    if q_level != 0 { 
+        return; 
+    }
+
     let formatted: String = format!("⟦ {} ⟧", msg);
     let msg_len: usize = formatted.chars().count();
 
@@ -64,12 +72,12 @@ pub fn header(msg: &str) {
     )
     .bright_black();
 
-    safe_print(&format!("{}", line));
+    print(&format!("{}", line));
 }
 
 pub fn fat_separator() {
     let sep: ColoredString = "═".repeat(TOTAL_WIDTH).bright_black();
-    safe_print(&format!("{}", sep));
+    print(&format!("{}", sep));
 }
 
 pub fn aligned_line<V>(key: &str, value: V)
@@ -89,7 +97,7 @@ where
 pub fn print_status<T: AsRef<str>>(msg: T) {
     let prefix: ColoredString = ">".color(colors::SEPARATOR);
     let message: String = format!("{} {}", prefix, msg.as_ref().color(colors::TEXT_DEFAULT));
-    safe_print(&message);
+    print(&message);
 }
 
 pub fn tree_head(idx: usize, name: &str) {
@@ -99,7 +107,7 @@ pub fn tree_head(idx: usize, name: &str) {
         idx_str.color(colors::SEPARATOR),
         name.color(colors::PRIMARY)
     );
-    safe_print(&output);
+    print(&output);
 }
 
 pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
@@ -119,17 +127,17 @@ pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
             ":".color(colors::SEPARATOR),
             value
         );
-        safe_print(&output);
+        print(&output);
     }
 }
 
 pub fn centerln(msg: &str) {
     let space = " ".repeat((TOTAL_WIDTH - console::measure_text_width(msg)) / 2);
-    safe_print(&format!("{}{}{}", space, msg, space));
+    print(&format!("{}{}{}", space, msg, space));
 }
 
 pub fn println(msg: &str) {
-    safe_print(msg);
+    print(msg);
 }
 
 const NO_RESULTS_0: &str = r#"
@@ -145,9 +153,9 @@ const NO_RESULTS_0: &str = r#"
 "#;
 
 pub fn no_results() {
-    safe_print(&format!("{}", NO_RESULTS_0.red().bold()));
+    print(&format!("{}", NO_RESULTS_0.red().bold()));
 }
 
 pub fn end_of_program() {
-    safe_print(&format!("{}", "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)));
+    print(&format!("{}", "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)));
 }

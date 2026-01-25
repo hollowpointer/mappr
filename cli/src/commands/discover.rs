@@ -30,10 +30,10 @@ pub async fn discover(ips: IpCollection, cfg: &Config) -> anyhow::Result<()> {
 
 fn discovery_ends(hosts: &mut [Host], total_time: Duration, cfg: &Config) -> anyhow::Result<()> {
     if hosts.is_empty() {
-        no_hosts_found();
+        no_hosts_found(cfg);
         return Ok(());
     }
-    print::header("Network Discovery");
+    print::header("Network Discovery", cfg.quiet);
     hosts.sort_by_key(|host| *host.ips.iter().next().unwrap_or(&host.ip));
 
     for (idx, host) in hosts.iter().enumerate() {
@@ -56,8 +56,8 @@ fn discovery_ends(hosts: &mut [Host], total_time: Duration, cfg: &Config) -> any
     Ok(())
 }
 
-fn no_hosts_found() {
-    print::header("ZERO HOSTS DETECTED");
+fn no_hosts_found(cfg: &Config) {
+    print::header("ZERO HOSTS DETECTED", cfg.quiet);
     print::no_results();
 }
 
