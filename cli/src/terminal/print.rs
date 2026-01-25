@@ -38,7 +38,7 @@ fn print(msg: &str) {
 }
 
 pub fn banner(no_banner: bool, q_level: u8) {
-    if no_banner || q_level != 0 {
+    if no_banner || q_level > 0 {
         return;
     }
 
@@ -53,7 +53,7 @@ pub fn banner(no_banner: bool, q_level: u8) {
 }
 
 pub fn header(msg: &str, q_level: u8) {
-    if q_level != 0 { 
+    if q_level > 0 { 
         return; 
     }
 
