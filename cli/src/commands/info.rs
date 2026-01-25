@@ -5,23 +5,23 @@ use pnet::datalink::NetworkInterface;
 use std::env;
 use sys_info;
 
-use crate::terminal::{
+use crate::{mprint, terminal::{
     colors,
     print::{self, GLOBAL_KEY_WIDTH},
-};
+}};
 use mappr_core::info::InfoService;
 use mappr_core::system::SystemRepo;
 use mappr_common::{config::Config, network::localhost::{FirewallStatus, IpServiceGroup, Service}};
 
 pub fn info(cfg: &Config) -> anyhow::Result<()> {
-    print::println(
+    mprint!(
         format!(
             "{}",
             "Mappr is a quick tool for mapping and exploring networks.".color(colors::TEXT_DEFAULT)
         )
-        .as_str(),
+        .as_str()
     );
-    print::println("");
+    mprint!();
     GLOBAL_KEY_WIDTH.set(10);
     
     let system_repo = Box::new(SystemRepo);
@@ -90,7 +90,7 @@ fn print_network_interfaces(interfaces: &[NetworkInterface], cfg: &Config) -> an
         crate::terminal::network_fmt::print_interface(intf, idx);
         
         if idx + 1 != interfaces.len() {
-            print::println("");
+            mprint!();
         }
     }
     Ok(())
@@ -112,8 +112,8 @@ fn print_firewall_status(status: FirewallStatus, cfg: &Config) -> anyhow::Result
             "No active firewall detected. Services may be exposed to public."
                 .color(colors::TEXT_DEFAULT)
         );
-        print::println("");
-        print::println(&output);
+        mprint!();
+        mprint!(&output);
     }
 
     Ok(())
@@ -140,25 +140,25 @@ fn print_local_services(service_groups: Vec<IpServiceGroup>, cfg: &Config) -> an
         } else {
             ip_addr.to_string().color(colors::IPV6_ADDR)
         };
-        print::println(
+        mprint!(
             format!(
                 "{}",
                 format!("[{}]", ip_addr_colored).color(colors::SEPARATOR)
             )
-            .as_str(),
+            .as_str()
         );
 
         // Print TCP Services
         if has_tcp {
             let tcp_branch = if has_udp { "├─" } else { "└─" };
             let vertical_branch = if has_udp { "│" } else { " " };
-            print::println(
+            mprint!(
                 format!(
                     " {} {}",
                     tcp_branch.color(colors::SEPARATOR),
                     "TCP".color(colors::PRIMARY)
                 )
-                .as_str(),
+                .as_str()
             );
 
             for (i, service) in tcp_services.iter().enumerate() {
@@ -170,13 +170,13 @@ fn print_local_services(service_groups: Vec<IpServiceGroup>, cfg: &Config) -> an
         if has_udp {
             let udp_branch = "└─"; // UDP is always the last branch if it exists
             let vertical_branch = " "; // No vertical (│) line needed below UDP
-            print::println(
+            mprint!(
                 format!(
                     " {} {}",
                     udp_branch.color(colors::SEPARATOR),
                     "UDP".color(colors::PRIMARY)
                 )
-                .as_str(),
+                .as_str()
             );
 
             for (i, service) in udp_services.iter().enumerate() {
@@ -185,7 +185,7 @@ fn print_local_services(service_groups: Vec<IpServiceGroup>, cfg: &Config) -> an
         }
 
         if idx + 1 != service_groups.len() {
-            print::println("");
+            mprint!();
         }
     }
     Ok(())
@@ -223,5 +223,5 @@ fn print_service_line(idx: usize, service: &Service, vertical_branch: &str, serv
         ": ".color(colors::SEPARATOR),
         ports.color(colors::TEXT_DEFAULT)
     );
-    print::println(&output);
+    mprint!(&output);
 }

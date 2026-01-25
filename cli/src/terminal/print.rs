@@ -11,6 +11,16 @@ thread_local! {
     pub static GLOBAL_KEY_WIDTH: Cell<usize> = Cell::new(0);
 }
 
+#[macro_export]
+macro_rules! mprint {
+    () => {
+        $crate::print::print("");
+    };
+    ($msg:expr) => {
+        $crate::print::print($msg);
+    };
+}
+
 pub trait WithDefaultColor {
     fn with_default(self, default_color: Color) -> ColoredString;
 }
@@ -33,7 +43,7 @@ impl WithDefaultColor for ColoredString {
     }
 }
 
-fn print(msg: &str) {
+pub fn print(msg: &str) {
     info!(target: "mappr::print", raw_msg = msg);
 }
 
@@ -134,10 +144,6 @@ pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
 pub fn centerln(msg: &str) {
     let space = " ".repeat((TOTAL_WIDTH - console::measure_text_width(msg)) / 2);
     print(&format!("{}{}{}", space, msg, space));
-}
-
-pub fn println(msg: &str) {
-    print(msg);
 }
 
 const NO_RESULTS_0: &str = r#"

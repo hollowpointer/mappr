@@ -5,10 +5,12 @@ use anyhow;
 use colored::*;
 use tracing::info_span;
 
-use crate::terminal::{colors, format, print, spinner};
+use crate::{mprint, terminal::{colors, format, print, spinner}};
 use mappr_common::{config::Config, network::host::Host, success};
 use mappr_common::network::range::IpCollection;
 use mappr_core::scanner;
+
+type Detail = (String, ColoredString);
 
 pub async fn discover(ips: IpCollection, cfg: &Config) -> anyhow::Result<()> {
     let span = info_span!("discovery", indicatif.pb_show = true);
@@ -36,7 +38,7 @@ fn discovery_ends(hosts: &mut [Host], total_time: Duration, cfg: &Config) {
     }
 
     if cfg.quiet > 0 {
-        print::println("");
+        mprint!();
     }
 
     print::header("Network Discovery", cfg.quiet);
@@ -57,7 +59,7 @@ fn print_hosts(hosts: &mut [Host], cfg: &Config) {
             _ => print_host_tree(host, idx, cfg)
         }
         if idx + 1 != hosts.len() {
-            print::println("");
+            mprint!();
         }
     }
 }
@@ -74,7 +76,7 @@ fn print_summary(hosts_len: usize, total_time: Duration, cfg: &Config) {
             print::centerln(output);
         },
         _ => {
-            print::println("");
+            mprint!();
             success!("{}", output)
         },
     }
@@ -84,14 +86,14 @@ fn print_summary(hosts_len: usize, total_time: Duration, cfg: &Config) {
 fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
     let hostname = host.hostname.as_deref().unwrap_or("No hostname");
     print::tree_head(idx, hostname);
-    let mut key_value_pair: Vec<(String, ColoredString)> = format::ip_to_key_value_pair(&host.ips, cfg);
+    let mut details: Vec<Detail> = format::ip_to_detail(&host.ips, cfg);
 
-    if let Some(mac_key_value) = format::mac_to_key_value_pair(&host.mac, cfg) {
-        key_value_pair.push(mac_key_value);
+    if let Some(mac_detai) = format::mac_to_detail(&host.mac, cfg) {
+        details.push(mac_detai);
     }
 
-    if let Some(vendor_key_value) = format::vendor_to_key_value_pair(&host.vendor) {
-        key_value_pair.push(vendor_key_value);
+    if let Some(vendor_detail) = format::vendor_to_detail(&host.vendor) {
+        details.push(vendor_detail);
     }
 
     if !host.network_roles.is_empty() {
@@ -102,10 +104,10 @@ fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
             .collect::<Vec<String>>()
             .join(", ");
 
-        let roles_key_value: (String, ColoredString) = ("Roles".to_string(), joined_roles.normal());
+        let roles_detail: (String, ColoredString) = ("Roles".to_string(), joined_roles.normal());
 
-        key_value_pair.push(roles_key_value);
+        details.push(roles_detail);
     }
 
-    print::as_tree_one_level(key_value_pair);
+    print::as_tree_one_level(details);
 }

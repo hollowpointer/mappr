@@ -20,7 +20,7 @@ pub fn ipv6_to_type_str(ipv6_addr: &Ipv6Addr) -> &'static str {
     "IPv6"
 }
 
-pub fn ip_to_key_value_pair(ips: &BTreeSet<IpAddr>, cfg: &Config) -> Vec<(String, ColoredString)> {
+pub fn ip_to_detail(ips: &BTreeSet<IpAddr>, cfg: &Config) -> Vec<(String, ColoredString)> {
     ips.iter()
         .map(|ip| match ip {
             IpAddr::V4(ipv4_addr) => {
@@ -56,7 +56,7 @@ fn is_global_unicast(ip_addr: &IpAddr) -> bool {
     }
 }
 
-pub fn mac_to_key_value_pair(mac_opt: &Option<MacAddr>, cfg: &Config) -> Option<(String, ColoredString)> {
+pub fn mac_to_detail(mac_opt: &Option<MacAddr>, cfg: &Config) -> Option<(String, ColoredString)> {
     let mut result: Option<(String, ColoredString)> = None;
 
     if let Some(mac) = mac_opt {
@@ -69,7 +69,7 @@ pub fn mac_to_key_value_pair(mac_opt: &Option<MacAddr>, cfg: &Config) -> Option<
     result
 }
 
-pub fn vendor_to_key_value_pair(vendor_opt: &Option<String>) -> Option<(String, ColoredString)> {
+pub fn vendor_to_detail(vendor_opt: &Option<String>) -> Option<(String, ColoredString)> {
     if let Some(vendor) = vendor_opt {
         Some(("Vendor".to_string(), vendor.to_string().color(colors::MAC_ADDR)))
     } else {
