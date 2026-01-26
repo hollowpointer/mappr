@@ -2,13 +2,13 @@ use std::{cell::Cell, fmt::Display};
 
 use crate::terminal::{banner, colors};
 use colored::*;
-use unicode_width::UnicodeWidthStr;
 use tracing::info;
+use unicode_width::UnicodeWidthStr;
 
 const TOTAL_WIDTH: usize = 64;
 
 thread_local! {
-    pub static GLOBAL_KEY_WIDTH: Cell<usize> = Cell::new(0);
+    pub static GLOBAL_KEY_WIDTH: Cell<usize> = const { Cell::new(0) }
 }
 
 #[macro_export]
@@ -25,13 +25,13 @@ pub trait WithDefaultColor {
     fn with_default(self, default_color: Color) -> ColoredString;
 }
 
-impl<'a> WithDefaultColor for &'a str {
+impl WithDefaultColor for &str {
     fn with_default(self, default_color: Color) -> ColoredString {
         self.color(default_color)
     }
 }
 
-impl<'a> WithDefaultColor for String {
+impl WithDefaultColor for String {
     fn with_default(self, default_color: Color) -> ColoredString {
         self.color(default_color)
     }
@@ -57,14 +57,14 @@ pub fn banner(no_banner: bool, q_level: u8) {
     let text: ColoredString = text_content.bright_green().bold();
     let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
     let output: String = format!("{}{}{}", sep, text, sep);
-    
+
     print(&output);
     banner::print();
 }
 
 pub fn header(msg: &str, q_level: u8) {
-    if q_level > 0 { 
-        return; 
+    if q_level > 0 {
+        return;
     }
 
     let formatted: String = format!("⟦ {} ⟧", msg);
@@ -133,7 +133,7 @@ pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
             " {} {}{}{} {}",
             branch,
             key,
-            ".".repeat(7 - key.len()).color(colors::SEPARATOR), 
+            ".".repeat(7 - key.len()).color(colors::SEPARATOR),
             ":".color(colors::SEPARATOR),
             value
         );
@@ -163,5 +163,9 @@ pub fn no_results() {
 }
 
 pub fn end_of_program() {
-    print(&format!("{}", "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)));
+    print(&format!(
+        "{}",
+        "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)
+    ));
 }
+

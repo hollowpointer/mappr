@@ -24,17 +24,21 @@ mod routed;
 
 use local::LocalScanner;
 use routed::RoutedScanner;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
-use tokio::sync::mpsc;
 
 use crate::scanner::resolver::HostnameResolver;
 
 pub static FOUND_HOST_COUNT: AtomicUsize = AtomicUsize::new(0);
 pub static STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 
-pub fn increment_host_count() { FOUND_HOST_COUNT.fetch_add(1, Ordering::Relaxed); }
-pub fn get_host_count() -> usize { FOUND_HOST_COUNT.load(Ordering::Relaxed) }
+pub fn increment_host_count() {
+    FOUND_HOST_COUNT.fetch_add(1, Ordering::Relaxed);
+}
+pub fn get_host_count() -> usize {
+    FOUND_HOST_COUNT.load(Ordering::Relaxed)
+}
 
 #[async_trait]
 trait NetworkExplorer {
@@ -52,13 +56,13 @@ pub async fn perform_discovery(targets: IpCollection, cfg: &Config) -> anyhow::R
 
     let (dns_tx, resolver_task) = if !cfg.no_dns {
         let (tx, rx) = mpsc::unbounded_channel();
-        let task = spawn_resolver(rx).await; 
+        let task = spawn_resolver(rx).await;
         (Some(tx), Some(task))
     } else {
         info!("DNS resolution skipped by user flag");
         (None, None)
     };
-    
+
     let scanner_handles = spawn_explorers(targets, dns_tx).await;
 
     let mut hosts = Vec::new();
@@ -70,31 +74,30 @@ pub async fn perform_discovery(targets: IpCollection, cfg: &Config) -> anyhow::R
         }
     }
 
-    if let Some(task) = resolver_task {
-        if let Ok(Some(mut resolver)) = task.await {
-            resolver.resolve_hosts(&mut hosts);
-        }
+    if let Some(task) = resolver_task
+        && let Ok(Some(mut resolver)) = task.await
+    {
+        resolver.resolve_hosts(&mut hosts);
     }
 
     Ok(hosts)
 }
 
 async fn spawn_explorers(
-    targets: IpCollection, 
-    dns_tx: Option<mpsc::UnboundedSender<IpAddr>>
+    targets: IpCollection,
+    dns_tx: Option<mpsc::UnboundedSender<IpAddr>>,
 ) -> Vec<JoinHandle<anyhow::Result<Vec<Host>>>> {
     let mut handles = Vec::new();
-    
+
     for (intf, (local_ips, routed_ips)) in interface::map_ips_to_interfaces(targets) {
-        
         // Local Scanner (ARP/ICMP)
         if !local_ips.is_empty() {
             let tx = dns_tx.clone();
             let intf_c = intf.clone();
-            
+
             let handle = tokio::spawn(async move {
                 let mut scanner = LocalScanner::new(intf_c, local_ips, tx)?;
-                scanner.discover_hosts().await 
+                scanner.discover_hosts().await
             });
             handles.push(handle);
         }
@@ -103,7 +106,7 @@ async fn spawn_explorers(
         if !routed_ips.is_empty() {
             let tx = dns_tx.clone();
             let intf_c = intf.clone();
-            
+
             let handle = tokio::spawn(async move {
                 let mut scanner = RoutedScanner::new(intf_c, routed_ips, tx)?;
                 scanner.discover_hosts().await
@@ -118,9 +121,9 @@ async fn spawn_resolver(dns_rx: UnboundedReceiver<IpAddr>) -> JoinHandle<Option<
     tokio::spawn(async move {
         match HostnameResolver::new(dns_rx) {
             Ok(resolver) => {
-                success!("Successfully initialized hostname resolver");    
+                success!("Successfully initialized hostname resolver");
                 Some(resolver.run().await)
-            },
+            }
             Err(e) => {
                 error!("Resolver failed to start: {e}");
                 None
@@ -142,3 +145,4 @@ fn spawn_user_input_listener() {
         }
     });
 }
+

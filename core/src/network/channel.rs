@@ -2,9 +2,9 @@
 use anyhow::{self, Context};
 use pnet::datalink;
 use pnet::datalink::{Channel, Config, DataLinkReceiver, DataLinkSender, NetworkInterface};
-use tokio::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 const READ_TIMEOUT_MS: u64 = 50;
 
@@ -27,7 +27,7 @@ pub fn start_capture(intf: &NetworkInterface) -> anyhow::Result<EthernetHandle> 
 pub fn open_eth_channel<F>(
     intf: &NetworkInterface,
     channel_opener: F,
-    cfg: Config
+    cfg: Config,
 ) -> anyhow::Result<(Box<dyn DataLinkSender>, Box<dyn DataLinkReceiver>)>
 where
     F: FnOnce(&NetworkInterface, Config) -> std::io::Result<datalink::Channel>,
@@ -41,15 +41,19 @@ where
     }
 }
 
-pub fn spawn_eth_listener(eth_tx: mpsc::UnboundedSender<Vec<u8>>, eth_rx: Box<dyn DataLinkReceiver>) {
+pub fn spawn_eth_listener(
+    eth_tx: mpsc::UnboundedSender<Vec<u8>>,
+    eth_rx: Box<dyn DataLinkReceiver>,
+) {
     thread::spawn(move || {
         let mut eth_iter = eth_rx;
         loop {
-            if let Ok(frame) = eth_iter.next() {
-                if eth_tx.send(frame.to_vec()).is_err() {
-                    break;
-                }
+            if let Ok(frame) = eth_iter.next()
+                && eth_tx.send(frame.to_vec()).is_err()
+            {
+                break;
             }
         }
     });
 }
+

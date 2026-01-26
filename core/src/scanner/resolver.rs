@@ -1,13 +1,14 @@
 use std::{
-    collections::HashMap, 
-    net::{IpAddr, Ipv4Addr}, 
-    sync::atomic::{AtomicU16, Ordering}, time::Duration
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr},
+    sync::atomic::{AtomicU16, Ordering},
+    time::Duration,
 };
 
 use anyhow::{Context, ensure};
 use mappr_common::{network::host::Host, utils};
 use mappr_protocols::{dns, udp};
-use pnet::packet::{udp::UdpPacket, Packet};
+use pnet::packet::{Packet, udp::UdpPacket};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::network::transport::{self, TransportHandle, TransportType};
@@ -30,7 +31,7 @@ impl HostnameResolver {
             hostname_map: HashMap::new(),
             dns_map: HashMap::new(),
             dns_rx,
-            id_counter: AtomicU16::new(0)
+            id_counter: AtomicU16::new(0),
         })
     }
 
@@ -60,7 +61,8 @@ impl HostnameResolver {
                         let _ = self.process_udp_packets(&bytes);
                     }
                 }
-            }).await;
+            })
+            .await;
         }
 
         self
@@ -70,23 +72,23 @@ impl HostnameResolver {
         ensure!(is_queryable(ip), "{ip} cannot be queried");
         let id: u16 = self.get_next_trans_id();
         self.dns_map.insert(id, *ip);
-        let (dns_addr, dns_port) = get_dns_server_socket(&ip);
-        
+        let (dns_addr, dns_port) = get_dns_server_socket(ip);
+
         let bytes: Vec<u8> = dns::create_ptr_packet(ip, id)?;
-        let src_port: u16 = rand::random_range(50_000..u16::max_value());
+        let src_port: u16 = rand::random_range(50_000..u16::MAX);
         let udp_bytes: Vec<u8> = udp::create_packet(src_port, dns_port, bytes)?;
         let udp_pkt = UdpPacket::new(&udp_bytes).context("creating udp packet")?;
-        
+
         self.udp_handle.tx.send_to(udp_pkt, dns_addr)?;
         Ok(())
     }
 
     fn process_udp_packets(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
-        let udp_packet = UdpPacket::new(&bytes).context("truncated or invalid UDP packet")?;
+        let udp_packet = UdpPacket::new(bytes).context("truncated or invalid UDP packet")?;
         match udp_packet.get_source() {
             DNS_PORT => self.process_dns_packet(udp_packet)?,
             MDNS_PORT => { /* Implement mDNS next */ }
-            _ => { },
+            _ => {}
         }
         Ok(())
     }
@@ -102,10 +104,10 @@ impl HostnameResolver {
     pub fn resolve_hosts(&mut self, hosts: &mut Vec<Host>) {
         for host in hosts {
             for ip in &host.ips {
-                if let Some(hostname) = self.hostname_map.remove(ip) {
-                    if host.hostname.is_none() {
-                        host.hostname = Some(hostname);
-                    }
+                if let Some(hostname) = self.hostname_map.remove(ip)
+                    && host.hostname.is_none()
+                {
+                    host.hostname = Some(hostname);
                 }
             }
         }
@@ -118,12 +120,10 @@ impl HostnameResolver {
 
 fn is_queryable(ip: &IpAddr) -> bool {
     match ip {
-        IpAddr::V6(ipv6_addr) => {
-            utils::ip::is_global_unicast(ipv6_addr)
-        },
+        IpAddr::V6(ipv6_addr) => utils::ip::is_global_unicast(ipv6_addr),
         IpAddr::V4(_ipv4_addr) => {
             // Future refinement: check for private ranges/localhost here
-            true 
+            true
         }
     }
 }
@@ -131,7 +131,7 @@ fn is_queryable(ip: &IpAddr) -> bool {
 // This is fragile and needs rework
 fn get_dns_server_socket(ip: &IpAddr) -> (IpAddr, u16) {
     let ip_addr: IpAddr = {
-        if utils::ip::is_private(&ip) {
+        if utils::ip::is_private(ip) {
             IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1))
         } else {
             IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))
@@ -139,3 +139,4 @@ fn get_dns_server_socket(ip: &IpAddr) -> (IpAddr, u16) {
     };
     (ip_addr, DNS_PORT)
 }
+

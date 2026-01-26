@@ -9,8 +9,8 @@ pub mod udp;
 pub mod utils;
 
 use anyhow::ensure;
-use mappr_common::{error, success};
 use mappr_common::sender::{PacketType, SenderConfig};
+use mappr_common::{error, success};
 
 use pnet::ipnetwork::Ipv4Network;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
@@ -25,26 +25,36 @@ pub fn create_transport_packets() -> anyhow::Result<Vec<Vec<u8>>> {
 pub fn create_ethernet_packets(sender_config: &SenderConfig) -> anyhow::Result<Vec<Vec<u8>>> {
     let mut packets = Vec::new();
 
-    let mut add_packets = |ptype, name, generator: fn(&SenderConfig) -> anyhow::Result<Vec<Vec<u8>>>| {
-        if sender_config.has_packet_type(ptype) {
-            match generator(sender_config) {
-                Ok(new_pkts) => {
-                    let packets_str: &str = match new_pkts.len() {
-                        1 => "packet",
-                        _ => "packets"
-                    };
-                    success!(verbosity = 1, "Created {} {} {}", new_pkts.len(), name, packets_str);
-                    packets.extend(new_pkts);
+    let mut add_packets =
+        |ptype, name, generator: fn(&SenderConfig) -> anyhow::Result<Vec<Vec<u8>>>| {
+            if sender_config.has_packet_type(ptype) {
+                match generator(sender_config) {
+                    Ok(new_pkts) => {
+                        let packets_str: &str = match new_pkts.len() {
+                            1 => "packet",
+                            _ => "packets",
+                        };
+                        success!(
+                            verbosity = 1,
+                            "Created {} {} {}",
+                            new_pkts.len(),
+                            name,
+                            packets_str
+                        );
+                        packets.extend(new_pkts);
+                    }
+                    Err(e) => error!("Failed to create {} packets: {}", name, e),
                 }
-                Err(e) => error!("Failed to create {} packets: {}", name, e),
             }
-        }
-    };
+        };
 
     add_packets(PacketType::ARP, "ARP", create_arp_packets);
     add_packets(PacketType::ICMPv6, "ICMPv6", create_icmpv6_packets);
 
-    ensure!(!packets.is_empty(), "No discovery packets could be created.");
+    ensure!(
+        !packets.is_empty(),
+        "No discovery packets could be created."
+    );
 
     Ok(packets)
 }
@@ -71,9 +81,9 @@ fn create_icmpv6_packets(sender_config: &SenderConfig) -> anyhow::Result<Vec<Vec
 
 pub fn get_ip_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<IpAddr> {
     match frame.get_ethertype() {
-        EtherTypes::Arp => Ok(IpAddr::V4(arp::get_ipv4_addr_from_eth(&frame)?)),
-        EtherTypes::Ipv4 => Ok(IpAddr::V4(ip::get_ipv4_addr_from_eth(&frame)?)),
-        EtherTypes::Ipv6 => Ok(IpAddr::V6(ip::get_ipv6_addr_from_eth(&frame)?)),
+        EtherTypes::Arp => Ok(IpAddr::V4(arp::get_ipv4_addr_from_eth(frame)?)),
+        EtherTypes::Ipv4 => Ok(IpAddr::V4(ip::get_ipv4_addr_from_eth(frame)?)),
+        EtherTypes::Ipv6 => Ok(IpAddr::V6(ip::get_ipv6_addr_from_eth(frame)?)),
         _ => Err(anyhow::anyhow!(
             "Unsupported EtherType: {:?}",
             frame.get_ethertype()

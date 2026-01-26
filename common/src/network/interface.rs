@@ -1,3 +1,4 @@
+use crate::info;
 #[cfg(target_os = "linux")]
 use linux_impl::{is_physical, is_wireless};
 #[cfg(target_os = "macos")]
@@ -7,7 +8,6 @@ use pnet::ipnetwork::{IpNetwork, Ipv4Network};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
-use crate::info;
 
 use crate::network::range::IpCollection;
 
@@ -33,10 +33,15 @@ pub fn get_lan_network() -> anyhow::Result<Option<Ipv4Network>> {
 
     let interfaces_str: &str = match interfaces.len() {
         1 => "interface",
-        _ => "interfaces"
+        _ => "interfaces",
     };
 
-    info!(verbosity = 1, "Identified {} network {}, picking the best one...", interfaces.len(), interfaces_str);
+    info!(
+        verbosity = 1,
+        "Identified {} network {}, picking the best one...",
+        interfaces.len(),
+        interfaces_str
+    );
 
     let interfaces: Vec<NetworkInterface> = interfaces
         .into_iter()
@@ -50,7 +55,10 @@ pub fn get_lan_network() -> anyhow::Result<Option<Ipv4Network>> {
 
     let interface: NetworkInterface =
         if let Some(interface) = select_best_lan_interface(interfaces, is_wired) {
-            info!(verbosity = 1, "Performing LAN scan on interface {}", interface.name);
+            info!(
+                verbosity = 1,
+                "Performing LAN scan on interface {}", interface.name
+            );
             interface
         } else {
             anyhow::bail!("No interfaces available for LAN discovery");
@@ -77,21 +85,24 @@ pub fn get_prioritized_interfaces(limit: usize) -> anyhow::Result<Vec<NetworkInt
 }
 
 pub fn is_layer_2_capable(intf: &NetworkInterface) -> bool {
-    return !intf.is_point_to_point() && !intf.is_loopback() && intf.mac.is_some()
+    !intf.is_point_to_point() && !intf.is_loopback() && intf.mac.is_some()
 }
 
 pub fn is_on_link(intf: &NetworkInterface, ips: &IpCollection) -> bool {
     for range in &ips.ranges {
         let mut range_covered = false;
         for iface_ipnet in &intf.ips {
-            if let pnet::ipnetwork::IpNetwork::V4(network) = iface_ipnet {
-                if network.contains(range.start_addr) && network.contains(range.end_addr) {
-                    range_covered = true;
-                    break;
-                }
+            if let pnet::ipnetwork::IpNetwork::V4(network) = iface_ipnet
+                && network.contains(range.start_addr)
+                && network.contains(range.end_addr)
+            {
+                range_covered = true;
+                break;
             }
         }
-        if !range_covered { return false; }
+        if !range_covered {
+            return false;
+        }
     }
 
     for single_ip in &ips.singles {
@@ -102,7 +113,9 @@ pub fn is_on_link(intf: &NetworkInterface, ips: &IpCollection) -> bool {
                 break;
             }
         }
-        if !ip_covered { return false; }
+        if !ip_covered {
+            return false;
+        }
     }
 
     true
@@ -148,13 +161,11 @@ fn select_best_lan_interface(
     match interfaces.len() {
         0 => None,
         1 => Some(interfaces[0].clone()),
-        _ => {
-            interfaces
-                .iter()
-                .find(|&interface| is_wired(interface))
-                .map(|iface_ref_ref| iface_ref_ref.clone())
-                .or(Some(interfaces[0].clone()))
-        }
+        _ => interfaces
+            .iter()
+            .find(|&interface| is_wired(interface))
+            .cloned()
+            .or(Some(interfaces[0].clone())),
     }
 }
 
@@ -202,8 +213,11 @@ pub fn map_ips_to_interfaces(
     }
 
     type ThreadSockets = (Option<UdpSocket>, Option<UdpSocket>);
-    
-    enum RouteType { Local, Routed }
+
+    enum RouteType {
+        Local,
+        Routed,
+    }
 
     let singles: Vec<IpAddr> = collection.singles.into_iter().collect();
 
@@ -217,7 +231,7 @@ pub fn map_ips_to_interfaces(
                 }
 
                 let source_ip = resolve_route_source_ip(target_ip, sockets)?;
-                
+
                 ip_to_idx
                     .get(&source_ip)
                     .copied()
@@ -237,9 +251,7 @@ pub fn map_ips_to_interfaces(
 
     result_map
         .into_iter()
-        .map(|(idx, (local_ips, routed_ips))| {
-            (interfaces[idx].clone(), (local_ips, routed_ips))
-        })
+        .map(|(idx, (local_ips, routed_ips))| (interfaces[idx].clone(), (local_ips, routed_ips)))
         .collect()
 }
 
@@ -626,8 +638,7 @@ mod tests {
 
         let result = resolve_route_source_ip(target, &mut sockets);
 
-        if result.is_some() {
-            let src_ip = result.unwrap();
+        if let Some(src_ip) = result {
             assert!(src_ip.is_ipv4());
             assert!(!src_ip.is_loopback());
             assert!(!src_ip.is_unspecified());

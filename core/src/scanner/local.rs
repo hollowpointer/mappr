@@ -6,37 +6,23 @@
 //! This scanner requires **root privileges** to construct and intercept raw
 //! Layer 2 packets via the operating system's network sockets.
 
-use std::{
-    collections::HashMap, net::IpAddr, sync::{atomic::Ordering}, time::Duration
-};
+use std::{collections::HashMap, net::IpAddr, sync::atomic::Ordering, time::Duration};
 
 use anyhow::ensure;
-use pnet::{
-    datalink::NetworkInterface,
-    util::MacAddr,
-};
+use pnet::{datalink::NetworkInterface, util::MacAddr};
 
 use mappr_common::{
-    error, 
-    network::{
-        host::Host, 
-        range::IpCollection, 
-        target::IS_LAN_SCAN
-    }, 
-    sender::{
-        PacketType, 
-        SenderConfig
-    }, 
-    utils::timing::ScanTimer
+    error,
+    network::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
+    sender::{PacketType, SenderConfig},
+    utils::timing::ScanTimer,
 };
 
 use mappr_protocols as protocol;
 use protocol::ethernet;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::network::{
-    channel::{self, EthernetHandle},
-};
+use crate::network::channel::{self, EthernetHandle};
 
 use super::NetworkExplorer;
 use async_trait::async_trait;
@@ -50,7 +36,7 @@ pub struct LocalScanner {
     sender_cfg: SenderConfig,
     eth_handle: EthernetHandle,
     timer: ScanTimer,
-    dns_tx: Option<UnboundedSender<IpAddr>>
+    dns_tx: Option<UnboundedSender<IpAddr>>,
 }
 
 #[async_trait]
@@ -59,7 +45,7 @@ impl NetworkExplorer for LocalScanner {
         if let Err(e) = self.send_discovery_packets() {
             error!("Failed to send discovery packets: {e}");
         }
-        
+
         let scan_deadline = tokio::time::sleep(MAX_CHANNEL_TIME);
         tokio::pin!(scan_deadline);
 
@@ -77,7 +63,7 @@ impl NetworkExplorer for LocalScanner {
                         None => break,
                     }
                 }
-                
+
                 _ = &mut scan_deadline => {
                     break;
                 }
@@ -96,8 +82,11 @@ impl NetworkExplorer for LocalScanner {
 }
 
 impl LocalScanner {
-    pub fn new(intf: NetworkInterface, collection: IpCollection, dns_tx: Option<UnboundedSender<IpAddr>>)
-    -> anyhow::Result<Self> {
+    pub fn new(
+        intf: NetworkInterface,
+        collection: IpCollection,
+        dns_tx: Option<UnboundedSender<IpAddr>>,
+    ) -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
 
@@ -126,7 +115,7 @@ impl LocalScanner {
             sender_cfg,
             eth_handle,
             timer,
-            dns_tx
+            dns_tx,
         })
     }
 
@@ -141,15 +130,17 @@ impl LocalScanner {
     fn process_eth_packet(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         let eth_frame = ethernet::get_packet_from_u8(bytes)?;
         let source_addr = protocol::get_ip_addr_from_eth(&eth_frame)?;
-        ensure!(self.sender_cfg.is_addr_in_subnet(source_addr), "{source_addr} is not in range");
-        
+        ensure!(
+            self.sender_cfg.is_addr_in_subnet(source_addr),
+            "{source_addr} is not in range"
+        );
+
         // Needs rework
-        if source_addr.is_ipv6() {
-            if !IS_LAN_SCAN.load(Ordering::Relaxed) {
-                if !self.hosts_map.contains_key(&eth_frame.get_source()) {
-                    return Ok(());
-                }
-            }
+        if source_addr.is_ipv6()
+            && !IS_LAN_SCAN.load(Ordering::Relaxed)
+            && !self.hosts_map.contains_key(&eth_frame.get_source())
+        {
+            return Ok(());
         }
 
         let source_mac = eth_frame.get_source();
@@ -179,3 +170,4 @@ impl LocalScanner {
         not_stopped && time_expired && work_remains
     }
 }
+

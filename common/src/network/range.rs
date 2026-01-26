@@ -1,5 +1,5 @@
-use std::net::{IpAddr, Ipv4Addr};
 use std::collections::HashSet;
+use std::net::{IpAddr, Ipv4Addr};
 
 use crate::info;
 
@@ -13,12 +13,18 @@ impl Ipv4Range {
     pub fn new(start: Ipv4Addr, end: Ipv4Addr) -> Self {
         let s_u32 = u32::from(start);
         let e_u32 = u32::from(end);
-        
+
         if s_u32 <= e_u32 {
-            Self { start_addr: start, end_addr: end }
+            Self {
+                start_addr: start,
+                end_addr: end,
+            }
         } else {
             info!(verbosity = 1, "{start} > {end}. Reversing order.");
-            Self { start_addr: end, end_addr: start }
+            Self {
+                start_addr: end,
+                end_addr: start,
+            }
         }
     }
 
@@ -45,16 +51,19 @@ impl Ipv4Range {
             0
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 pub fn cidr_range(ip: Ipv4Addr, prefix: u8) -> anyhow::Result<Ipv4Range> {
     let network = pnet::ipnetwork::Ipv4Network::new(ip, prefix)?;
     let start = network.network();
     let end = network.broadcast();
-    
+
     Ok(Ipv4Range::new(start, end))
 }
-
 
 #[derive(Debug, Clone, Default)]
 pub struct IpCollection {
@@ -74,10 +83,10 @@ impl IpCollection {
 
     pub fn add_range(&mut self, range: Ipv4Range) {
         info!(
-            verbosity = 2, 
-            "Adding {} - {} to collection (Size: {})", 
+            verbosity = 2,
+            "Adding {} - {} to collection (Size: {})",
             range.start_addr,
-            range.end_addr, 
+            range.end_addr,
             range.len()
         );
         self.ranges.push(range);
@@ -85,20 +94,17 @@ impl IpCollection {
 
     pub fn extend(&mut self, other: IpCollection) {
         info!(
-            verbosity = 2, 
-            "Extending collection: Adding {} ranges and {} singles", 
-            other.ranges.len(), 
+            verbosity = 2,
+            "Extending collection: Adding {} ranges and {} singles",
+            other.ranges.len(),
             other.singles.len()
         );
         self.ranges.extend(other.ranges);
         self.singles.extend(other.singles);
     }
-    
+
     pub fn len(&self) -> usize {
-        let ranges_count: usize = self.ranges
-            .iter()
-            .map(|r| r.len() as usize)
-            .sum();
+        let ranges_count: usize = self.ranges.iter().map(|r| r.len() as usize).sum();
 
         ranges_count + self.singles.len()
     }
@@ -148,17 +154,14 @@ impl IpCollection {
     }
 
     pub fn contains(&self, ip: &IpAddr) -> bool {
-        match ip {
-            IpAddr::V4(ipv4_addr) => {
-                for range in &self.ranges {
-                    if range.contains(ipv4_addr) {
-                        return true;
-                    }
+        if let IpAddr::V4(ipv4_addr) = ip {
+            for range in &self.ranges {
+                if range.contains(ipv4_addr) {
+                    return true;
                 }
-            },
-            _ => { }
+            }
         }
-        self.singles.contains(ip)
+        false
     }
 
     pub fn is_empty(&self) -> bool {
@@ -166,10 +169,11 @@ impl IpCollection {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = IpAddr> + '_ {
-        let range_iter = self.ranges.iter()
-            .flat_map(|range| range.to_iter());
-        
-        let single_iter = self.singles.iter()
+        let range_iter = self.ranges.iter().flat_map(|range| range.to_iter());
+
+        let single_iter = self
+            .singles
+            .iter()
             .filter(|ip| {
                 if let IpAddr::V4(v4) = ip {
                     !self.ranges.iter().any(|r| r.contains(v4))
@@ -188,7 +192,7 @@ impl IntoIterator for IpCollection {
     type IntoIter = std::vec::IntoIter<IpAddr>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let total_size = self.len(); 
+        let total_size = self.len();
         let mut all_ips = Vec::with_capacity(total_size);
 
         all_ips.extend(self.singles);

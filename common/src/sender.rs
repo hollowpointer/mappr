@@ -14,7 +14,7 @@ use crate::utils::interface::NetworkInterfaceExtension;
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub enum PacketType {
     ARP,
-    ICMPv6
+    ICMPv6,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -24,7 +24,7 @@ pub struct SenderConfig {
     ipv6_nets: Vec<Ipv6Network>,
     targets_v4: HashSet<Ipv4Addr>,
     targets_v6: HashSet<Ipv6Addr>,
-    packet_types: HashSet<PacketType>
+    packet_types: HashSet<PacketType>,
 }
 
 impl From<&NetworkInterface> for SenderConfig {
@@ -35,7 +35,7 @@ impl From<&NetworkInterface> for SenderConfig {
             ipv6_nets: interface.get_ipv6_nets(),
             targets_v4: HashSet::new(),
             targets_v6: HashSet::new(),
-            packet_types: HashSet::new()
+            packet_types: HashSet::new(),
         }
     }
 }
@@ -74,6 +74,10 @@ impl SenderConfig {
         self.targets_v4.len() + self.targets_v6.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.targets_v4.is_empty() && self.targets_v6.is_empty()
+    }
+
     pub fn add_target(&mut self, target_addr: IpAddr) {
         match target_addr {
             IpAddr::V4(ipv4_addr) => self.targets_v4.insert(ipv4_addr),
@@ -96,12 +100,8 @@ impl SenderConfig {
 
     pub fn is_addr_in_subnet(&self, ip_addr: IpAddr) -> bool {
         match ip_addr {
-            IpAddr::V4(ipv4_addr) => {
-                self.ipv4_nets.iter().any(|net| net.contains(ipv4_addr))
-            },
-            IpAddr::V6(ipv6_addr) => {
-                self.ipv6_nets.iter().any(|net| net.contains(ipv6_addr))
-            },
+            IpAddr::V4(ipv4_addr) => self.ipv4_nets.iter().any(|net| net.contains(ipv4_addr)),
+            IpAddr::V6(ipv6_addr) => self.ipv6_nets.iter().any(|net| net.contains(ipv6_addr)),
         }
     }
 

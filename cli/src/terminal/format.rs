@@ -31,14 +31,14 @@ pub fn ip_to_detail(ips: &BTreeSet<IpAddr>, cfg: &Config) -> Vec<(String, Colore
                 let ipv6_type: &str = ipv6_to_type_str(ipv6_addr);
                 let ipv6_addr: ColoredString = if cfg.redact {
                     let ip_str: String = match ip::get_ipv6_type(ipv6_addr) {
-                        ip::Ipv6AddressType::GlobalUnicast => redact::global_unicast(&ipv6_addr),
-                        ip::Ipv6AddressType::UniqueLocal => redact::unique_local(&ipv6_addr),
-                        ip::Ipv6AddressType::LinkLocal => redact::link_local(&ipv6_addr),
-                        _ => ipv6_addr.to_string()
+                        ip::Ipv6AddressType::GlobalUnicast => redact::global_unicast(ipv6_addr),
+                        ip::Ipv6AddressType::UniqueLocal => redact::unique_local(ipv6_addr),
+                        ip::Ipv6AddressType::LinkLocal => redact::link_local(ipv6_addr),
+                        _ => ipv6_addr.to_string(),
                     };
                     ip_str.color(colors::IPV6_ADDR)
-                } else { 
-                    ipv6_addr.to_string().color(colors::IPV6_ADDR) 
+                } else {
+                    ipv6_addr.to_string().color(colors::IPV6_ADDR)
                 };
                 (String::from(ipv6_type), ipv6_addr)
             }
@@ -50,7 +50,7 @@ fn is_global_unicast(ip_addr: &IpAddr) -> bool {
     match ip_addr {
         IpAddr::V6(ipv6_addr) => {
             let first_byte = ipv6_addr.octets()[0];
-            0x3F >= first_byte && first_byte >= 0x20
+            (0x20..=0x3F).contains(&first_byte)
         }
         _ => false,
     }
@@ -61,8 +61,10 @@ pub fn mac_to_detail(mac_opt: &Option<MacAddr>, cfg: &Config) -> Option<(String,
 
     if let Some(mac) = mac_opt {
         let mac_str: String = if cfg.redact {
-            redact::mac_addr(&mac)
-        } else { mac.to_string() };
+            redact::mac_addr(mac)
+        } else {
+            mac.to_string()
+        };
         result = Some(("MAC".to_string(), mac_str.color(colors::MAC_ADDR)))
     }
 
@@ -70,9 +72,10 @@ pub fn mac_to_detail(mac_opt: &Option<MacAddr>, cfg: &Config) -> Option<(String,
 }
 
 pub fn vendor_to_detail(vendor_opt: &Option<String>) -> Option<(String, ColoredString)> {
-    if let Some(vendor) = vendor_opt {
-        Some(("Vendor".to_string(), vendor.to_string().color(colors::MAC_ADDR)))
-    } else {
-        None
-    }
+    vendor_opt.as_ref().map(|vendor| {
+        (
+            "Vendor".to_string(),
+            vendor.to_string().color(colors::MAC_ADDR),
+        )
+    })
 }

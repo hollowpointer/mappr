@@ -7,11 +7,13 @@
 //! * **Identity**: A host is primarily identified by its IP address for the duration of a scan.
 //! * **Enrichment**: The model is mutable and strictly additive; scans populate optional fields (hostname, vendor) as data becomes available.
 
+use crate::network::mac;
 use pnet::datalink::MacAddr;
 use std::{
-    collections::{BTreeSet, HashSet, VecDeque}, net::IpAddr, time::Duration
+    collections::{BTreeSet, HashSet, VecDeque},
+    net::IpAddr,
+    time::Duration,
 };
-use crate::network::mac;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum NetworkRole {
@@ -28,28 +30,28 @@ pub struct Host {
     /// The primary way to identify the host (on this run).
     /// Note: A host might have multiple IPs, but we usually discover it via one.
     pub ip: IpAddr,
-    
+
     /// The resolved hostname (if any).
     pub hostname: Option<String>,
-    
+
     /// All known IP addresses for this host.
     pub ips: BTreeSet<IpAddr>,
-    
+
     /// Open ports found on the host.
     /// TODO: Refactor to a rich `Port` struct in a future iteration.
     pub ports: BTreeSet<u16>,
-    
+
     /// The MAC address (only available if the host is on the same LAN).
     pub mac: Option<MacAddr>,
-    
+
     /// The device vendor/manufacturer (derived from MAC).
     pub vendor: Option<String>,
-    
+
     /// Inferred network roles (e.g., is it a Gateway?).
     pub network_roles: HashSet<NetworkRole>,
 
     /// The last 10 round-trip time measurements.
-    rtt_history: VecDeque<Duration>
+    rtt_history: VecDeque<Duration>,
 }
 
 impl Host {
@@ -94,9 +96,11 @@ impl Host {
 
     /// Calculates the average RTT using the RTT history
     pub fn average_rtt(&self) -> Option<Duration> {
-        if self.rtt_history.is_empty() { return None }
+        if self.rtt_history.is_empty() {
+            return None;
+        }
         let sum: Duration = self.rtt_history.iter().sum();
-        return Some(sum / self.rtt_history.len() as u32)
+        Some(sum / self.rtt_history.len() as u32)
     }
 }
 
@@ -111,7 +115,10 @@ impl Host {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::{IpAddr, Ipv4Addr}, time::Duration};
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        time::Duration,
+    };
 
     use super::Host;
 
@@ -121,7 +128,9 @@ mod tests {
     fn rtt_history_caps_at_ten() {
         let mut host: Host = Host::new(IP_ADDR);
         // Creates 11 rtt's and adds them to the host
-        (0..11).map(|ms| Duration::from_millis(ms)).for_each(|rtt| host.add_rtt(rtt));
+        (0..11)
+            .map(Duration::from_millis)
+            .for_each(|rtt| host.add_rtt(rtt));
 
         assert_eq!(host.rtt_history.len(), 10);
         assert_ne!(host.rtt_history.len(), 11);
@@ -131,7 +140,9 @@ mod tests {
     fn rtt_history_adds_to_back_of_list() {
         let mut host: Host = Host::new(IP_ADDR);
         // Creates 8 rtt's and adds them to the host
-        (0..8).map(|ms| Duration::from_millis(ms)).for_each(|rtt| host.add_rtt(rtt));
+        (0..8)
+            .map(Duration::from_millis)
+            .for_each(|rtt| host.add_rtt(rtt));
 
         assert_eq!(host.rtt_history[7], Duration::from_millis(7));
     }
@@ -140,7 +151,9 @@ mod tests {
     fn rtt_history_slides_correctly() {
         let mut host: Host = Host::new(IP_ADDR);
         // Creates 15 rtt's and adds them to the host
-        (0..15).map(|ms| Duration::from_millis(ms)).for_each(|rtt| host.add_rtt(rtt));
+        (0..15)
+            .map(Duration::from_millis)
+            .for_each(|rtt| host.add_rtt(rtt));
 
         assert_eq!(host.rtt_history[0], Duration::from_millis(5));
         assert_eq!(host.rtt_history[9], Duration::from_millis(14));
@@ -149,7 +162,7 @@ mod tests {
     #[test]
     fn min_rtt_returns_correct_val() {
         let mut host: Host = Host::new(IP_ADDR);
-        host.add_rtt(Duration::from_millis(6));        
+        host.add_rtt(Duration::from_millis(6));
         host.add_rtt(Duration::from_millis(5));
         host.add_rtt(Duration::from_millis(10));
 
@@ -159,7 +172,7 @@ mod tests {
     #[test]
     fn max_rtt_returns_correct_val() {
         let mut host: Host = Host::new(IP_ADDR);
-        host.add_rtt(Duration::from_millis(6));        
+        host.add_rtt(Duration::from_millis(6));
         host.add_rtt(Duration::from_millis(5));
         host.add_rtt(Duration::from_millis(10));
 
@@ -169,10 +182,10 @@ mod tests {
     #[test]
     fn average_rtt_calculates_correctly() {
         let mut host: Host = Host::new(IP_ADDR);
-        host.add_rtt(Duration::from_millis(9));        
+        host.add_rtt(Duration::from_millis(9));
         host.add_rtt(Duration::from_millis(3));
 
-        assert_eq!(host.average_rtt(), Some(Duration::from_millis(6)));        
+        assert_eq!(host.average_rtt(), Some(Duration::from_millis(6)));
     }
 
     #[test]

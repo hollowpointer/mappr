@@ -9,6 +9,12 @@ pub struct InputHandle {
     tx: Option<mpsc::Sender<Event>>,
 }
 
+impl Default for InputHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InputHandle {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel();

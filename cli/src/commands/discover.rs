@@ -1,13 +1,19 @@
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use anyhow;
 use colored::*;
 use tracing::info_span;
 
-use crate::{mprint, terminal::{colors, format, print, spinner}};
-use mappr_common::{config::Config, network::host::Host, success};
+use crate::{
+    mprint,
+    terminal::{colors, format, print, spinner},
+};
 use mappr_common::network::range::IpCollection;
+use mappr_common::{config::Config, network::host::Host, success};
 use mappr_core::scanner;
 
 type Detail = (String, ColoredString);
@@ -55,8 +61,8 @@ fn no_hosts_found(cfg: &Config) {
 fn print_hosts(hosts: &mut [Host], cfg: &Config) {
     for (idx, host) in hosts.iter().enumerate() {
         match cfg.quiet {
-            2 => { },
-            _ => print_host_tree(host, idx, cfg)
+            2 => {}
+            _ => print_host_tree(host, idx, cfg),
         }
         if idx + 1 != hosts.len() {
             mprint!();
@@ -67,20 +73,20 @@ fn print_hosts(hosts: &mut [Host], cfg: &Config) {
 fn print_summary(hosts_len: usize, total_time: Duration, cfg: &Config) {
     let active_hosts: ColoredString = format!("{hosts_len} active hosts").bold().green();
     let total_time: ColoredString = format!("{:.2}s", total_time.as_secs_f64()).bold().yellow();
-    let output: &ColoredString = &format!("Discovery Complete: {active_hosts} identified in {total_time}")
-                .color(colors::TEXT_DEFAULT);
+    let output: &ColoredString =
+        &format!("Discovery Complete: {active_hosts} identified in {total_time}")
+            .color(colors::TEXT_DEFAULT);
 
     match cfg.quiet {
         0 => {
             print::fat_separator();
             print::centerln(output);
-        },
+        }
         _ => {
             mprint!();
             success!("{}", output)
-        },
+        }
     }
-
 }
 
 fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {

@@ -22,7 +22,7 @@ pub fn get_ipv6_type(ipv6_addr: &Ipv6Addr) -> Ipv6AddressType {
 
 pub fn is_global_unicast(ipv6_addr: &Ipv6Addr) -> bool {
     let first_byte = ipv6_addr.octets()[0];
-    0x3F >= first_byte && first_byte >= 0x20
+    (0x20..=0x3F).contains(&first_byte)
 }
 
 pub fn is_private(ip_addr: &IpAddr) -> bool {

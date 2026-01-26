@@ -2,7 +2,7 @@ use std::net::IpAddr;
 
 use anyhow::Context;
 use pnet::packet::dns::{
-    DnsClass, DnsPacket, DnsQuery, DnsResponse, DnsTypes, MutableDnsPacket, Opcode, Retcode
+    DnsClass, DnsPacket, DnsQuery, DnsResponse, DnsTypes, MutableDnsPacket, Opcode, Retcode,
 };
 
 use mappr_common::utils::ip;
@@ -15,11 +15,9 @@ pub fn get_hostname(payload: &[u8]) -> anyhow::Result<(u16, String)> {
     let hostname_res = dns
         .get_responses()
         .iter()
-        .find_map(|response| {
-            match response.rtype {
-                DnsTypes::PTR => response_from_ptr(response),
-                _ => None
-            }
+        .find_map(|response| match response.rtype {
+            DnsTypes::PTR => response_from_ptr(response),
+            _ => None,
         })
         .ok_or_else(|| anyhow::anyhow!("No valid A or PTR record found"))?;
 
@@ -65,7 +63,7 @@ pub fn create_ptr_packet(ip_addr: &IpAddr, id: u16) -> anyhow::Result<Vec<u8>> {
     let class_bytes: [u8; _] = query.qclass.0.to_be_bytes();
     buffer[cursor..cursor + 2].copy_from_slice(&class_bytes);
 
-    Ok(Vec::from(buffer))
+    Ok(buffer)
 }
 
 fn response_from_ptr(response: &DnsResponse) -> Option<String> {
