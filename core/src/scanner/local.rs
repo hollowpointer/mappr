@@ -8,12 +8,12 @@
 
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr},
+    net::IpAddr,
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
 
-use anyhow::ensure;
+use anyhow::{anyhow, bail, ensure};
 use pnet::{
     datalink::NetworkInterface,
     packet::{
@@ -28,10 +28,11 @@ use mappr_common::{
     error,
     network::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
     sender::{PacketType, SenderConfig},
+    success,
     utils::timing::ScanTimer,
 };
 
-use mappr_protocols as protocol;
+use mappr_protocols::{self as protocol, ip};
 use protocol::ethernet;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -50,7 +51,7 @@ pub struct LocalScanner {
     eth_handle: EthernetHandle,
     timer: ScanTimer,
     dns_tx: Option<UnboundedSender<IpAddr>>,
-    arp_rtt_map: HashMap<Ipv4Addr, Instant>,
+    rtt_map: HashMap<IpAddr, Instant>,
 }
 
 #[async_trait]
@@ -131,43 +132,27 @@ impl LocalScanner {
             eth_handle,
             timer,
             dns_tx,
-            arp_rtt_map: HashMap::with_capacity(ips_len),
+            rtt_map: HashMap::with_capacity(ips_len),
         })
     }
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
-        let packets: Vec<Vec<u8>> = protocol::create_ethernet_packets(&self.sender_cfg)?;
-        for packet in packets {
-            // NOTE: This whole if block needs improvement (performance penalty for large scans)
-            if let Some(eth_packet) = EthernetPacket::new(&packet) {
-                if eth_packet.get_ethertype() == EtherTypes::Arp {
-                    if let Some(arp_packet) = ArpPacket::new(eth_packet.payload()) {
-                        let dst_ip = arp_packet.get_target_proto_addr();
-                        self.arp_rtt_map.insert(dst_ip, Instant::now());
-                    }
-                }
-            }
+        let packet_iter = protocol::eth_packet_iter(&self.sender_cfg)?;
+        for (packet, ip) in packet_iter {
+            self.rtt_map.insert(ip, Instant::now());
             self.eth_handle.tx.send_to(&packet, None);
         }
         Ok(())
     }
 
     fn process_eth_packet(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
-        let eth_frame = ethernet::get_packet_from_u8(bytes)?;
+        let eth_frame: EthernetPacket = ethernet::get_packet_from_u8(bytes)?;
         let source_addr: IpAddr = protocol::get_ip_addr_from_eth(&eth_frame)?;
-        let mut rtt: Option<Duration> = None;
 
         ensure!(
             self.sender_cfg.is_addr_in_subnet(source_addr),
             "{source_addr} is not in range"
         );
-
-        if let Some(_arp_packet) = ArpPacket::new(bytes)
-            && let IpAddr::V4(src_ipv4) = source_addr
-            && let Some(start_time) = self.arp_rtt_map.remove(&src_ipv4)
-        {
-            rtt = Some(start_time.elapsed());
-        }
 
         // NOTE: This sucks too as you might tell
         if source_addr.is_ipv6()
@@ -176,6 +161,14 @@ impl LocalScanner {
         {
             return Ok(());
         }
+
+        let rtt: Option<Duration> = match self.calculate_rtt(&eth_frame) {
+            Ok(r) => r,
+            Err(e) => {
+                error!(verbosity = 2, "Failed to calculate RTT: {e}");
+                None
+            }
+        };
 
         let source_mac: MacAddr = eth_frame.get_source();
 
@@ -188,6 +181,11 @@ impl LocalScanner {
         });
 
         if let Some(rtt) = rtt {
+            success!(
+                verbosity = 2,
+                "{source_addr} response in {}ms",
+                rtt.as_millis()
+            );
             host.add_rtt(rtt);
         }
 
@@ -198,6 +196,45 @@ impl LocalScanner {
         }
 
         Ok(())
+    }
+
+    fn calculate_rtt(&mut self, eth_frame: &EthernetPacket) -> anyhow::Result<Option<Duration>> {
+        match eth_frame.get_ethertype() {
+            EtherTypes::Arp => {
+                let arp_packet: ArpPacket = ArpPacket::new(eth_frame.payload())
+                    .ok_or_else(|| anyhow!("packet invalid [ARP]"))?;
+
+                let src_addr: IpAddr = IpAddr::V4(arp_packet.get_sender_proto_addr());
+
+                let start_time: Instant = self
+                    .rtt_map
+                    .remove(&src_addr)
+                    .ok_or_else(|| anyhow!("unknown address [ARP]"))?;
+
+                Ok(Some(start_time.elapsed()))
+            }
+
+            EtherTypes::Ipv6 => {
+                let dst_addr = match ip::get_ipv6_dst_addr_from_eth(eth_frame) {
+                    Ok(addr) => addr,
+                    Err(_) => bail!("packet invalid [IPv6]"),
+                };
+
+                if dst_addr.is_unicast_link_local() {
+                    let dst_addr: IpAddr = IpAddr::V6(dst_addr);
+                    let start_time = self
+                        .rtt_map
+                        .get(&dst_addr)
+                        .ok_or_else(|| anyhow!("unknown link local [IPv6]: {}", dst_addr))?;
+
+                    return Ok(Some(start_time.elapsed()));
+                }
+
+                Ok(None)
+            }
+
+            _ => Ok(None),
+        }
     }
 
     fn should_continue(&self) -> bool {

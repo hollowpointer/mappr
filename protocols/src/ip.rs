@@ -64,12 +64,20 @@ pub fn create_ipv6_header(
     Ok(buffer.to_vec())
 }
 
-pub fn get_ipv6_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<Ipv6Addr> {
+pub fn get_ipv6_src_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<Ipv6Addr> {
     let ipv6_packet: Ipv6Packet = Ipv6Packet::new(frame.payload()).context(format!(
         "truncated or invalid ipv6 packet (payload len {})",
         frame.payload().len()
     ))?;
     Ok(ipv6_packet.get_source())
+}
+
+pub fn get_ipv6_dst_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<Ipv6Addr> {
+    let ipv6_packet: Ipv6Packet = Ipv6Packet::new(frame.payload()).context(format!(
+        "truncated or invalid ipv6 packet (payload len {})",
+        frame.payload().len()
+    ))?;
+    Ok(ipv6_packet.get_destination())
 }
 
 pub fn get_ipv4_addr_from_eth(frame: &EthernetPacket) -> anyhow::Result<Ipv4Addr> {

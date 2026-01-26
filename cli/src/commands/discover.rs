@@ -123,11 +123,9 @@ fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
     print::as_tree_one_level(details);
 }
 
-// NOTE: Remove Option<> from avg_rtt after implementing rtt everywhere
 fn print_host_head(idx: usize, hostname: &str, avg_rtt: Option<Duration>) {
     let rtt = avg_rtt.unwrap_or(Duration::from_millis(0));
-    let rtt_val = rtt.as_secs_f64() * 1000.0;
-    let rtt_tight = format!("⌛ {:.1}ms", rtt_val);
+    let rtt_tight = format!("⌛ {}ms", rtt.as_millis());
 
     let rtt_width = rtt_tight.width();
 
