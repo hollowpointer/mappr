@@ -59,7 +59,7 @@ pub fn create_ethernet_packets(sender_config: &SenderConfig) -> anyhow::Result<V
     Ok(packets)
 }
 
-fn create_arp_packets(sender_config: &SenderConfig) -> anyhow::Result<Vec<Vec<u8>>> {
+pub fn create_arp_packets(sender_config: &SenderConfig) -> anyhow::Result<Vec<Vec<u8>>> {
     let src_mac: MacAddr = sender_config.get_local_mac()?;
     let dst_mac: MacAddr = MacAddr::broadcast();
     let src_net: Ipv4Network = sender_config.get_ipv4_net()?;

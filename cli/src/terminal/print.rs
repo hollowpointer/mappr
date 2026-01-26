@@ -5,7 +5,7 @@ use colored::*;
 use tracing::info;
 use unicode_width::UnicodeWidthStr;
 
-const TOTAL_WIDTH: usize = 64;
+pub const TOTAL_WIDTH: usize = 64;
 
 thread_local! {
     pub static GLOBAL_KEY_WIDTH: Cell<usize> = const { Cell::new(0) }
@@ -168,4 +168,3 @@ pub fn end_of_program() {
         "═".repeat(TOTAL_WIDTH).color(colors::SEPARATOR)
     ));
 }
-

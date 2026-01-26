@@ -1,7 +1,7 @@
 //! Utilities for privacy-preserving output.
 //!
 //! Provides functions to mask personally identifiable information (PII) from scan results,
-//! such as hardware MAC addresses and IPv6 Interface Identifiers, while preserving 
+//! such as hardware MAC addresses and IPv6 Interface Identifiers, while preserving
 //! network-level routing information for diagnostic utility.
 
 use std::net::Ipv6Addr;
@@ -14,7 +14,9 @@ use pnet::util::MacAddr;
 ///
 /// # Examples
 /// ```
-/// use your_crate::common::redact;
+/// use pnet::util::MacAddr;
+/// use mappr_common::utils::redact;
+///
 /// let mac = MacAddr::new(0x2c, 0xcf, 0x67, 0xf2, 0x51, 0xe3);
 /// assert_eq!(redact::mac_addr(&mac), "2c:cf:67:XX:XX:XX");
 /// ```
@@ -24,17 +26,20 @@ pub fn mac_addr(mac: &MacAddr) -> String {
 
 /// Redacts an IPv6 Global Unicast Address by preserving only the first 16-bit segment.
 ///
-/// This function keeps the first block (hextet) of the address to identify the 
-/// high-level network registry or provider, while masking the remaining 112 bits 
+/// This function keeps the first block (hextet) of the address to identify the
+/// high-level network registry or provider, while masking the remaining 112 bits
 /// (including the subnet ID and the Interface Identifier).
 ///
-/// This provides a high level of privacy by obfuscating the specific network 
+/// This provides a high level of privacy by obfuscating the specific network
 /// topology and the host's identity.
 ///
-/// 
+///
 ///
 /// # Examples
 /// ```
+/// use std::net::Ipv6Addr;
+/// use mappr_common::utils::redact;
+///
 /// let ip = "2a02:908:8c1:b880:1234:5678:9abc:def0".parse::<Ipv6Addr>().unwrap();
 /// // Only the first 16-bit segment (s[0]) remains visible
 /// assert_eq!(redact::global_unicast(&ip), "2a02::XXXX");
@@ -45,12 +50,15 @@ pub fn global_unicast(ip: &Ipv6Addr) -> String {
 }
 
 /// Redacts the device-specific portion of an IPv6 Link-Local Address.
-/// 
-/// Preserves the prefix and the first two hextets of the IID (Vendor OUI) 
+///
+/// Preserves the prefix and the first two hextets of the IID (Vendor OUI)
 /// while masking the final 32 bits to prevent hardware tracking.
 ///
 /// # Examples
 /// ```
+/// use std::net::Ipv6Addr;
+/// use mappr_common::utils::redact;
+///
 /// let ip = "fe80::ca52:61ff:fec7:594".parse::<Ipv6Addr>().unwrap();
 /// assert_eq!(redact::link_local(&ip), "fe80::ca52:61ff:XXXX:XXXX");
 /// ```
@@ -64,12 +72,16 @@ pub fn link_local(ip: &Ipv6Addr) -> String {
 /// This function preserves only the first 16-bit segment (typically starting with `fd` or `fc`),
 /// masking the 40-bit Global ID, the 16-bit Subnet ID, and the 64-bit Interface Identifier.
 ///
-/// Hiding the Global ID is critical for streamers because it is statistically unique 
-/// to a specific network site. Revealing it allows viewers to permanently fingerprint 
+/// Hiding the Global ID is critical for streamers because it is statistically unique
+/// to a specific network site. Revealing it allows viewers to permanently fingerprint
 /// the local network and correlate it across different sessions or data leaks.
 ///
 /// # Examples
 /// ```
+///
+/// use mappr_common::utils::redact;
+/// use std::net::Ipv6Addr;
+///
 /// let ip = "fd12:3456:789a:1:a8b2:c3d4:e5f6:1234".parse::<Ipv6Addr>().unwrap();
 /// // Preserves "fd12", masks the unique Global ID ("3456:789a:1") and the rest
 /// assert_eq!(redact::unique_local(&ip), "fd12::XXXX");
@@ -153,5 +165,5 @@ mod tests {
         let ip2 = "fd00:2222:2222::1".parse::<Ipv6Addr>().unwrap();
         assert_eq!(unique_local(&ip1), unique_local(&ip2));
         assert_eq!(unique_local(&ip1), "fd00::XXXX");
-    }    
+    }
 }

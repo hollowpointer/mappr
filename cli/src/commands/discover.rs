@@ -7,10 +7,15 @@ use std::time::{Duration, Instant};
 use anyhow;
 use colored::*;
 use tracing::info_span;
+use unicode_width::UnicodeWidthStr;
 
 use crate::{
     mprint,
-    terminal::{colors, format, print, spinner},
+    terminal::{
+        colors, format,
+        print::{self, TOTAL_WIDTH},
+        spinner,
+    },
 };
 use mappr_common::network::range::IpCollection;
 use mappr_common::{config::Config, network::host::Host, success};
@@ -91,7 +96,7 @@ fn print_summary(hosts_len: usize, total_time: Duration, cfg: &Config) {
 
 fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
     let hostname = host.hostname.as_deref().unwrap_or("No hostname");
-    print::tree_head(idx, hostname);
+    print_host_head(idx, hostname, host.average_rtt());
     let mut details: Vec<Detail> = format::ip_to_detail(&host.ips, cfg);
 
     if let Some(mac_detai) = format::mac_to_detail(&host.mac, cfg) {
@@ -116,4 +121,34 @@ fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
     }
 
     print::as_tree_one_level(details);
+}
+
+// NOTE: Remove Option<> from avg_rtt after implementing rtt everywhere
+fn print_host_head(idx: usize, hostname: &str, avg_rtt: Option<Duration>) {
+    let rtt = avg_rtt.unwrap_or(Duration::from_millis(0));
+    let rtt_val = rtt.as_secs_f64() * 1000.0;
+    let rtt_tight = format!("⌛ {:.1}ms", rtt_val);
+
+    let rtt_width = rtt_tight.width();
+
+    let block_width: usize = 14;
+    let local_pad = block_width.saturating_sub(rtt_width);
+    let right_part = format!("{}{}", " ".repeat(local_pad), rtt_tight);
+
+    let left_part = format!("[{}] {}", idx, hostname);
+
+    let used_width = left_part.width() + block_width;
+
+    let padding_len = TOTAL_WIDTH.saturating_sub(used_width + 1);
+    let padding = " ".repeat(padding_len);
+
+    let output = format!(
+        "{} {}{}{}",
+        format!("[{}]", idx.to_string().color(colors::ACCENT)).color(colors::SEPARATOR),
+        hostname.color(colors::PRIMARY),
+        padding,
+        right_part.color(colors::SECONDARY)
+    );
+
+    mprint!(&output);
 }

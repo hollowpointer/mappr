@@ -6,10 +6,23 @@
 //! This scanner requires **root privileges** to construct and intercept raw
 //! Layer 2 packets via the operating system's network sockets.
 
-use std::{collections::HashMap, net::IpAddr, sync::atomic::Ordering, time::Duration};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr},
+    sync::atomic::Ordering,
+    time::{Duration, Instant},
+};
 
 use anyhow::ensure;
-use pnet::{datalink::NetworkInterface, util::MacAddr};
+use pnet::{
+    datalink::NetworkInterface,
+    packet::{
+        Packet,
+        arp::ArpPacket,
+        ethernet::{EtherTypes, EthernetPacket},
+    },
+    util::MacAddr,
+};
 
 use mappr_common::{
     error,
@@ -37,6 +50,7 @@ pub struct LocalScanner {
     eth_handle: EthernetHandle,
     timer: ScanTimer,
     dns_tx: Option<UnboundedSender<IpAddr>>,
+    arp_rtt_map: HashMap<Ipv4Addr, Instant>,
 }
 
 #[async_trait]
@@ -89,6 +103,7 @@ impl LocalScanner {
     ) -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
         let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
+        let ips_len: usize = collection.len();
 
         let mut sender_cfg = SenderConfig::from(&intf);
         sender_cfg.add_packet_type(PacketType::ARP);
@@ -116,12 +131,22 @@ impl LocalScanner {
             eth_handle,
             timer,
             dns_tx,
+            arp_rtt_map: HashMap::with_capacity(ips_len),
         })
     }
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
         let packets: Vec<Vec<u8>> = protocol::create_ethernet_packets(&self.sender_cfg)?;
         for packet in packets {
+            // NOTE: This whole if block needs improvement (performance penalty for large scans)
+            if let Some(eth_packet) = EthernetPacket::new(&packet) {
+                if eth_packet.get_ethertype() == EtherTypes::Arp {
+                    if let Some(arp_packet) = ArpPacket::new(eth_packet.payload()) {
+                        let dst_ip = arp_packet.get_target_proto_addr();
+                        self.arp_rtt_map.insert(dst_ip, Instant::now());
+                    }
+                }
+            }
             self.eth_handle.tx.send_to(&packet, None);
         }
         Ok(())
@@ -129,13 +154,22 @@ impl LocalScanner {
 
     fn process_eth_packet(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         let eth_frame = ethernet::get_packet_from_u8(bytes)?;
-        let source_addr = protocol::get_ip_addr_from_eth(&eth_frame)?;
+        let source_addr: IpAddr = protocol::get_ip_addr_from_eth(&eth_frame)?;
+        let mut rtt: Option<Duration> = None;
+
         ensure!(
             self.sender_cfg.is_addr_in_subnet(source_addr),
             "{source_addr} is not in range"
         );
 
-        // Needs rework
+        if let Some(_arp_packet) = ArpPacket::new(bytes)
+            && let IpAddr::V4(src_ipv4) = source_addr
+            && let Some(start_time) = self.arp_rtt_map.remove(&src_ipv4)
+        {
+            rtt = Some(start_time.elapsed());
+        }
+
+        // NOTE: This sucks too as you might tell
         if source_addr.is_ipv6()
             && !IS_LAN_SCAN.load(Ordering::Relaxed)
             && !self.hosts_map.contains_key(&eth_frame.get_source())
@@ -143,7 +177,7 @@ impl LocalScanner {
             return Ok(());
         }
 
-        let source_mac = eth_frame.get_source();
+        let source_mac: MacAddr = eth_frame.get_source();
 
         let mut is_new_host = false;
         let host = self.hosts_map.entry(source_mac).or_insert_with(|| {
@@ -152,6 +186,10 @@ impl LocalScanner {
             is_new_host = true;
             Host::new(source_addr).with_mac(source_mac)
         });
+
+        if let Some(rtt) = rtt {
+            host.add_rtt(rtt);
+        }
 
         let is_new_ip = host.ips.insert(source_addr);
 
@@ -170,4 +208,3 @@ impl LocalScanner {
         not_stopped && time_expired && work_remains
     }
 }
-
