@@ -43,7 +43,8 @@ use async_trait::async_trait;
 
 const MAX_CHANNEL_TIME: Duration = Duration::from_millis(7_500);
 const MIN_CHANNEL_TIME: Duration = Duration::from_millis(2_500);
-const MAX_SILENCE: Duration = Duration::from_millis(500);
+const MAX_SILENCE_MS: Duration = Duration::from_millis(500);
+const SEND_INTERVAL_US: Duration = Duration::from_micros(1000);
 
 pub struct LocalScanner {
     hosts_map: HashMap<MacAddr, Host>,
@@ -57,19 +58,20 @@ pub struct LocalScanner {
 #[async_trait]
 impl NetworkExplorer for LocalScanner {
     async fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>> {
-        if let Err(e) = self.send_discovery_packets() {
-            error!("Failed to send discovery packets: {e}");
-        }
+        let mut packet_iter = protocol::eth_packet_iter(&self.sender_cfg)?;
+        let mut sending_finished = false;
+
+        let mut send_interval = tokio::time::interval(SEND_INTERVAL_US);
 
         let scan_deadline = tokio::time::sleep(MAX_CHANNEL_TIME);
         tokio::pin!(scan_deadline);
 
         loop {
-            if !self.should_continue() || super::STOP_SIGNAL.load(Ordering::Relaxed) {
+            if (!self.should_continue() && sending_finished)
+                || super::STOP_SIGNAL.load(Ordering::Relaxed)
+            {
                 break;
             }
-
-            let silence_timeout = tokio::time::sleep(MAX_SILENCE);
 
             tokio::select! {
                 pkt = self.eth_handle.rx.recv() => {
@@ -79,20 +81,23 @@ impl NetworkExplorer for LocalScanner {
                     }
                 }
 
-                _ = &mut scan_deadline => {
-                    break;
-                }
-
-                _ = silence_timeout => {
-                    if self.timer.should_break_on_timeout() {
-                        break;
+                _ = send_interval.tick(), if !sending_finished => {
+                    match packet_iter.next() {
+                        Some((packet, ip)) => {
+                            self.rtt_map.insert(ip, Instant::now());
+                            self.eth_handle.tx.send_to(&packet, None);
+                        },
+                        None => {
+                            sending_finished = true;
+                        },
                     }
                 }
+
+                _ = &mut scan_deadline => break,
             }
         }
 
-        let hosts: Vec<Host> = self.hosts_map.drain().map(|(_, v)| v).collect();
-        Ok(hosts)
+        Ok(self.hosts_map.drain().map(|(_, v)| v).collect())
     }
 }
 
@@ -103,7 +108,7 @@ impl LocalScanner {
         dns_tx: Option<UnboundedSender<IpAddr>>,
     ) -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
-        let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE);
+        let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE_MS);
         let ips_len: usize = collection.len();
 
         let mut sender_cfg = SenderConfig::from(&intf);
@@ -136,17 +141,11 @@ impl LocalScanner {
         })
     }
 
-    fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
-        let packet_iter = protocol::eth_packet_iter(&self.sender_cfg)?;
-        for (packet, ip) in packet_iter {
-            self.rtt_map.insert(ip, Instant::now());
-            self.eth_handle.tx.send_to(&packet, None);
-        }
-        Ok(())
-    }
-
     fn process_eth_packet(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         let eth_frame: EthernetPacket = ethernet::get_packet_from_u8(bytes)?;
+        if eth_frame.get_source() == self.sender_cfg.local_mac.unwrap() {
+            return Ok(());
+        }
         let source_addr: IpAddr = protocol::get_ip_addr_from_eth(&eth_frame)?;
 
         ensure!(
@@ -209,7 +208,7 @@ impl LocalScanner {
                 let start_time: Instant = self
                     .rtt_map
                     .remove(&src_addr)
-                    .ok_or_else(|| anyhow!("unknown address [ARP]"))?;
+                    .ok_or_else(|| anyhow!("unmapped address [ARP]"))?;
 
                 Ok(Some(start_time.elapsed()))
             }
@@ -225,7 +224,7 @@ impl LocalScanner {
                     let start_time = self
                         .rtt_map
                         .get(&dst_addr)
-                        .ok_or_else(|| anyhow!("unknown link local [IPv6]: {}", dst_addr))?;
+                        .ok_or_else(|| anyhow!("unmapped link local [IPv6]"))?;
 
                     return Ok(Some(start_time.elapsed()));
                 }

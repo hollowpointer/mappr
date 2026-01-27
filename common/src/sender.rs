@@ -19,7 +19,7 @@ pub enum PacketType {
 
 #[derive(Debug, Clone, Default)]
 pub struct SenderConfig {
-    local_mac: Option<MacAddr>,
+    pub local_mac: Option<MacAddr>,
     ipv4_nets: Vec<Ipv4Network>,
     ipv6_nets: Vec<Ipv6Network>,
     targets_v4: HashSet<Ipv4Addr>,
