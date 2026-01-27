@@ -96,7 +96,7 @@ fn print_summary(hosts_len: usize, total_time: Duration, cfg: &Config) {
 
 fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
     let hostname = host.hostname.as_deref().unwrap_or("No hostname");
-    print_host_head(idx, hostname, host.average_rtt());
+    print_host_head(idx, hostname, host);
     let mut details: Vec<Detail> = format::ip_to_detail(&host.ips, cfg);
 
     if let Some(mac_detai) = format::mac_to_detail(&host.mac, cfg) {
@@ -123,24 +123,22 @@ fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
     print::as_tree_one_level(details);
 }
 
-fn print_host_head(idx: usize, hostname: &str, avg_rtt: Option<Duration>) {
-    let rtt = avg_rtt.unwrap_or(Duration::from_millis(0));
-    let rtt_tight = format!("⌛ {}ms", rtt.as_millis());
+fn print_host_head(idx: usize, hostname: &str, host: &Host) {
+    let rtt_string: String = rtt_to_string(host);
+    let rtt_width: usize = rtt_string.width();
 
-    let rtt_width = rtt_tight.width();
+    let block_width: usize = 20;
+    let local_pad: usize = block_width.saturating_sub(rtt_width);
+    let right_part: String = format!("{}{}", " ".repeat(local_pad), rtt_string);
 
-    let block_width: usize = 14;
-    let local_pad = block_width.saturating_sub(rtt_width);
-    let right_part = format!("{}{}", " ".repeat(local_pad), rtt_tight);
+    let left_part: String = format!("[{}] {}", idx, hostname);
 
-    let left_part = format!("[{}] {}", idx, hostname);
+    let used_width: usize = left_part.width() + block_width;
 
-    let used_width = left_part.width() + block_width;
+    let padding_len: usize = TOTAL_WIDTH.saturating_sub(used_width + 1);
+    let padding: String = " ".repeat(padding_len);
 
-    let padding_len = TOTAL_WIDTH.saturating_sub(used_width + 1);
-    let padding = " ".repeat(padding_len);
-
-    let output = format!(
+    let output: String = format!(
         "{} {}{}{}",
         format!("[{}]", idx.to_string().color(colors::ACCENT)).color(colors::SEPARATOR),
         hostname.color(colors::PRIMARY),
@@ -149,4 +147,29 @@ fn print_host_head(idx: usize, hostname: &str, avg_rtt: Option<Duration>) {
     );
 
     mprint!(&output);
+}
+
+fn rtt_to_string(host: &Host) -> String {
+    let min_rtt: Option<Duration> = host.min_rtt();
+
+    if min_rtt.is_none() {
+        return String::new();
+    }
+
+    let min_rtt: Duration = host.min_rtt().unwrap();
+    let max_rtt: Duration = host.max_rtt().unwrap();
+    let avg_rtt: Duration = host.average_rtt().unwrap();
+
+    if min_rtt == max_rtt {
+        return format!("⌛ {}ms", min_rtt.as_millis());
+    }
+
+    let spread: Duration = max_rtt.saturating_sub(min_rtt);
+    let tolerance: Duration = min_rtt.mul_f64(0.05).max(Duration::from_millis(2));
+
+    if tolerance > spread {
+        return format!("⌛ ~{}ms", avg_rtt.as_millis());
+    }
+
+    format!("⌛ {}ms - {}ms", min_rtt.as_millis(), max_rtt.as_millis())
 }
