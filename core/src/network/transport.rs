@@ -27,7 +27,7 @@ pub enum TransportType {
 }
 
 pub struct TransportHandle {
-    pub tx: TransportSender,
+    pub tx: std::sync::Arc<std::sync::Mutex<TransportSender>>,
     pub rx: mpsc::UnboundedReceiver<(Vec<u8>, IpAddr)>,
 }
 
@@ -55,7 +55,10 @@ pub fn start_packet_capture(transport_type: TransportType) -> anyhow::Result<Tra
         TransportType::UdpLayer4 => spawn_listener!(queue_tx, rx_socket, pnet::transport::udp_packet_iter),
     };
 
-    Ok(TransportHandle { tx, rx: queue_rx })
+    Ok(TransportHandle {
+        tx: std::sync::Arc::new(std::sync::Mutex::new(tx)),
+        rx: queue_rx,
+    })
 }
 
 fn open_channel(transport_type: TransportType) -> anyhow::Result<(TransportSender, TransportReceiver)> {

@@ -77,9 +77,13 @@ impl HostnameResolver {
         let bytes: Vec<u8> = dns::create_ptr_packet(ip, id)?;
         let src_port: u16 = rand::random_range(50_000..u16::MAX);
         let udp_bytes: Vec<u8> = udp::create_packet(src_port, dns_port, bytes)?;
-        let udp_pkt = UdpPacket::new(&udp_bytes).context("creating udp packet")?;
-
-        self.udp_handle.tx.send_to(udp_pkt, dns_addr)?;
+        let tx = self.udp_handle.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let udp_pkt = UdpPacket::new(&udp_bytes).context("creating udp packet").unwrap();
+            let mut sender = tx.lock().unwrap();
+            sender.send_to(udp_pkt, dns_addr)
+        })
+        .await??;
         Ok(())
     }
 
