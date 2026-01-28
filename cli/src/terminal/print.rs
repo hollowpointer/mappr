@@ -133,7 +133,7 @@ pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
             " {} {}{}{} {}",
             branch,
             key,
-            ".".repeat(7 - key.len()).color(colors::SEPARATOR),
+            ".".repeat(10 - key.len()).color(colors::SEPARATOR),
             ":".color(colors::SEPARATOR),
             value
         );

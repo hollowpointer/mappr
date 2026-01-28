@@ -29,11 +29,11 @@ pub enum NetworkRole {
 pub struct Host {
     /// The primary way to identify the host (on this run).
     /// Note: A host might have multiple IPs, but we usually discover it via one.
-    pub ip: IpAddr,
+    pub primary_ip: IpAddr,
 
     /// The resolved hostname (if any).
     pub hostname: Option<String>,
-
+    
     /// All known IP addresses for this host.
     pub ips: BTreeSet<IpAddr>,
 
@@ -56,11 +56,14 @@ pub struct Host {
 
 impl Host {
     /// Creates a new Host with minimal information (just an IP).
-    pub fn new(ip: IpAddr) -> Self {
+    pub fn new(primary_ip: IpAddr) -> Self {
+        let mut ips = BTreeSet::new();
+        ips.insert(primary_ip);
+
         Self {
-            ip,
+            primary_ip,
             hostname: None,
-            ips: BTreeSet::from([ip]),
+            ips,
             ports: BTreeSet::new(),
             mac: None,
             vendor: None,

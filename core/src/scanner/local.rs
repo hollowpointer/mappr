@@ -190,6 +190,10 @@ impl LocalScanner {
 
         let is_new_ip = host.ips.insert(source_addr);
 
+        if source_addr.is_ipv4() && host.primary_ip.is_ipv6() {
+            host.primary_ip = source_addr;
+        }
+
         if is_new_host || is_new_ip {
             self.dns_tx.as_ref().map(|tx| tx.send(source_addr));
         }

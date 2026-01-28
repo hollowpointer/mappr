@@ -8,6 +8,33 @@ use std::net::Ipv6Addr;
 
 use pnet::util::MacAddr;
 
+/// Redacts a hostname to protect privacy while maintaining some recognizability.
+///
+/// It preserves the first 2 and last 2 characters, replacing the middle with a fixed
+/// number of 'X's. For very short hostnames (<= 4 chars), it redacts the entire string.
+///
+/// # Examples
+/// ```
+/// use mappr_common::utils::redact;
+///
+/// assert_eq!(redact::hostname("kabelbox.local"), "kaXXXXXal");
+/// assert_eq!(redact::hostname("workstation"), "woXXXXXon");
+/// assert_eq!(redact::hostname("pc"), "XXXXX");
+/// ```
+pub fn hostname(name: &str) -> String {
+    let len = name.len();
+
+    // If the name is too short to leave 2 chars on each side, just redact it fully
+    if len <= 4 {
+        return "XXXXX".to_string();
+    }
+
+    let first_two = &name[..2];
+    let last_two = &name[len - 2..];
+
+    format!("{}XXXXX{}", first_two, last_two)
+}
+
 /// Redacts a MAC address to prevent hardware fingerprinting.
 ///
 /// Returns a string where the last three octets are replaced by 'XX'.
@@ -103,6 +130,32 @@ pub fn unique_local(addr: &Ipv6Addr) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_redact_mac_addr() {
+        let mac = pnet::util::MacAddr::new(0x2c, 0xcf, 0x67, 0xf2, 0x51, 0xe3);
+        assert_eq!(mac_addr(&mac), "2c:cf:67:XX:XX:XX");
+    }
+
+    #[test]
+    fn test_redact_hostname_standard() {
+        assert_eq!(hostname("kabelbox.local"), "kaXXXXXal");
+        assert_eq!(hostname("raspberrypi"), "raXXXXXpi");
+    }
+
+    #[test]
+    fn test_redact_hostname_short() {
+        // Names 4 chars or less should be fully masked
+        assert_eq!(hostname("ipad"), "XXXXX");
+        assert_eq!(hostname("pc"), "XXXXX");
+        assert_eq!(hostname(""), "XXXXX");
+    }
+
+    #[test]
+    fn test_redact_hostname_medium() {
+        // Just enough to show first 2 and last 2
+        assert_eq!(hostname("iphone"), "ipXXXXXne");
+    }
 
     #[test]
     fn mac_redaction_standard() {

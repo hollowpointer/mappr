@@ -50,20 +50,23 @@ impl NetworkExplorer for RoutedScanner {
                     continue;
                 }
 
+                let entry = self.responded_ips.entry(ip);
+                let is_new = matches!(entry, Entry::Vacant(_));
+                let latencies = entry.or_default();
+
+                if is_new {
+                    let _ = self.dns_tx.as_ref().map(|dns| dns.send(ip));
+                    super::increment_host_count();
+                }
+
                 if let Some(tcp_packet) = TcpPacket::new(&bytes) {
                     let ack_num: u32 = tcp_packet.get_acknowledgement();
                     let original_seq: u32 = ack_num.wrapping_sub(1);
 
                     if let Some(start_time) = self.rtt_map.remove(&(ip, original_seq)) {
                         let rtt: Duration = start_time.elapsed();
-                        self.responded_ips.entry(ip).or_default().push_back(rtt);
+                        latencies.push_back(rtt);
                     }
-                }
-
-                if let Entry::Vacant(e) = self.responded_ips.entry(ip) {
-                    e.insert(VecDeque::with_capacity(10));
-                    let _ = self.dns_tx.as_ref().map(|dns| dns.send(ip));
-                    super::increment_host_count();
                 }
             }
         }

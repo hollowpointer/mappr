@@ -1,8 +1,11 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::time::{Duration, Instant};
+use std::{
+    net::IpAddr,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use anyhow;
 use colored::*;
@@ -53,7 +56,7 @@ fn discovery_ends(hosts: &mut [Host], total_time: Duration, cfg: &Config) {
     }
 
     print::header("Network Discovery", cfg.quiet);
-    hosts.sort_by_key(|host| *host.ips.iter().next().unwrap_or(&host.ip));
+    hosts.sort_by_key(|host| *host.ips.iter().next().unwrap_or(&host.primary_ip));
     print_hosts(hosts, cfg);
     print_summary(hosts.len(), total_time, cfg);
 }
@@ -95,9 +98,9 @@ fn print_summary(hosts_len: usize, total_time: Duration, cfg: &Config) {
 }
 
 fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
-    let hostname = host.hostname.as_deref().unwrap_or("No hostname");
-    print_host_head(idx, hostname, host);
-    let mut details: Vec<Detail> = format::ip_to_detail(&host.ips, cfg);
+    let primary_ip: IpAddr = host.primary_ip;
+    print_host_head(idx, &primary_ip, host);
+    let mut details: Vec<Detail> = format::ip_to_detail(host, cfg);
 
     if let Some(mac_detai) = format::mac_to_detail(&host.mac, cfg) {
         details.push(mac_detai);
@@ -105,6 +108,10 @@ fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
 
     if let Some(vendor_detail) = format::vendor_to_detail(&host.vendor) {
         details.push(vendor_detail);
+    }
+
+    if let Some(hostname_detail) = format::hostname_to_detail(&host.hostname, cfg) {
+        details.push(hostname_detail);
     }
 
     if !host.network_roles.is_empty() {
@@ -123,7 +130,7 @@ fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
     print::as_tree_one_level(details);
 }
 
-fn print_host_head(idx: usize, hostname: &str, host: &Host) {
+fn print_host_head(idx: usize, primary_ip: &IpAddr, host: &Host) {
     let rtt_string: String = rtt_to_string(host);
     let rtt_width: usize = rtt_string.width();
 
@@ -131,7 +138,7 @@ fn print_host_head(idx: usize, hostname: &str, host: &Host) {
     let local_pad: usize = block_width.saturating_sub(rtt_width);
     let right_part: String = format!("{}{}", " ".repeat(local_pad), rtt_string);
 
-    let left_part: String = format!("[{}] {}", idx, hostname);
+    let left_part: String = format!("[{}] {}", idx, primary_ip);
 
     let used_width: usize = left_part.width() + block_width;
 
@@ -141,7 +148,7 @@ fn print_host_head(idx: usize, hostname: &str, host: &Host) {
     let output: String = format!(
         "{} {}{}{}",
         format!("[{}]", idx.to_string().color(colors::ACCENT)).color(colors::SEPARATOR),
-        hostname.color(colors::PRIMARY),
+        primary_ip.to_string().color(colors::PRIMARY),
         padding,
         right_part.color(colors::SECONDARY)
     );

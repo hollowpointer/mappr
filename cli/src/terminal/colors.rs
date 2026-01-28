@@ -6,17 +6,21 @@ pub const TEXT_DEFAULT: Color = Color::TrueColor {
     g: 212,
     b: 212,
 }; // Very Light Gray
+
 pub const SEPARATOR: Color = Color::BrightBlack;
+
 pub const PRIMARY: Color = Color::TrueColor {
     r: 255,
     g: 204,
     b: 102,
 }; // Soft Gold/Amber
+
 pub const SECONDARY: Color = Color::TrueColor {
     r: 102,
     g: 204,
     b: 255,
 }; // Soft Sky Blue
+
 pub const ACCENT: Color = Color::TrueColor {
     r: 170,
     g: 170,
@@ -29,22 +33,33 @@ pub const IPV4_ADDR: Color = Color::TrueColor {
     g: 255,
     b: 170,
 }; // Pale Lime Green
+
 pub const IPV4_PREFIX: Color = Color::TrueColor {
     r: 190,
     g: 255,
     b: 190,
 }; // Lighter Pale Lime Green
+
+// Networking: Identifiers
+pub const HOSTNAME: Color = Color::TrueColor {
+    r: 102,
+    g: 255,
+    b: 204,
+}; // Bright Mint/Teal
+
 // Networking: IPv6 (Warm Pink Tones)
 pub const IPV6_ADDR: Color = Color::TrueColor {
     r: 255,
     g: 102,
     b: 178,
 }; // Soft Raspberry Pink
+
 pub const IPV6_PREFIX: Color = Color::TrueColor {
     r: 255,
     g: 178,
     b: 217,
 }; // Pale Raspberry Pink
+
 // Networking: Distinct
 pub const MAC_ADDR: Color = Color::TrueColor {
     r: 255,

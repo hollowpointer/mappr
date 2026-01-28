@@ -1,9 +1,9 @@
 use crate::terminal::colors;
 use colored::*;
 use mappr_common::config::Config;
+use mappr_common::network::host::Host;
 use mappr_common::utils::{ip, redact};
 use pnet::util::MacAddr;
-use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv6Addr};
 
 // Logic moved from network/ip.rs
@@ -20,8 +20,10 @@ pub fn ipv6_to_type_str(ipv6_addr: &Ipv6Addr) -> &'static str {
     "IPv6"
 }
 
-pub fn ip_to_detail(ips: &BTreeSet<IpAddr>, cfg: &Config) -> Vec<(String, ColoredString)> {
-    ips.iter()
+pub fn ip_to_detail(host: &Host, cfg: &Config) -> Vec<(String, ColoredString)> {
+    host.ips
+        .iter()
+        .filter(|&&ip| ip != host.primary_ip)
         .map(|ip| match ip {
             IpAddr::V4(ipv4_addr) => {
                 let value = ipv4_addr.to_string().color(colors::IPV4_ADDR);
@@ -54,6 +56,27 @@ fn is_global_unicast(ip_addr: &IpAddr) -> bool {
         }
         _ => false,
     }
+}
+
+pub fn hostname_to_detail(
+    hostname_opt: &Option<String>,
+    cfg: &Config,
+) -> Option<(String, ColoredString)> {
+    let mut result: Option<(String, ColoredString)> = None;
+
+    if let Some(hostname) = hostname_opt {
+        let hostname_str: String = if cfg.redact {
+            redact::hostname(hostname)
+        } else {
+            hostname.to_string()
+        };
+        result = Some((
+            String::from("Hostname"),
+            hostname_str.color(colors::HOSTNAME),
+        ))
+    }
+
+    result
 }
 
 pub fn mac_to_detail(mac_opt: &Option<MacAddr>, cfg: &Config) -> Option<(String, ColoredString)> {
