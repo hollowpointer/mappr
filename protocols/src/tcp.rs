@@ -12,6 +12,7 @@ pub fn create_packet(
     dst_addr: &IpAddr,
     src_port: u16,
     dst_port: u16,
+    seq_num: u32,
 ) -> anyhow::Result<Vec<u8>> {
     let mut buffer: Vec<u8> = vec![0u8; MIN_TCP_HDR_LEN];
     {
@@ -20,7 +21,7 @@ pub fn create_packet(
         tcp.set_source(src_port);
         tcp.set_destination(dst_port);
         tcp.set_data_offset((MIN_TCP_HDR_LEN / WORD_IN_BYTES) as u8);
-        tcp.set_sequence(0);
+        tcp.set_sequence(seq_num);
         tcp.set_acknowledgement(0);
         tcp.set_flags(SYN_FLAG);
         tcp.set_window(1024);
@@ -45,4 +46,3 @@ pub fn create_packet(
 pub fn from_u8(bytes: &'_ [u8]) -> anyhow::Result<TcpPacket<'_>> {
     TcpPacket::new(bytes).context("truncated or invalid TCP packet")
 }
-

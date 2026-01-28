@@ -12,10 +12,11 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 use crate::terminal::logging;
 
 const TIPS: &[&str] = &[
-    "Press 'q' or 'Ctrl+C' to stop and print results",
+    "Press 'q' to stop and print results",
     "Running with root enables faster raw socket scanning",
     "Ranges (e.g. 5-11ms) show min/max RTT latency",
     "Timings with ~ are averages of consistent RTT results",
+    "High RTT (500ms+) on local scans suggests mobile/IoT",
 ];
 
 pub fn init_logging(verbosity: u8) {

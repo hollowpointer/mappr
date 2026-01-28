@@ -77,8 +77,9 @@ impl IpCollection {
     }
 
     pub fn add_single(&mut self, ip: IpAddr) {
-        info!(verbosity = 2, "Adding {ip} to collection");
-        self.singles.insert(ip);
+        if !self.singles.insert(ip) {
+            info!(verbosity = 2, "{ip} already in collection");
+        }
     }
 
     pub fn add_range(&mut self, range: Ipv4Range) {
@@ -154,6 +155,10 @@ impl IpCollection {
     }
 
     pub fn contains(&self, ip: &IpAddr) -> bool {
+        if self.singles.contains(ip) {
+            return true;
+        }
+
         if let IpAddr::V4(ipv4_addr) = ip {
             for range in &self.ranges {
                 if range.contains(ipv4_addr) {
@@ -212,5 +217,19 @@ impl FromIterator<IpCollection> for IpCollection {
             master.extend(collection);
         }
         master
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contains_should_find_singles() {
+        let mut collection = IpCollection::new();
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        collection.add_single(ip);
+        
+        assert!(collection.contains(&ip), "Collection should contain the single IP");
     }
 }

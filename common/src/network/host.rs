@@ -76,6 +76,14 @@ impl Host {
         self
     }
 
+    /// Replaces the RTT history of the host
+    pub fn set_rtts(&mut self, rtts: VecDeque<Duration>) {
+        self.rtt_history = rtts;
+        while self.rtt_history.len() > 10 {
+            self.rtt_history.pop_front();
+        }
+    }
+
     /// Adds a new RTT to the hosts RTT history, keeping only the most recent 10
     pub fn add_rtt(&mut self, rtt: Duration) {
         self.rtt_history.push_back(rtt);

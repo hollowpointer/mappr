@@ -92,6 +92,7 @@ async fn spawn_explorers(
     for (intf, (local_ips, routed_ips)) in interface::map_ips_to_interfaces(targets) {
         // Local Scanner (ARP/ICMP)
         if !local_ips.is_empty() {
+            info!(verbosity = 1, "Spawning LOCAL scanner for {}", intf.name);
             let tx = dns_tx.clone();
             let intf_c = intf.clone();
 
@@ -104,6 +105,7 @@ async fn spawn_explorers(
 
         // Routed Scanner (TCP Syn Scan)
         if !routed_ips.is_empty() {
+            info!(verbosity = 1, "Spawning ROUTED scanner for {}", intf.name);
             let tx = dns_tx.clone();
             let intf_c = intf.clone();
 
@@ -145,4 +147,3 @@ fn spawn_user_input_listener() {
         }
     });
 }
-

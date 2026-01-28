@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, VecDeque, hash_map::Entry},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::atomic::Ordering,
     time::{Duration, Instant},
@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::ensure;
 use async_trait::async_trait;
-use mappr_common::error;
+use mappr_common::{error, success};
 use pnet::{datalink::NetworkInterface, packet::tcp::TcpPacket};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -23,13 +23,16 @@ const MIN_SCAN_DURATION: Duration = Duration::from_millis(200);
 const MAX_SCAN_DURATION: Duration = Duration::from_millis(3000);
 const MS_PER_IP: f64 = 0.5;
 
+type SeqNum = u32;
+
 pub struct RoutedScanner {
     src_v4: Option<Ipv4Addr>,
     src_v6: Option<Ipv6Addr>,
-    responded_ips: HashSet<IpAddr>,
+    responded_ips: HashMap<IpAddr, VecDeque<Duration>>,
     ips: IpCollection,
     tcp_handle: TransportHandle,
     dns_tx: Option<UnboundedSender<IpAddr>>,
+    rtt_map: HashMap<(IpAddr, SeqNum), Instant>,
 }
 
 #[async_trait]
@@ -42,18 +45,39 @@ impl NetworkExplorer for RoutedScanner {
         let deadline: Instant = calculate_deadline(self.ips.len());
 
         while self.should_continue(deadline) {
-            if let Ok((_bytes, ip)) = self.tcp_handle.rx.try_recv() {
+            if let Ok((bytes, ip)) = self.tcp_handle.rx.try_recv() {
                 if !self.ips.contains(&ip) {
                     continue;
                 }
-                if self.responded_ips.insert(ip) {
-                    let _ = self.dns_tx.as_ref().map(|tx| tx.send(ip));
+
+                if let Some(tcp_packet) = TcpPacket::new(&bytes) {
+                    let ack_num: u32 = tcp_packet.get_acknowledgement();
+                    let original_seq: u32 = ack_num.wrapping_sub(1);
+
+                    if let Some(start_time) = self.rtt_map.remove(&(ip, original_seq)) {
+                        let rtt: Duration = start_time.elapsed();
+                        self.responded_ips.entry(ip).or_default().push_back(rtt);
+                    }
+                }
+
+                if let Entry::Vacant(e) = self.responded_ips.entry(ip) {
+                    e.insert(VecDeque::with_capacity(10));
+                    let _ = self.dns_tx.as_ref().map(|dns| dns.send(ip));
                     super::increment_host_count();
                 }
             }
         }
 
-        let hosts: Vec<Host> = self.responded_ips.drain().map(Host::new).collect();
+        self.rtt_map.clear();
+        let hosts: Vec<Host> = self
+            .responded_ips
+            .drain()
+            .map(|(ip, latencies)| {
+                let mut host = Host::new(ip);
+                host.set_rtts(latencies);
+                host
+            })
+            .collect();
 
         Ok(hosts)
     }
@@ -83,22 +107,22 @@ impl RoutedScanner {
             "interface has no ip addresses"
         );
 
-        let responded_ips: HashSet<IpAddr> = HashSet::new();
-
         Ok(Self {
             src_v4,
             src_v6,
-            responded_ips,
+            responded_ips: HashMap::new(),
             ips,
             tcp_handle,
             dns_tx,
+            rtt_map: HashMap::new(),
         })
     }
 
     fn send_discovery_packets(&mut self) -> anyhow::Result<()> {
         let src_port: u16 = rand::random_range(50_000..u16::MAX);
-        for dst_ip in self.ips.iter() {
-            let src_ip: IpAddr = match dst_ip {
+        let dst_port: u16 = 443;
+        for dst_addr in self.ips.iter() {
+            let src_addr: IpAddr = match dst_addr {
                 IpAddr::V4(_) => {
                     ensure!(self.src_v4.is_some(), "interface has no ipv4 address");
                     IpAddr::V4(self.src_v4.unwrap())
@@ -109,10 +133,19 @@ impl RoutedScanner {
                 }
             };
 
-            let packet: Vec<u8> = protocol::tcp::create_packet(&src_ip, &dst_ip, src_port, 443)?;
+            let seq_num: u32 = rand::random_range(0..=u32::MAX);
+            let packet: Vec<u8> =
+                protocol::tcp::create_packet(&src_addr, &dst_addr, src_port, dst_port, seq_num)?;
+
             if let Some(packet) = TcpPacket::new(&packet) {
                 let mut tx = self.tcp_handle.tx.lock().unwrap();
-                let _ = tx.send_to(packet, dst_ip);
+                match tx.send_to(packet, dst_addr) {
+                    Ok(_) => {
+                        success!(verbosity = 2, "Sent discovery packet to {dst_addr}");
+                        self.rtt_map.insert((dst_addr, seq_num), Instant::now());
+                    }
+                    Err(e) => error!(verbosity = 2, "Failed to send packet to {dst_addr}: {e}"),
+                }
             }
         }
         Ok(())
@@ -135,4 +168,3 @@ fn calculate_deadline(ips_len: usize) -> Instant {
 
     Instant::now() + scan_duration
 }
-
