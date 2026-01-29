@@ -43,5 +43,5 @@ pub fn print_interface(interface: &NetworkInterface, idx: usize) {
             mac_addr.to_string().color(colors::MAC_ADDR),
         ));
     }
-    print::as_tree_one_level(key_value_pair);
+    print::as_tree(key_value_pair);
 }

@@ -173,7 +173,7 @@ fn select_best_lan_interface(
 /// Returns: Map<Interface, (Local_Targets, Routed_Targets)>
 pub fn map_ips_to_interfaces(
     mut collection: IpCollection,
-) -> HashMap<NetworkInterface, (IpCollection, IpCollection)> {
+) -> (HashMap<NetworkInterface, (IpCollection, IpCollection)>, IpCollection) {
     let interfaces: Vec<NetworkInterface> = datalink::interfaces()
         .into_iter()
         .filter(|i| i.is_up() && !i.is_loopback() && !i.ips.is_empty())
@@ -186,7 +186,13 @@ pub fn map_ips_to_interfaces(
         .collect();
 
     let mut result_map: HashMap<usize, (IpCollection, IpCollection)> = HashMap::new();
+    let mut unmapped_ips = IpCollection::new();
 
+    // 1. Handle Ranges (IPv4 only currently in IpCollection ranges)
+    // Ranges that don't match a local subnet are broken into singles and re-processed
+    // or just dumped into unmapped?
+    // Current logic: if range not local, all IPs are added to 'singles' to be routed individually.
+    // This logic is preserved below.
     for range in collection.ranges {
         let start: Ipv4Addr = range.start_addr;
         let end: Ipv4Addr = range.end_addr;
@@ -217,42 +223,57 @@ pub fn map_ips_to_interfaces(
     enum RouteType {
         Local,
         Routed,
+        Unmapped,
     }
 
     let singles: Vec<IpAddr> = collection.singles.into_iter().collect();
 
-    let routed_singles: Vec<(usize, RouteType, IpAddr)> = singles
+    let processed_singles: Vec<(Option<usize>, RouteType, IpAddr)> = singles
         .par_iter()
         .map_init(
             || -> ThreadSockets { (None, None) },
             |sockets, &target_ip| {
                 if let Some(idx) = find_local_index(&interfaces, target_ip) {
-                    return Some((idx, RouteType::Local, target_ip));
+                    return (Some(idx), RouteType::Local, target_ip);
                 }
 
-                let source_ip = resolve_route_source_ip(target_ip, sockets)?;
-
-                ip_to_idx
-                    .get(&source_ip)
-                    .copied()
-                    .map(|idx| (idx, RouteType::Routed, target_ip))
+                // Try to resolve route
+                if let Some(source_ip) = resolve_route_source_ip(target_ip, sockets) {
+                    if let Some(idx) = ip_to_idx.get(&source_ip).copied() {
+                        return (Some(idx), RouteType::Routed, target_ip);
+                    }
+                }
+                
+                // If resolving failed or source IP is not in our interface list (e.g. localhost)
+                (None, RouteType::Unmapped, target_ip)
             },
         )
-        .filter_map(|res| res)
         .collect();
 
-    for (idx, route_type, ip) in routed_singles {
-        let entry = result_map.entry(idx).or_default();
+    for (idx_opt, route_type, ip) in processed_singles {
         match route_type {
-            RouteType::Local => entry.0.add_single(ip),
-            RouteType::Routed => entry.1.add_single(ip),
+            RouteType::Local => {
+                if let Some(idx) = idx_opt {
+                    result_map.entry(idx).or_default().0.add_single(ip);
+                }
+            }
+            RouteType::Routed => {
+                if let Some(idx) = idx_opt {
+                    result_map.entry(idx).or_default().1.add_single(ip);
+                }
+            }
+            RouteType::Unmapped => {
+                unmapped_ips.add_single(ip);
+            }
         }
     }
 
-    result_map
+    let mapped_interfaces = result_map
         .into_iter()
         .map(|(idx, (local_ips, routed_ips))| (interfaces[idx].clone(), (local_ips, routed_ips)))
-        .collect()
+        .collect();
+
+    (mapped_interfaces, unmapped_ips)
 }
 
 fn find_local_index(interfaces: &[NetworkInterface], target: IpAddr) -> Option<usize> {
@@ -661,9 +682,9 @@ mod tests {
             collection.add_single(ip);
         }
 
-        let result = map_ips_to_interfaces(collection);
+        let (result_map, _unmapped) = map_ips_to_interfaces(collection);
 
-        for (iface, routed_ips) in result {
+        for (iface, routed_ips) in result_map {
             println!("Interface {} routes: {:?}", iface.name, routed_ips);
             assert!(!iface.ips.is_empty());
         }

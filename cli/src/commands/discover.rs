@@ -7,8 +7,9 @@ use std::{
     },
 };
 
-use anyhow;
+use anyhow::{self, bail};
 use colored::*;
+use mappr_common::error;
 use tracing::info_span;
 use unicode_width::UnicodeWidthStr;
 
@@ -41,14 +42,15 @@ pub async fn discover(ips: IpCollection, cfg: &Config) -> anyhow::Result<()> {
 
     drop(guard);
 
-    discovery_ends(&mut hosts, start_time.elapsed(), cfg);
+    let total_time: Duration = start_time.elapsed();
+    discovery_ends(&mut hosts, total_time, cfg)?;
     Ok(())
 }
 
-fn discovery_ends(hosts: &mut [Host], total_time: Duration, cfg: &Config) {
+fn discovery_ends(hosts: &mut [Host], total_time: Duration, cfg: &Config) -> anyhow::Result<()> {
     if hosts.is_empty() {
         no_hosts_found(cfg);
-        return;
+        return Ok(());
     }
 
     if cfg.quiet > 0 {
@@ -57,25 +59,32 @@ fn discovery_ends(hosts: &mut [Host], total_time: Duration, cfg: &Config) {
 
     print::header("Network Discovery", cfg.quiet);
     hosts.sort_by_key(|host| *host.ips.iter().next().unwrap_or(&host.primary_ip));
-    print_hosts(hosts, cfg);
+    print_hosts(hosts, cfg)?;
     print_summary(hosts.len(), total_time, cfg);
+
+    Ok(())
 }
 
 fn no_hosts_found(cfg: &Config) {
-    print::header("ZERO HOSTS DETECTED", cfg.quiet);
-    print::no_results();
+    if cfg.quiet == 0 && !cfg.no_banner {
+        print::header("ZERO HOSTS DETECTED", cfg.quiet);
+        print::no_results_banner();
+        return;
+    }
+    error!("Scan completed: 0 devices responded.");
 }
 
-fn print_hosts(hosts: &mut [Host], cfg: &Config) {
+fn print_hosts(hosts: &mut [Host], cfg: &Config) -> anyhow::Result<()> {
     for (idx, host) in hosts.iter().enumerate() {
         match cfg.quiet {
-            2 => {}
+            2 => bail!("-qq is currently unimplemented"),
             _ => print_host_tree(host, idx, cfg),
         }
         if idx + 1 != hosts.len() {
             mprint!();
         }
     }
+    Ok(())
 }
 
 fn print_summary(hosts_len: usize, total_time: Duration, cfg: &Config) {
@@ -92,7 +101,7 @@ fn print_summary(hosts_len: usize, total_time: Duration, cfg: &Config) {
         }
         _ => {
             mprint!();
-            success!("{}", output)
+            success!("{output}")
         }
     }
 }
@@ -127,7 +136,7 @@ fn print_host_tree(host: &Host, idx: usize, cfg: &Config) {
         details.push(roles_detail);
     }
 
-    print::as_tree_one_level(details);
+    print::as_tree(details);
 }
 
 fn print_host_head(idx: usize, primary_ip: &IpAddr, host: &Host) {

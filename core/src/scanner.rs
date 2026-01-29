@@ -1,8 +1,12 @@
-//! The central **abstraction** for network scanning operations.
+//! Orchestration logic for network discovery.
 //!
-//! This module defines the unified interface that specific scanning strategies (such as
-//! the [`local`] scanner) must implement. It standardizes the lifecycle of
-//! network probes, including packet construction, transmission, and response handling.
+//! This module coordinates the execution of various scanning strategies:
+//! - **Privileged**: High-speed raw socket scans ([`LocalScanner`] for ARP/ICMP, [`RoutedScanner`] for TCP SYN).
+//! - **Unprivileged**: Standard TCP handshake fallback via [`handshake`].
+//!
+//! It manages the lifecycle of a scan by partitioning targets by interface,
+//! spawning concurrent explorers, and piping results through a background
+//! [`HostnameResolver`].use std::net::IpAddr;
 
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -36,6 +40,7 @@ pub static STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 pub fn increment_host_count() {
     FOUND_HOST_COUNT.fetch_add(1, Ordering::Relaxed);
 }
+
 pub fn get_host_count() -> usize {
     FOUND_HOST_COUNT.load(Ordering::Relaxed)
 }
@@ -45,8 +50,20 @@ trait NetworkExplorer {
     async fn discover_hosts(&mut self) -> anyhow::Result<Vec<Host>>;
 }
 
+/// The primary entry point for network discovery.
+///
+/// ### Capabilities
+/// - **Privilege Aware**: Uses raw sockets (ARP/TCP SYN) if root; falls back to standard TCP handshakes if not.
+/// - **Multi-Interface**: Automatically partitions targets across available network adapters.
+/// - **Parallel Resolver**: Streams found IPs to a background DNS task for zero-latency lookups.
+///
+/// ### Integration Notes
+/// - **State**: Updates [`FOUND_HOST_COUNT`] and reacts to [`STOP_SIGNAL`].
+/// - **Concurrency**: Spawns multiple Tokio tasks; ensure the caller is within a multi-threaded runtime.
 pub async fn perform_discovery(targets: IpCollection, cfg: &Config) -> anyhow::Result<Vec<Host>> {
-    spawn_user_input_listener();
+    if !cfg.disable_input {
+        spawn_user_input_listener();
+    }
 
     if !is_root() {
         warn!("Root privileges missing, defaulting to unprivileged TCP scan");
@@ -89,7 +106,9 @@ async fn spawn_explorers(
 ) -> Vec<JoinHandle<anyhow::Result<Vec<Host>>>> {
     let mut handles = Vec::new();
 
-    for (intf, (local_ips, routed_ips)) in interface::map_ips_to_interfaces(targets) {
+    let (interface_map, unmapped_ips) = interface::map_ips_to_interfaces(targets);
+
+    for (intf, (local_ips, routed_ips)) in interface_map {
         // Local Scanner (ARP/ICMP)
         if !local_ips.is_empty() {
             info!(verbosity = 1, "Spawning LOCAL scanner for {}", intf.name);
@@ -116,6 +135,19 @@ async fn spawn_explorers(
             handles.push(handle);
         }
     }
+
+    // Fallback Scanner (Unprivileged TCP Handshake) for unmapped IPs (e.g. localhost)
+    if !unmapped_ips.is_empty() {
+        info!(
+            verbosity = 1,
+            "Spawning FALLBACK scanner for unmapped targets"
+        );
+        let handle = tokio::spawn(async move {
+            handshake::range_discovery(unmapped_ips, handshake::prober).await
+        });
+        handles.push(handle);
+    }
+
     handles
 }
 

@@ -55,7 +55,9 @@ pub fn banner(no_banner: bool, q_level: u8) {
     let text_content: String = format!("⟦ MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
     let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
-    let sep: ColoredString = "═".repeat((TOTAL_WIDTH - text_width) / 2).bright_black();
+    let sep: ColoredString = "═"
+        .repeat(TOTAL_WIDTH.saturating_sub(text_width) / 2)
+        .bright_black();
     let output: String = format!("{}{}{}", sep, text, sep);
 
     print(&output);
@@ -120,23 +122,33 @@ pub fn tree_head(idx: usize, name: &str) {
     print(&output);
 }
 
-pub fn as_tree_one_level(key_value_pair: Vec<(String, ColoredString)>) {
-    for (i, (key, value)) in key_value_pair.iter().enumerate() {
-        let last: bool = i + 1 == key_value_pair.len();
+pub fn as_tree(detail: Vec<(String, ColoredString)>) {
+    let longest_key = detail
+        .iter()
+        .map(|(key, _val)| key.width())
+        .max()
+        .unwrap_or(3);
+
+    for (i, (key, value)) in detail.iter().enumerate() {
+        let last: bool = i + 1 == detail.len();
+
         let branch: ColoredString = if !last {
             "├─".bright_black()
         } else {
             "└─".bright_black()
         };
+
         let key: ColoredString = key.color(colors::TEXT_DEFAULT);
+
         let output: String = format!(
             " {} {}{}{} {}",
             branch,
             key,
-            ".".repeat(10 - key.len()).color(colors::SEPARATOR),
+            ".".repeat(longest_key - key.len()).color(colors::SEPARATOR),
             ":".color(colors::SEPARATOR),
             value
         );
+
         print(&output);
     }
 }
@@ -146,20 +158,8 @@ pub fn centerln(msg: &str) {
     print(&format!("{}{}{}", space, msg, space));
 }
 
-const NO_RESULTS_0: &str = r#"
-                       _  _    ___  _  _                 
-                      | || |  / _ \| || |                
-                      | || |_| | | | || |_               
-                      |__   _| |_| |__   _|              
-         _   _  ___ _____|_|__\___/__ |_|  _ _   _ ____  
-        | \ | |/ _ \_   _| |  ___/ _ \| | | | \ | |  _ \ 
-        |  \| | | | || |   | |_ | | | | | | |  \| | | | |
-        | |\  | |_| || |   |  _|| |_| | |_| | |\  | |_| |
-        |_| \_|\___/ |_|   |_|   \___/ \___/|_| \_|____/ 
-"#;
-
-pub fn no_results() {
-    print(&format!("{}", NO_RESULTS_0.red().bold()));
+pub fn no_results_banner() {
+    print(&format!("{}", banner::NO_RESULTS_0.red().bold()));
 }
 
 pub fn end_of_program() {

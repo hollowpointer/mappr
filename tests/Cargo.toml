@@ -1,0 +1,11 @@
+[package]
+name = "mappr-integration-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+mappr-core = { workspace = true }
+mappr-common = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
