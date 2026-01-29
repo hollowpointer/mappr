@@ -33,7 +33,7 @@ pub struct Host {
 
     /// The resolved hostname (if any).
     pub hostname: Option<String>,
-    
+
     /// All known IP addresses for this host.
     pub ips: BTreeSet<IpAddr>,
 
@@ -72,10 +72,14 @@ impl Host {
         }
     }
 
-    /// Sets the MAC address.
     pub fn with_mac(mut self, mac: MacAddr) -> Self {
         self.mac = Some(mac);
         self.vendor = mac::get_vendor(mac);
+        self
+    }
+
+    pub fn with_rtt(mut self, rtt: Duration) -> Self {
+        self.add_rtt(rtt);
         self
     }
 

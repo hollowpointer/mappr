@@ -1,9 +1,9 @@
 use std::net::IpAddr;
 
 use anyhow::Context;
-use pnet::packet::tcp::{MutableTcpPacket, TcpPacket};
+use pnet::packet::tcp::{MutableTcpPacket, TcpOption, TcpPacket};
 
-const MIN_TCP_HDR_LEN: usize = 20;
+const MIN_TCP_HDR_LEN: usize = 24;
 const WORD_IN_BYTES: usize = 4;
 const SYN_FLAG: u8 = 1 << 1;
 
@@ -26,6 +26,11 @@ pub fn create_packet(
         tcp.set_flags(SYN_FLAG);
         tcp.set_window(1024);
         tcp.set_checksum(0);
+
+        let mut tcp_options: Vec<TcpOption> = Vec::new();
+        let mss: TcpOption = TcpOption::mss(1412);
+        tcp_options.push(mss);
+        tcp.set_options(&tcp_options);
 
         let tcp_packet: TcpPacket = tcp.to_immutable();
         let checksum = match (src_addr, dst_addr) {

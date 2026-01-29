@@ -3,7 +3,7 @@ use mappr_common::network::range::IpCollection;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
@@ -24,22 +24,24 @@ where
         if STOP_SIGNAL.load(Ordering::Relaxed) {
             break;
         }
-        if let Some(found) = prober(target).await? { 
+        if let Some(found) = prober(target).await? {
             result.push(found);
         }
     }
     Ok(result)
 }
 
-pub async fn prober(addr: IpAddr) -> anyhow::Result<Option<Host>> {
-    let socket_addr: SocketAddr = SocketAddr::new(addr, 443);
+pub async fn prober(ip: IpAddr) -> anyhow::Result<Option<Host>> {
+    let socket_addr: SocketAddr = SocketAddr::new(ip, 443);
     let probe_timeout: Duration = Duration::from_millis(100);
 
+    let start: Instant = Instant::now();
     match timeout(probe_timeout, TcpStream::connect(socket_addr)).await {
         Ok(Ok(_)) | Ok(Err(_)) => {
             increment_host_count();
-            Ok(Some(Host::new(addr)))
-        },
+            let host: Host = Host::new(ip).with_rtt(start.elapsed());
+            Ok(Some(host))
+        }
         Err(_elapsed) => Ok(None),
     }
 }

@@ -2,14 +2,15 @@
 use mappr_common::config::Config;
 use mappr_common::network::host::Host;
 use mappr_common::network::range::{IpCollection, Ipv4Range};
-use mappr_core::scanner;
+use mappr_core::scanner::{self, perform_discovery, STOP_SIGNAL};
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
-/// This test verifies that the scanner can discover a local address (localhost).
-/// It uses the 'perform_discovery' entry point which automatically selects
-/// the appropriate scanning method (privileged vs unprivileged).
+use crate::utils::NetnsContext;
+
 #[tokio::test]
-async fn discovery_single_loopback() {
+async fn test_discovery_single_loopback() {
     let config: Config = Config {
         no_banner: true,
         no_dns: true,
@@ -28,8 +29,9 @@ async fn discovery_single_loopback() {
     let hosts: Vec<Host> = result.unwrap();
 
     assert!(!hosts.is_empty(), "No hosts found when scanning localhost");
+    assert!(hosts[0].min_rtt().is_some(), "No RTT's were recorded");
 
-    let found_ip = hosts[0].primary_ip;
+    let found_ip: IpAddr = hosts[0].primary_ip;
     assert_eq!(
         found_ip, localhost,
         "Found host IP does not match expected localhost IP"
@@ -37,7 +39,7 @@ async fn discovery_single_loopback() {
 }
 
 #[tokio::test]
-async fn discovery_range_loopback() {
+async fn test_discovery_range_loopback() {
     let cfg: Config = Config {
         no_banner: true,
         no_dns: true,
@@ -65,11 +67,38 @@ async fn discovery_range_loopback() {
 }
 
 #[tokio::test]
-#[cfg(target_os = "linux")]
-async fn privileged_discovery_netns() {
-    use crate::utils::NetnsContext;
+async fn test_stop_signal_aborts() {
+    let mut targets: IpCollection = IpCollection::new();
+    let start_addr: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
+    let end_addr: Ipv4Addr = Ipv4Addr::new(127, 0, 255, 255);
+    let range: Ipv4Range = Ipv4Range::new(start_addr, end_addr);
+    targets.add_range(range);
 
-    let _ctx = match NetnsContext::new("test1") {
+    let cfg: Config = Config {
+        no_banner: false,
+        no_dns: true,
+        redact: false,
+        quiet: 0,
+        disable_input: true,
+    };
+
+    STOP_SIGNAL.store(false, Ordering::Relaxed);
+
+    let handle = tokio::spawn(async move { perform_discovery(targets, &cfg).await });
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    STOP_SIGNAL.store(true, Ordering::Relaxed);
+
+    let result = tokio::time::timeout(Duration::from_millis(50), handle).await;
+
+    assert!(result.is_ok(), "Scanner did not stop in time");
+}
+
+#[tokio::test]
+#[cfg(target_os = "linux")]
+async fn test_privileged_discovery_netns() {
+    let _ctx: NetnsContext = match NetnsContext::new("test1") {
         Some(c) => c,
         None => {
             eprintln!("Skipping netns test: Requires root privileges or 'ip' command.");
@@ -77,9 +106,9 @@ async fn privileged_discovery_netns() {
         }
     };
 
-    let target_ip = IpAddr::V4(Ipv4Addr::new(10, 200, 0, 2));
+    let target_ip: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 200, 0, 2));
 
-    let config = Config {
+    let config: Config = Config {
         no_banner: true,
         no_dns: true,
         redact: false,
@@ -87,7 +116,7 @@ async fn privileged_discovery_netns() {
         disable_input: true,
     };
 
-    let mut collection = IpCollection::new();
+    let mut collection: IpCollection = IpCollection::new();
     collection.add_single(target_ip);
 
     let result = scanner::perform_discovery(collection, &config).await;
