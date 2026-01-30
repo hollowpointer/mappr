@@ -6,8 +6,12 @@ use std::{
 };
 
 use anyhow::{Context, ensure};
-use mappr_common::{network::host::Host, utils};
-use mappr_protocols::{dns, udp};
+use zond_common::{info, network::host::Host, utils};
+use zond_protocols::{
+    dns,
+    mdns::{self, MdnsMetadata},
+    udp,
+};
 use pnet::packet::{Packet, udp::UdpPacket};
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -79,7 +83,9 @@ impl HostnameResolver {
         let udp_bytes: Vec<u8> = udp::create_packet(src_port, dns_port, bytes)?;
         let tx = self.udp_handle.tx.clone();
         tokio::task::spawn_blocking(move || {
-            let udp_pkt = UdpPacket::new(&udp_bytes).context("creating udp packet").unwrap();
+            let udp_pkt = UdpPacket::new(&udp_bytes)
+                .context("creating udp packet")
+                .unwrap();
             let mut sender = tx.lock().unwrap();
             sender.send_to(udp_pkt, dns_addr)
         })
@@ -91,7 +97,7 @@ impl HostnameResolver {
         let udp_packet = UdpPacket::new(bytes).context("truncated or invalid UDP packet")?;
         match udp_packet.get_source() {
             DNS_PORT => self.process_dns_packet(udp_packet)?,
-            MDNS_PORT => { /* Implement mDNS next */ }
+            MDNS_PORT => self.process_mdns_packet(udp_packet)?,
             _ => {}
         }
         Ok(())
@@ -102,6 +108,13 @@ impl HostnameResolver {
         if let Some(ip) = self.dns_map.remove(&response_id) {
             self.hostname_map.insert(ip, hostname);
         }
+        Ok(())
+    }
+
+    fn process_mdns_packet(&mut self, packet: UdpPacket) -> anyhow::Result<()> {
+        let mdns_resource: MdnsMetadata = mdns::extract_resource(packet.payload())?;
+        info!("{:?}", mdns_resource.hostname);
+        info!("{:?}", mdns_resource.ips);
         Ok(())
     }
 
@@ -143,4 +156,3 @@ fn get_dns_server_socket(ip: &IpAddr) -> (IpAddr, u16) {
     };
     (ip_addr, DNS_PORT)
 }
-

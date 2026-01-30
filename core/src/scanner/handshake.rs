@@ -1,5 +1,5 @@
-use mappr_common::network::host::Host;
-use mappr_common::network::range::IpCollection;
+use zond_common::network::host::Host;
+use zond_common::network::range::IpCollection;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
@@ -58,7 +58,7 @@ pub async fn prober(ip: IpAddr) -> anyhow::Result<Option<Host>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mappr_common::network::host::Host;
+    use zond_common::network::host::Host;
     use std::net::{IpAddr, Ipv4Addr};
 
     #[tokio::test]

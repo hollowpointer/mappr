@@ -1,10 +1,11 @@
 [package]
-name = "mappr-protocols"
+name = "zond-protocols"
 version = "0.1.2"
 edition = "2024"
 
 [dependencies]
-mappr-common = { workspace = true }
+dns-parser = "0.8"
+zond-common = { workspace = true }
 pnet = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }

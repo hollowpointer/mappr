@@ -1,5 +1,5 @@
 [package]
-name = "mappr-common"
+name = "zond-common"
 version = "0.1.3"
 edition = "2024"
 

@@ -36,7 +36,7 @@ pub fn init_logging(verbosity: u8) {
     );
 
     let filter_layer = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,mappr=debug,mio=error"));
+        .unwrap_or_else(|_| EnvFilter::new("info,zond=debug,mio=error"));
 
     let formatting_layer = tracing_subscriber::fmt::layer()
         .event_format(logging::MapprFormatter {
@@ -76,7 +76,7 @@ pub fn start_discovery_spinner(span: Span, running: Arc<AtomicBool>) -> JoinHand
                     tip_index = new_index;
                 }
             } else {
-                let count: usize = mappr_core::scanner::get_host_count();
+                let count: usize = zond_core::scanner::get_host_count();
                 let host_str: &str = match count {
                     1 => "host",
                     _ => "hosts",

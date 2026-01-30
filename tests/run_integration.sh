@@ -43,11 +43,11 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}Running cargo nextest for mappr-integration-tests...${NC}"
+echo -e "${BLUE}Running cargo nextest for zond-integration-tests...${NC}"
 echo -e "${BLUE}---------------------------------------${NC}"
 
 # Run the tests
-cargo nextest run -p mappr-integration-tests
+cargo nextest run -p zond-integration-tests
 
 EXIT_CODE=$?
 

@@ -9,9 +9,9 @@ use crate::{mprint, terminal::{
     colors,
     print::{self, GLOBAL_KEY_WIDTH},
 }};
-use mappr_core::info::InfoService;
-use mappr_core::system::SystemRepo;
-use mappr_common::{config::Config, network::localhost::{FirewallStatus, IpServiceGroup, Service}};
+use zond_core::info::InfoService;
+use zond_core::system::SystemRepo;
+use zond_common::{config::Config, network::localhost::{FirewallStatus, IpServiceGroup, Service}};
 
 pub fn info(cfg: &Config) -> anyhow::Result<()> {
     mprint!(
@@ -32,7 +32,7 @@ pub fn info(cfg: &Config) -> anyhow::Result<()> {
     if !is_root() {
         print_about_the_tool();
         print_local_system(cfg)?;
-        let interfaces = mappr_common::network::interface::get_prioritized_interfaces(5)?;
+        let interfaces = zond_common::network::interface::get_prioritized_interfaces(5)?;
         print_network_interfaces(&interfaces, cfg)?;
         print::end_of_program();
         return Ok(());
@@ -55,7 +55,7 @@ pub fn info(cfg: &Config) -> anyhow::Result<()> {
     print_firewall_status(system_info.firewall, cfg)?;
     print_local_services(system_info.services, cfg)?;
 
-    let interfaces = mappr_common::network::interface::get_prioritized_interfaces(5)?;
+    let interfaces = zond_common::network::interface::get_prioritized_interfaces(5)?;
     print_network_interfaces(&interfaces, cfg)?;
 
     print::end_of_program();
@@ -67,7 +67,7 @@ fn print_about_the_tool() {
     print::aligned_line("Author", "hollowpointer");
     print::aligned_line("E-Mail", "hollowpointer@pm.me");
     print::aligned_line("License", "MIT");
-    print::aligned_line("Repository", "https://github.com/hollowpointer/mappr");
+    print::aligned_line("Repository", "https://github.com/hollowpointer/zond");
 }
 
 fn print_local_system(cfg: &Config) -> anyhow::Result<()> {

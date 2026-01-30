@@ -1,8 +1,8 @@
 #![cfg(test)]
-use mappr_common::config::Config;
-use mappr_common::network::host::Host;
-use mappr_common::network::range::{IpCollection, Ipv4Range};
-use mappr_core::scanner::{self, perform_discovery, STOP_SIGNAL};
+use zond_common::config::Config;
+use zond_common::network::host::Host;
+use zond_common::network::range::{IpCollection, Ipv4Range};
+use zond_core::scanner::{self, perform_discovery, STOP_SIGNAL};
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::Ordering;
 use std::time::Duration;

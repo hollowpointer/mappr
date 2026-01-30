@@ -3,7 +3,7 @@ mod terminal;
 
 use commands::{CommandLine, Commands, discover::discover, info::info, listen::listen, scan::scan};
 
-use mappr_common::{config::Config, error, network::target};
+use zond_common::{config::Config, error, network::target};
 
 use crate::terminal::{print, spinner};
 

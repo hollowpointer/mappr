@@ -24,7 +24,7 @@ use pnet::{
     util::MacAddr,
 };
 
-use mappr_common::{
+use zond_common::{
     error,
     network::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
     sender::{PacketType, SenderConfig},
@@ -32,7 +32,7 @@ use mappr_common::{
     utils::timing::ScanTimer,
 };
 
-use mappr_protocols::{self as protocol, ip};
+use zond_protocols::{self as protocol, ip};
 use protocol::ethernet;
 use tokio::sync::mpsc::UnboundedSender;
 

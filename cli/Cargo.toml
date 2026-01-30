@@ -1,11 +1,11 @@
 [package]
-name = "mappr-cli"
+name = "zond-cli"
 version = "0.3.0"
 edition = "2024"
 
 [dependencies]
-mappr-core = { workspace = true }
-mappr-common = { workspace = true }
+zond-core = { workspace = true }
+zond-common = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
@@ -23,5 +23,5 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tracing-indicatif = "0.3.14"
 
 [[bin]]
-name = "mappr"
+name = "zond"
 path = "src/main.rs"

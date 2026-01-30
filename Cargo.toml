@@ -24,7 +24,7 @@ crossterm = "0.29.0"
 rayon = "1.11.0"
 tracing = "0.1.44"
 
-mappr-core = { path = "./core" }
-mappr-common = { path = "./common" }
-mappr-protocols = { path = "./protocols" }
-mappr-plugins = { path = "./plugins" }
+zond-core = { path = "./core" }
+zond-common = { path = "./common" }
+zond-protocols = { path = "./protocols" }
+zond-plugins = { path = "./plugins" }

@@ -14,12 +14,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use is_root::is_root;
-use mappr_common::config::Config;
-use mappr_common::network::host::Host;
-use mappr_common::network::interface;
-use mappr_common::network::range::IpCollection;
-use mappr_common::utils::input::InputHandle;
-use mappr_common::{error, info, success, warn};
+use zond_common::config::Config;
+use zond_common::network::host::Host;
+use zond_common::network::interface;
+use zond_common::network::range::IpCollection;
+use zond_common::utils::input::InputHandle;
+use zond_common::{error, info, success, warn};
 
 mod handshake;
 mod local;

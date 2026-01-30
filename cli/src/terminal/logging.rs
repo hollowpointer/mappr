@@ -22,7 +22,7 @@ where
     ) -> std::fmt::Result {
         let meta = event.metadata();
 
-        if meta.target() == "mappr::print" {
+        if meta.target() == "zond::print" {
             let mut visitor = RawVisitor::new(writer.by_ref());
             event.record(&mut visitor);
             return write!(writer, "\r\n");

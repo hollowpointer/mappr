@@ -6,7 +6,7 @@ pub mod scan;
 use clap::{ArgAction, Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "mappr")]
+#[command(name = "zond")]
 #[command(about = "A modern network mapper.")]
 pub struct CommandLine {
     #[command(subcommand)]

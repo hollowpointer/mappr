@@ -1,4 +1,4 @@
-use mappr_common::{
+use zond_common::{
     config::Config,
     network::range::IpCollection
 };

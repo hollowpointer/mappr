@@ -15,7 +15,7 @@ pub mod utils {
 
     impl NetnsContext {
         pub fn new(suffix: &str) -> Option<Self> {
-            let ns_name = format!("mappr-ns-{}", suffix);
+            let ns_name = format!("zond-ns-{}", suffix);
             let host_if = format!("v-host-{}", suffix);
             let target_if = format!("v-targ-{}", suffix);
 

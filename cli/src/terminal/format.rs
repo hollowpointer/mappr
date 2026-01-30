@@ -1,8 +1,8 @@
 use crate::terminal::colors;
 use colored::*;
-use mappr_common::config::Config;
-use mappr_common::network::host::Host;
-use mappr_common::utils::{ip, redact};
+use zond_common::config::Config;
+use zond_common::network::host::Host;
+use zond_common::utils::{ip, redact};
 use pnet::util::MacAddr;
 use std::net::{IpAddr, Ipv6Addr};
 

@@ -1,12 +1,12 @@
 [package]
-name = "mappr-core"
+name = "zond-core"
 version = "0.1.6"
 edition = "2024"
 
 [dependencies]
-mappr-common = { workspace = true }
-mappr-protocols = { workspace = true }
-mappr-plugins = { workspace = true }
+zond-common = { workspace = true }
+zond-protocols = { workspace = true }
+zond-plugins = { workspace = true }
 tokio = { workspace = true }
 pnet = { workspace = true }
 anyhow = { workspace = true }

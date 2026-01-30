@@ -3,12 +3,13 @@ pub mod dns;
 pub mod ethernet;
 pub mod icmp;
 pub mod ip;
+pub mod mdns;
 pub mod ndp;
 pub mod tcp;
 pub mod udp;
 pub mod utils;
 
-use mappr_common::sender::{PacketType, SenderConfig};
+use zond_common::sender::{PacketType, SenderConfig};
 
 use pnet::ipnetwork::Ipv4Network;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};

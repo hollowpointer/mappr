@@ -2,6 +2,14 @@
 /target/
 /**/*.rs.bk
 
+# Ignore makepkg working directories
+src/
+pkg/
+# Ignore downloaded source tarballs
+*.tar.gz
+# Ignore the compiled package files
+*.pkg.tar.zst
+
 # Editors / OS
 .idea/
 .vscode/

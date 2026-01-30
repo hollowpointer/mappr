@@ -1,6 +1,6 @@
 use crate::terminal::{colors, print};
 use colored::*;
-use mappr_common::utils::ip::{self, Ipv6AddressType};
+use zond_common::utils::ip::{self, Ipv6AddressType};
 use pnet::datalink::NetworkInterface;
 use pnet::ipnetwork::IpNetwork;
 

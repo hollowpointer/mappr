@@ -44,7 +44,7 @@ impl WithDefaultColor for ColoredString {
 }
 
 pub fn print(msg: &str) {
-    info!(target: "mappr::print", raw_msg = msg);
+    info!(target: "zond::print", raw_msg = msg);
 }
 
 pub fn banner(no_banner: bool, q_level: u8) {
@@ -52,7 +52,7 @@ pub fn banner(no_banner: bool, q_level: u8) {
         return;
     }
 
-    let text_content: String = format!("⟦ MAPPR v{} ⟧ ", env!("CARGO_PKG_VERSION"));
+    let text_content: String = format!("⟦ ZOND v{} ⟧ ", env!("CARGO_PKG_VERSION"));
     let text_width: usize = UnicodeWidthStr::width(text_content.as_str());
     let text: ColoredString = text_content.bright_green().bold();
     let sep: ColoredString = "═"

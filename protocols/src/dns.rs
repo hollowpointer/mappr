@@ -5,7 +5,7 @@ use pnet::packet::dns::{
     DnsClass, DnsPacket, DnsQuery, DnsResponse, DnsTypes, MutableDnsPacket, Opcode, Retcode,
 };
 
-use mappr_common::utils::ip;
+use zond_common::utils::ip;
 
 pub const DNS_HDR_LEN: usize = 12;
 

@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{self, bail};
 use colored::*;
-use mappr_common::error;
+use zond_common::error;
 use tracing::info_span;
 use unicode_width::UnicodeWidthStr;
 
@@ -21,9 +21,9 @@ use crate::{
         spinner,
     },
 };
-use mappr_common::network::range::IpCollection;
-use mappr_common::{config::Config, network::host::Host, success};
-use mappr_core::scanner;
+use zond_common::network::range::IpCollection;
+use zond_common::{config::Config, network::host::Host, success};
+use zond_core::scanner;
 
 type Detail = (String, ColoredString);
 

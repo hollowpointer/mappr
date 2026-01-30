@@ -339,6 +339,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dns-parser"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4d33be9473d06f75f58220f71f7a9317aca647dc061dbd3c361b0bef505fbea"
+dependencies = [
+ "byteorder",
+ "quick-error",
+]
+
+[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,92 +540,6 @@ name = "macaddr"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baee0bbc17ce759db233beb01648088061bf678383130602a298e6998eedb2d8"
-
-[[package]]
-name = "mappr-cli"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "clap",
- "colored",
- "console",
- "indicatif",
- "is-root",
- "mappr-common",
- "mappr-core",
- "pnet",
- "rand",
- "sys-info",
- "tokio",
- "tracing",
- "tracing-indicatif",
- "tracing-subscriber",
- "unicode-width",
-]
-
-[[package]]
-name = "mappr-common"
-version = "0.1.3"
-dependencies = [
- "anyhow",
- "async-trait",
- "crossterm",
- "mac_oui",
- "pnet",
- "rayon",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "mappr-core"
-version = "0.1.6"
-dependencies = [
- "anyhow",
- "async-trait",
- "is-root",
- "mappr-common",
- "mappr-plugins",
- "mappr-protocols",
- "pnet",
- "rand",
- "sysinfo",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mappr-integration-tests"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "mappr-common",
- "mappr-core",
- "tokio",
-]
-
-[[package]]
-name = "mappr-plugins"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "mappr-common",
- "mappr-protocols",
-]
-
-[[package]]
-name = "mappr-protocols"
-version = "0.1.2"
-dependencies = [
- "anyhow",
- "mappr-common",
- "pnet",
- "rand",
- "thiserror",
- "tracing",
-]
 
 [[package]]
 name = "matchers"
@@ -850,6 +774,12 @@ checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "quick-error"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quote"
@@ -1643,4 +1573,91 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "zond-cli"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "colored",
+ "console",
+ "indicatif",
+ "is-root",
+ "pnet",
+ "rand",
+ "sys-info",
+ "tokio",
+ "tracing",
+ "tracing-indicatif",
+ "tracing-subscriber",
+ "unicode-width",
+ "zond-common",
+ "zond-core",
+]
+
+[[package]]
+name = "zond-common"
+version = "0.1.3"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "crossterm",
+ "mac_oui",
+ "pnet",
+ "rayon",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "zond-core"
+version = "0.1.6"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "is-root",
+ "pnet",
+ "rand",
+ "sysinfo",
+ "tokio",
+ "tracing",
+ "zond-common",
+ "zond-plugins",
+ "zond-protocols",
+]
+
+[[package]]
+name = "zond-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tokio",
+ "zond-common",
+ "zond-core",
+]
+
+[[package]]
+name = "zond-plugins"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "zond-common",
+ "zond-protocols",
+]
+
+[[package]]
+name = "zond-protocols"
+version = "0.1.2"
+dependencies = [
+ "anyhow",
+ "dns-parser",
+ "pnet",
+ "rand",
+ "thiserror",
+ "tracing",
+ "zond-common",
 ]

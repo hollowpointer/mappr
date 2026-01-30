@@ -1,3 +1,3 @@
 pub fn hello() {
-    println!("Hello from mappr-plugins!");
+    println!("Hello from zond-plugins!");
 }
