@@ -6,14 +6,14 @@ use std::{
 };
 
 use anyhow::{Context, ensure};
-use zond_common::{info, network::host::Host, utils};
+use pnet::packet::{Packet, udp::UdpPacket};
+use tokio::sync::mpsc::UnboundedReceiver;
+use zond_common::{network::host::Host, utils};
 use zond_protocols::{
     dns,
     mdns::{self, MdnsMetadata},
     udp,
 };
-use pnet::packet::{Packet, udp::UdpPacket};
-use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::network::transport::{self, TransportHandle, TransportType};
 
@@ -112,9 +112,7 @@ impl HostnameResolver {
     }
 
     fn process_mdns_packet(&mut self, packet: UdpPacket) -> anyhow::Result<()> {
-        let mdns_resource: MdnsMetadata = mdns::extract_resource(packet.payload())?;
-        info!("{:?}", mdns_resource.hostname);
-        info!("{:?}", mdns_resource.ips);
+        let _mdns_resource: MdnsMetadata = mdns::extract_resource(packet.payload())?;
         Ok(())
     }
 
