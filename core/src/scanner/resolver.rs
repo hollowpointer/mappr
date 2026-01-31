@@ -1,6 +1,8 @@
+use hickory_resolver::system_conf::read_system_conf;
+use std::net::SocketAddr;
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr},
+    net::IpAddr,
     sync::atomic::{AtomicU16, Ordering},
     time::Duration,
 };
@@ -22,7 +24,6 @@ const MDNS_PORT: u16 = 5353;
 
 type Hostname = String;
 type TransID = u16;
-type Port = u16;
 
 pub struct HostnameResolver {
     udp_handle: TransportHandle,
@@ -30,7 +31,7 @@ pub struct HostnameResolver {
     mdns_cache: HashMap<IpAddr, MdnsRecord>,
     hostname_map: HashMap<IpAddr, Hostname>,
     dns_rx: UnboundedReceiver<IpAddr>,
-    dns_socket: (IpAddr, Port),
+    dns_socket: SocketAddr,
     id_counter: AtomicU16,
 }
 
@@ -84,7 +85,7 @@ impl HostnameResolver {
         ensure!(is_queryable(ip), "{ip} cannot be queried");
         let id: u16 = self.get_next_trans_id();
         self.dns_map.insert(id, *ip);
-        let (dns_addr, dns_port) = self.dns_socket;
+        let (dns_addr, dns_port) = (self.dns_socket.ip(), self.dns_socket.port());
 
         let bytes: Vec<u8> = dns::create_ptr_packet(ip, id)?;
         let src_port: u16 = rand::random_range(50_000..u16::MAX);
@@ -183,26 +184,12 @@ fn is_queryable(ip: &IpAddr) -> bool {
     }
 }
 
-#[cfg(unix)]
-fn get_dns_server_socket() -> anyhow::Result<(IpAddr, u16)> {
-    let paths: [&str; 2] = ["/run/systemd/resolve/resolv.conf", "/etc/resolv.conf"];
+fn get_dns_server_socket() -> anyhow::Result<SocketAddr> {
+    let (config, _options) = read_system_conf()?;
 
-    for path in paths {
-        if let Ok(file) = std::fs::File::open(path) {
-            use std::io::BufRead;
-            for line in std::io::BufReader::new(file).lines().map_while(Result::ok) {
-                if !line.starts_with("nameserver ") {
-                    continue;
-                }
-                let ip_str = line["nameserver ".len()..].trim();
-                if let Ok(ip) = ip_str.parse::<IpAddr>()
-                    && !ip.is_loopback()
-                {
-                    return Ok((ip, DNS_PORT));
-                }
-            }
-        }
+    if let Some(ns) = config.name_servers().first() {
+        return Ok(ns.socket_addr);
     }
 
-    Ok((IpAddr::V4(std::net::Ipv4Addr::new(1, 1, 1, 1)), DNS_PORT))
+    Ok("1.1.1.1:53".parse()?)
 }
