@@ -7,9 +7,9 @@ use std::{
 
 use anyhow::ensure;
 use async_trait::async_trait;
-use zond_common::{error, success};
 use pnet::{datalink::NetworkInterface, packet::tcp::TcpPacket};
 use tokio::sync::mpsc::UnboundedSender;
+use zond_common::{error, success};
 
 use zond_common::network::{host::Host, range::IpCollection};
 use zond_protocols as protocol;
@@ -44,29 +44,50 @@ impl NetworkExplorer for RoutedScanner {
 
         let deadline: Instant = calculate_deadline(self.ips.len());
 
-        while self.should_continue(deadline) {
-            if let Ok((bytes, ip)) = self.tcp_handle.rx.try_recv() {
-                if !self.ips.contains(&ip) {
-                    continue;
-                }
+        loop {
+            if super::STOP_SIGNAL.load(Ordering::Relaxed)
+                || self.ips.len() == self.responded_ips.len()
+            {
+                break;
+            }
 
-                let entry = self.responded_ips.entry(ip);
-                let is_new = matches!(entry, Entry::Vacant(_));
-                let latencies = entry.or_default();
+            let remaining: Duration = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
 
-                if is_new {
-                    let _ = self.dns_tx.as_ref().map(|dns| dns.send(ip));
-                    super::increment_host_count();
-                }
+            tokio::select! {
+                res = self.tcp_handle.rx.recv() => {
+                    match res {
+                        Some((bytes, ip)) => {
+                            if !self.ips.contains(&ip) {
+                                continue;
+                            }
 
-                if let Some(tcp_packet) = TcpPacket::new(&bytes) {
-                    let ack_num: u32 = tcp_packet.get_acknowledgement();
-                    let original_seq: u32 = ack_num.wrapping_sub(1);
+                            let entry = self.responded_ips.entry(ip);
+                            let is_new = matches!(entry, Entry::Vacant(_));
+                            let latencies = entry.or_default();
 
-                    if let Some(start_time) = self.rtt_map.remove(&(ip, original_seq)) {
-                        let rtt: Duration = start_time.elapsed();
-                        latencies.push_back(rtt);
+                            if is_new {
+                                let _ = self.dns_tx.as_ref().map(|dns| dns.send(ip));
+                                super::increment_host_count();
+                            }
+
+                            if let Some(tcp_packet) = TcpPacket::new(&bytes) {
+                                let ack_num: u32 = tcp_packet.get_acknowledgement();
+                                let original_seq: u32 = ack_num.wrapping_sub(1);
+
+                                if let Some(start_time) = self.rtt_map.remove(&(ip, original_seq)) {
+                                    let rtt: Duration = start_time.elapsed();
+                                    latencies.push_back(rtt);
+                                }
+                            }
+                        },
+                        None => break,
                     }
+                },
+                _ = tokio::time::sleep(remaining) => {
+                    break;
                 }
             }
         }
@@ -152,14 +173,6 @@ impl RoutedScanner {
             }
         }
         Ok(())
-    }
-
-    fn should_continue(&self, deadline: Instant) -> bool {
-        let has_time: bool = Instant::now() < deadline;
-        let not_stopped: bool = !super::STOP_SIGNAL.load(Ordering::Relaxed);
-        let work_remains: bool = self.ips.len() > self.responded_ips.len();
-
-        has_time && not_stopped && work_remains
     }
 }
 

@@ -25,7 +25,12 @@ pub mod utils {
                 return None;
             }
 
-            if !run_cmd("ip", &["link", "add", &host_if, "type", "veth", "peer", "name", &target_if]) {
+            if !run_cmd(
+                "ip",
+                &[
+                    "link", "add", &host_if, "type", "veth", "peer", "name", &target_if,
+                ],
+            ) {
                 Self::cleanup(&ns_name, &host_if);
                 return None;
             }
@@ -38,7 +43,11 @@ pub mod utils {
             run_cmd("ip", &["addr", "add", "10.200.0.1/24", "dev", &host_if]);
             run_cmd("ip", &["link", "set", &host_if, "up"]);
 
-            run_ns_cmd(&ns_name, "ip", &["addr", "add", "10.200.0.2/24", "dev", &target_if]);
+            run_ns_cmd(
+                &ns_name,
+                "ip",
+                &["addr", "add", "10.200.0.2/24", "dev", &target_if],
+            );
             run_ns_cmd(&ns_name, "ip", &["link", "set", &target_if, "up"]);
             run_ns_cmd(&ns_name, "ip", &["link", "set", "lo", "up"]);
 
@@ -52,8 +61,8 @@ pub mod utils {
         }
 
         fn cleanup(ns_name: &str, host_if: &str) {
-            let _ = Command::new("ip").args(&["netns", "del", ns_name]).output();
-            let _ = Command::new("ip").args(&["link", "del", host_if]).output();
+            let _ = Command::new("ip").args(["netns", "del", ns_name]).output();
+            let _ = Command::new("ip").args(["link", "del", host_if]).output();
         }
     }
 

@@ -123,28 +123,20 @@ pub fn tree_head(idx: usize, name: &str) {
 }
 
 pub fn as_tree(detail: Vec<(String, ColoredString)>) {
-    let longest_key = detail
-        .iter()
-        .map(|(key, _val)| key.width())
-        .max()
-        .unwrap_or(3);
+    let padding_width: usize = "Hostname".len();
 
     for (i, (key, value)) in detail.iter().enumerate() {
         let last: bool = i + 1 == detail.len();
+        let branch: ColoredString = if !last { "├─" } else { "└─" }.bright_black();
 
-        let branch: ColoredString = if !last {
-            "├─".bright_black()
-        } else {
-            "└─".bright_black()
-        };
-
-        let key: ColoredString = key.color(colors::TEXT_DEFAULT);
+        let dots_count: usize = padding_width.saturating_sub(key.len());
+        let dots: ColoredString = ".".repeat(dots_count).color(colors::SEPARATOR);
 
         let output: String = format!(
             " {} {}{}{} {}",
             branch,
-            key,
-            ".".repeat(longest_key - key.len()).color(colors::SEPARATOR),
+            key.color(colors::TEXT_DEFAULT),
+            dots,
             ":".color(colors::SEPARATOR),
             value
         );

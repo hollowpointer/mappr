@@ -45,7 +45,7 @@ pub fn create_arp_packets(sender_config: &SenderConfig) -> anyhow::Result<Packet
     let targets: HashSet<Ipv4Addr> = sender_config.get_targets_v4().iter().cloned().collect();
 
     let iter = targets.into_iter().map(move |dst_addr| {
-        let packet = arp::create_packet(src_mac, dst_mac, src_addr, dst_addr)
+        let packet: Vec<u8> = arp::create_packet(src_mac, dst_mac, src_addr, dst_addr)
             .expect("Failed to create ARP packet");
 
         (packet, IpAddr::V4(dst_addr))

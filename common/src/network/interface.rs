@@ -173,7 +173,10 @@ fn select_best_lan_interface(
 /// Returns: Map<Interface, (Local_Targets, Routed_Targets)>
 pub fn map_ips_to_interfaces(
     mut collection: IpCollection,
-) -> (HashMap<NetworkInterface, (IpCollection, IpCollection)>, IpCollection) {
+) -> (
+    HashMap<NetworkInterface, (IpCollection, IpCollection)>,
+    IpCollection,
+) {
     let interfaces: Vec<NetworkInterface> = datalink::interfaces()
         .into_iter()
         .filter(|i| i.is_up() && !i.is_loopback() && !i.ips.is_empty())
@@ -237,14 +240,12 @@ pub fn map_ips_to_interfaces(
                     return (Some(idx), RouteType::Local, target_ip);
                 }
 
-                // Try to resolve route
-                if let Some(source_ip) = resolve_route_source_ip(target_ip, sockets) {
-                    if let Some(idx) = ip_to_idx.get(&source_ip).copied() {
-                        return (Some(idx), RouteType::Routed, target_ip);
-                    }
+                if let Some(source_ip) = resolve_route_source_ip(target_ip, sockets)
+                    && let Some(idx) = ip_to_idx.get(&source_ip).copied()
+                {
+                    return (Some(idx), RouteType::Routed, target_ip);
                 }
-                
-                // If resolving failed or source IP is not in our interface list (e.g. localhost)
+
                 (None, RouteType::Unmapped, target_ip)
             },
         )

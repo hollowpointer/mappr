@@ -11,7 +11,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use zond_common::{network::host::Host, utils};
 use zond_protocols::{
     dns,
-    mdns::{self, MdnsMetadata},
+    mdns::{self, MdnsRecord},
     udp,
 };
 
@@ -20,11 +20,17 @@ use crate::network::transport::{self, TransportHandle, TransportType};
 const DNS_PORT: u16 = 53;
 const MDNS_PORT: u16 = 5353;
 
+type Hostname = String;
+type TransID = u16;
+type Port = u16;
+
 pub struct HostnameResolver {
     udp_handle: TransportHandle,
-    hostname_map: HashMap<IpAddr, String>,
-    dns_map: HashMap<u16, IpAddr>,
+    dns_map: HashMap<TransID, IpAddr>,
+    mdns_cache: HashMap<IpAddr, MdnsRecord>,
+    hostname_map: HashMap<IpAddr, Hostname>,
     dns_rx: UnboundedReceiver<IpAddr>,
+    dns_socket: (IpAddr, Port),
     id_counter: AtomicU16,
 }
 
@@ -32,9 +38,11 @@ impl HostnameResolver {
     pub fn new(dns_rx: UnboundedReceiver<IpAddr>) -> anyhow::Result<Self> {
         Ok(Self {
             udp_handle: transport::start_packet_capture(TransportType::UdpLayer4)?,
-            hostname_map: HashMap::new(),
             dns_map: HashMap::new(),
+            mdns_cache: HashMap::new(),
+            hostname_map: HashMap::new(),
             dns_rx,
+            dns_socket: get_dns_server_socket()?,
             id_counter: AtomicU16::new(0),
         })
     }
@@ -76,7 +84,7 @@ impl HostnameResolver {
         ensure!(is_queryable(ip), "{ip} cannot be queried");
         let id: u16 = self.get_next_trans_id();
         self.dns_map.insert(id, *ip);
-        let (dns_addr, dns_port) = get_dns_server_socket(ip);
+        let (dns_addr, dns_port) = self.dns_socket;
 
         let bytes: Vec<u8> = dns::create_ptr_packet(ip, id)?;
         let src_port: u16 = rand::random_range(50_000..u16::MAX);
@@ -112,17 +120,49 @@ impl HostnameResolver {
     }
 
     fn process_mdns_packet(&mut self, packet: UdpPacket) -> anyhow::Result<()> {
-        let _mdns_resource: MdnsMetadata = mdns::extract_resource(packet.payload())?;
+        let mdns_record: MdnsRecord = mdns::extract_resource(packet.payload())?;
+
+        let preferred_ip = mdns_record
+            .ips
+            .iter()
+            .find(|ip| ip.is_ipv4())
+            .or_else(|| {
+                mdns_record.ips.iter().find(|ip| {
+                    if let IpAddr::V6(v6) = ip {
+                        v6.is_unicast_link_local()
+                    } else {
+                        false
+                    }
+                })
+            })
+            .or_else(|| mdns_record.ips.iter().next());
+
+        if let Some(ip) = preferred_ip {
+            self.mdns_cache.insert(*ip, mdns_record);
+        }
+
         Ok(())
     }
 
     pub fn resolve_hosts(&mut self, hosts: &mut Vec<Host>) {
         for host in hosts {
-            for ip in &host.ips {
-                if let Some(hostname) = self.hostname_map.remove(ip)
-                    && host.hostname.is_none()
+            let ips_to_check = host.ips.clone();
+
+            for ip in ips_to_check {
+                // Resolve DNS
+                if host.hostname.is_none()
+                    && let Some(hostname) = self.hostname_map.remove(&ip)
                 {
                     host.hostname = Some(hostname);
+                }
+
+                // Resolve mDNS
+                if let Some(mdns_record) = self.mdns_cache.remove(&ip) {
+                    if host.hostname.is_none() && mdns_record.hostname.is_some() {
+                        host.hostname = mdns_record.hostname;
+                    }
+
+                    host.ips.extend(mdns_record.ips);
                 }
             }
         }
@@ -137,20 +177,32 @@ fn is_queryable(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V6(ipv6_addr) => utils::ip::is_global_unicast(ipv6_addr),
         IpAddr::V4(_ipv4_addr) => {
-            // Future refinement: check for private ranges/localhost here
+            // Future refinement: check for private ranges/localhost
             true
         }
     }
 }
 
-// This is fragile and needs rework
-fn get_dns_server_socket(ip: &IpAddr) -> (IpAddr, u16) {
-    let ip_addr: IpAddr = {
-        if utils::ip::is_private(ip) {
-            IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1))
-        } else {
-            IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))
+#[cfg(unix)]
+fn get_dns_server_socket() -> anyhow::Result<(IpAddr, u16)> {
+    let paths: [&str; 2] = ["/run/systemd/resolve/resolv.conf", "/etc/resolv.conf"];
+
+    for path in paths {
+        if let Ok(file) = std::fs::File::open(path) {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(file).lines().map_while(Result::ok) {
+                if !line.starts_with("nameserver ") {
+                    continue;
+                }
+                let ip_str = line["nameserver ".len()..].trim();
+                if let Ok(ip) = ip_str.parse::<IpAddr>()
+                    && !ip.is_loopback()
+                {
+                    return Ok((ip, DNS_PORT));
+                }
+            }
         }
-    };
-    (ip_addr, DNS_PORT)
+    }
+
+    Ok((IpAddr::V4(std::net::Ipv4Addr::new(1, 1, 1, 1)), DNS_PORT))
 }

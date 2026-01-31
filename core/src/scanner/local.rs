@@ -7,8 +7,8 @@
 //! Layer 2 packets via the operating system's network sockets.
 
 use std::{
-    collections::HashMap,
-    net::IpAddr,
+    collections::{HashMap, HashSet},
+    net::{IpAddr, Ipv6Addr},
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
@@ -32,9 +32,12 @@ use zond_common::{
     utils::timing::ScanTimer,
 };
 
-use zond_protocols::{self as protocol, ip};
 use protocol::ethernet;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::{
+    sync::mpsc::UnboundedSender,
+    time::{Interval, Sleep},
+};
+use zond_protocols::{self as protocol, ip};
 
 use crate::network::channel::{self, EthernetHandle};
 
@@ -61,9 +64,9 @@ impl NetworkExplorer for LocalScanner {
         let mut packet_iter = protocol::eth_packet_iter(&self.sender_cfg)?;
         let mut sending_finished = false;
 
-        let mut send_interval = tokio::time::interval(SEND_INTERVAL_US);
+        let mut send_interval: Interval = tokio::time::interval(SEND_INTERVAL_US);
 
-        let scan_deadline = tokio::time::sleep(MAX_CHANNEL_TIME);
+        let scan_deadline: Sleep = tokio::time::sleep(MAX_CHANNEL_TIME);
         tokio::pin!(scan_deadline);
 
         loop {
@@ -108,16 +111,16 @@ impl LocalScanner {
         dns_tx: Option<UnboundedSender<IpAddr>>,
     ) -> anyhow::Result<Self> {
         let eth_handle: EthernetHandle = channel::start_capture(&intf)?;
-        let timer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE_MS);
+        let timer: ScanTimer = ScanTimer::new(MAX_CHANNEL_TIME, MIN_CHANNEL_TIME, MAX_SILENCE_MS);
         let ips_len: usize = collection.len();
 
-        let mut sender_cfg = SenderConfig::from(&intf);
+        let mut sender_cfg: SenderConfig = SenderConfig::from(&intf);
         sender_cfg.add_packet_type(PacketType::ARP);
         if IS_LAN_SCAN.load(Ordering::Relaxed) {
             sender_cfg.add_packet_type(PacketType::ICMPv6);
         }
 
-        let mut target_ips = std::collections::HashSet::new();
+        let mut target_ips: HashSet<IpAddr> = HashSet::new();
 
         for single in collection.singles {
             target_ips.insert(single);
@@ -153,7 +156,7 @@ impl LocalScanner {
             "{source_addr} is not in range"
         );
 
-        // NOTE: This sucks too as you might tell
+        // NOTE: This sucks as you might tell
         if source_addr.is_ipv6()
             && !IS_LAN_SCAN.load(Ordering::Relaxed)
             && !self.hosts_map.contains_key(&eth_frame.get_source())
@@ -171,8 +174,8 @@ impl LocalScanner {
 
         let source_mac: MacAddr = eth_frame.get_source();
 
-        let mut is_new_host = false;
-        let host = self.hosts_map.entry(source_mac).or_insert_with(|| {
+        let mut is_new_host: bool = false;
+        let host: &mut Host = self.hosts_map.entry(source_mac).or_insert_with(|| {
             self.timer.mark_seen();
             super::increment_host_count();
             is_new_host = true;
@@ -188,7 +191,7 @@ impl LocalScanner {
             host.add_rtt(rtt);
         }
 
-        let is_new_ip = host.ips.insert(source_addr);
+        let is_new_ip: bool = host.ips.insert(source_addr);
 
         if source_addr.is_ipv4() && host.primary_ip.is_ipv6() {
             host.primary_ip = source_addr;
@@ -218,14 +221,14 @@ impl LocalScanner {
             }
 
             EtherTypes::Ipv6 => {
-                let dst_addr = match ip::get_ipv6_dst_addr_from_eth(eth_frame) {
+                let dst_addr: Ipv6Addr = match ip::get_ipv6_dst_addr_from_eth(eth_frame) {
                     Ok(addr) => addr,
                     Err(_) => bail!("packet invalid [IPv6]"),
                 };
 
                 if dst_addr.is_unicast_link_local() {
                     let dst_addr: IpAddr = IpAddr::V6(dst_addr);
-                    let start_time = self
+                    let start_time: &Instant = self
                         .rtt_map
                         .get(&dst_addr)
                         .ok_or_else(|| anyhow!("unmapped link local [IPv6]"))?;
