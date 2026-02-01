@@ -5,13 +5,19 @@ use pnet::datalink::NetworkInterface;
 use std::env;
 use sys_info;
 
-use crate::{mprint, terminal::{
-    colors,
-    print::{self, GLOBAL_KEY_WIDTH},
-}};
+use crate::{
+    mprint,
+    terminal::{
+        colors,
+        print::{self, GLOBAL_KEY_WIDTH},
+    },
+};
+use zond_common::{
+    config::Config,
+    models::localhost::{FirewallStatus, IpServiceGroup, Service},
+};
 use zond_core::info::InfoService;
 use zond_core::system::SystemRepo;
-use zond_common::{config::Config, network::localhost::{FirewallStatus, IpServiceGroup, Service}};
 
 pub fn info(cfg: &Config) -> anyhow::Result<()> {
     mprint!(
@@ -23,16 +29,16 @@ pub fn info(cfg: &Config) -> anyhow::Result<()> {
     );
     mprint!();
     GLOBAL_KEY_WIDTH.set(10);
-    
+
     let system_repo = Box::new(SystemRepo);
     let service = InfoService::new(system_repo);
-    
+
     let system_info = service.get_system_info()?;
 
     if !is_root() {
         print_about_the_tool();
         print_local_system(cfg)?;
-        let interfaces = zond_common::network::interface::get_prioritized_interfaces(5)?;
+        let interfaces = zond_common::interface::get_prioritized_interfaces(5)?;
         print_network_interfaces(&interfaces, cfg)?;
         print::end_of_program();
         return Ok(());
@@ -41,10 +47,14 @@ pub fn info(cfg: &Config) -> anyhow::Result<()> {
     let mut longest_name = 0;
     for group in &system_info.services {
         for s in &group.tcp_services {
-            if s.name.len() > longest_name { longest_name = s.name.len(); }
+            if s.name.len() > longest_name {
+                longest_name = s.name.len();
+            }
         }
         for s in &group.udp_services {
-            if s.name.len() > longest_name { longest_name = s.name.len(); }
+            if s.name.len() > longest_name {
+                longest_name = s.name.len();
+            }
         }
     }
 
@@ -55,7 +65,7 @@ pub fn info(cfg: &Config) -> anyhow::Result<()> {
     print_firewall_status(system_info.firewall, cfg)?;
     print_local_services(system_info.services, cfg)?;
 
-    let interfaces = zond_common::network::interface::get_prioritized_interfaces(5)?;
+    let interfaces = zond_common::interface::get_prioritized_interfaces(5)?;
     print_network_interfaces(&interfaces, cfg)?;
 
     print::end_of_program();
@@ -85,10 +95,10 @@ fn print_local_system(cfg: &Config) -> anyhow::Result<()> {
 
 fn print_network_interfaces(interfaces: &[NetworkInterface], cfg: &Config) -> anyhow::Result<()> {
     print::header("network interfaces", cfg.quiet);
-    
+
     for (idx, intf) in interfaces.iter().enumerate() {
         crate::terminal::network_fmt::print_interface(intf, idx);
-        
+
         if idx + 1 != interfaces.len() {
             mprint!();
         }
@@ -105,9 +115,9 @@ fn print_firewall_status(status: FirewallStatus, cfg: &Config) -> anyhow::Result
     };
 
     print::aligned_line("Status", status_str);
-    
+
     if status == FirewallStatus::NotDetected {
-         let output = format!(
+        let output = format!(
             "{}",
             "No active firewall detected. Services may be exposed to public."
                 .color(colors::TEXT_DEFAULT)
@@ -207,7 +217,7 @@ fn print_service_line(idx: usize, service: &Service, vertical_branch: &str, serv
         .local_ports
         .iter()
         .take(5)
-        .map(|p| p.to_string())
+        .map(|p: &u16| p.to_string())
         .collect();
 
     if num_ports > 5 {

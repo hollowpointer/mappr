@@ -1,4 +1,4 @@
-use crate::network::localhost::{IpServiceGroup, FirewallStatus};
+use crate::models::localhost::{FirewallStatus, IpServiceGroup};
 use pnet::datalink::NetworkInterface;
 
 /// Defines the contract for accessing OS-level network information.
@@ -6,12 +6,12 @@ use pnet::datalink::NetworkInterface;
 /// This repository abstracts system calls to query open ports, firewall status,
 /// and available network interfaces.
 pub trait SystemRepository {
-   /// Returns a list of services listening on local ports, grouped by IP.
-   fn get_local_services(&self) -> anyhow::Result<Vec<IpServiceGroup>>;
-   
-   /// Checks the status of the local firewall (e.g., UFW, iptables, Windows Firewall).
-   fn get_firewall_status(&self) -> anyhow::Result<FirewallStatus>;
-   
-   /// Retrieves a list of available physical and virtual network interfaces.
-   fn get_network_interfaces(&self) -> anyhow::Result<Vec<NetworkInterface>>;
+    /// Returns a list of services listening on local ports, grouped by IP.
+    fn get_local_services(&self) -> anyhow::Result<Vec<IpServiceGroup>>;
+
+    /// Checks the status of the local firewall (e.g., UFW, iptables, Windows Firewall).
+    fn get_firewall_status(&self) -> anyhow::Result<FirewallStatus>;
+
+    /// Retrieves a list of available physical and virtual network interfaces.
+    fn get_network_interfaces(&self) -> anyhow::Result<Vec<NetworkInterface>>;
 }

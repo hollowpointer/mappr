@@ -1,11 +1,11 @@
 #![cfg(test)]
-use zond_common::config::Config;
-use zond_common::network::host::Host;
-use zond_common::network::range::{IpCollection, Ipv4Range};
-use zond_core::scanner::{self, perform_discovery, STOP_SIGNAL};
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use zond_common::config::Config;
+use zond_common::models::host::Host;
+use zond_common::models::range::{IpCollection, Ipv4Range};
+use zond_core::scanner::{self, perform_discovery, STOP_SIGNAL};
 
 use crate::utils::NetnsContext;
 

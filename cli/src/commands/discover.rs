@@ -9,9 +9,9 @@ use std::{
 
 use anyhow::{self, bail};
 use colored::*;
-use zond_common::error;
 use tracing::info_span;
 use unicode_width::UnicodeWidthStr;
+use zond_common::error;
 
 use crate::{
     mprint,
@@ -21,8 +21,8 @@ use crate::{
         spinner,
     },
 };
-use zond_common::network::range::IpCollection;
-use zond_common::{config::Config, network::host::Host, success};
+use zond_common::models::range::IpCollection;
+use zond_common::{config::Config, models::host::Host, success};
 use zond_core::scanner;
 
 type Detail = (String, ColoredString);

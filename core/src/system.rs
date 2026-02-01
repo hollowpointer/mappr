@@ -4,18 +4,18 @@ use anyhow;
 
 use pnet::datalink::NetworkInterface;
 
-use zond_common::network::localhost::{FirewallStatus, IpServiceGroup};
+use zond_common::models::localhost::{FirewallStatus, IpServiceGroup};
 use zond_common::system::SystemRepository;
 
 pub struct SystemRepo;
 
 impl SystemRepository for SystemRepo {
     fn get_local_services(&self) -> anyhow::Result<Vec<IpServiceGroup>> {
-        use zond_common::network::localhost::{IpServiceGroup, Service};
         use std::collections::{HashMap, HashSet};
         use std::net::{IpAddr, Ipv4Addr};
         use std::process::Command;
         use std::str::FromStr;
+        use zond_common::models::localhost::{IpServiceGroup, Service};
 
         let output = Command::new("ss").arg("-lntuH").arg("-p").output();
 
@@ -170,6 +170,6 @@ impl SystemRepository for SystemRepo {
     }
 
     fn get_network_interfaces(&self) -> anyhow::Result<Vec<NetworkInterface>> {
-        zond_common::network::interface::get_prioritized_interfaces(10)
+        zond_common::interface::get_prioritized_interfaces(10)
     }
 }

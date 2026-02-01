@@ -26,7 +26,7 @@ use pnet::{
 
 use zond_common::{
     error,
-    network::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
+    models::{host::Host, range::IpCollection, target::IS_LAN_SCAN},
     sender::{PacketType, SenderConfig},
     success,
     utils::timing::ScanTimer,

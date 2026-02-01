@@ -9,7 +9,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
-use crate::utils::interface::NetworkInterfaceExtension;
+use crate::interface::NetworkInterfaceExtension;
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub enum PacketType {

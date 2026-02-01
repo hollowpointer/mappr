@@ -11,7 +11,7 @@ use pnet::{datalink::NetworkInterface, packet::tcp::TcpPacket};
 use tokio::sync::mpsc::UnboundedSender;
 use zond_common::{error, success};
 
-use zond_common::network::{host::Host, range::IpCollection};
+use zond_common::models::{host::Host, range::IpCollection};
 use zond_protocols as protocol;
 
 use crate::network::transport::{self, TransportHandle, TransportType};

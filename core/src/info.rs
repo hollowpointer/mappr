@@ -5,9 +5,9 @@
 //! This service acts as a facade for gathering local machine statistics and
 //! configuration, useful for debugging or self-awareness context.
 
-use zond_common::network::localhost::{FirewallStatus, IpServiceGroup};
-use zond_common::system::SystemRepository;
 use pnet::datalink::NetworkInterface;
+use zond_common::models::localhost::{FirewallStatus, IpServiceGroup};
+use zond_common::system::SystemRepository;
 
 /// Application Service for Local System Information.
 ///

@@ -15,9 +15,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use is_root::is_root;
 use zond_common::config::Config;
-use zond_common::network::host::Host;
-use zond_common::network::interface;
-use zond_common::network::range::IpCollection;
+use zond_common::interface;
+use zond_common::models::host::Host;
+use zond_common::models::range::IpCollection;
 use zond_common::utils::input::InputHandle;
 use zond_common::{error, info, success, warn};
 

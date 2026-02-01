@@ -1,11 +1,11 @@
-use zond_common::network::host::Host;
-use zond_common::network::range::IpCollection;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
+use zond_common::models::host::Host;
+use zond_common::models::range::IpCollection;
 
 use super::STOP_SIGNAL;
 
@@ -58,8 +58,8 @@ pub async fn prober(ip: IpAddr) -> anyhow::Result<Option<Host>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zond_common::network::host::Host;
     use std::net::{IpAddr, Ipv4Addr};
+    use zond_common::models::host::Host;
 
     #[tokio::test]
     #[ignore]
