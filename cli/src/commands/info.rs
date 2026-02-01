@@ -14,10 +14,9 @@ use crate::{
 };
 use zond_common::{
     config::Config,
-    models::localhost::{FirewallStatus, IpServiceGroup, Service},
+    models::localhost::{FirewallStatus, Service},
 };
-use zond_core::info::InfoService;
-use zond_core::system::SystemRepo;
+use zond_core::system;
 
 pub fn info(cfg: &Config) -> anyhow::Result<()> {
     mprint!(
@@ -30,10 +29,7 @@ pub fn info(cfg: &Config) -> anyhow::Result<()> {
     mprint!();
     GLOBAL_KEY_WIDTH.set(10);
 
-    let system_repo = Box::new(SystemRepo);
-    let service = InfoService::new(system_repo);
-
-    let system_info = service.get_system_info()?;
+    let system_info = system::get_local_services()?;
 
     if !is_root() {
         print_about_the_tool();
@@ -45,7 +41,7 @@ pub fn info(cfg: &Config) -> anyhow::Result<()> {
     }
 
     let mut longest_name = 0;
-    for group in &system_info.services {
+    for group in &system_info {
         for s in &group.tcp_services {
             if s.name.len() > longest_name {
                 longest_name = s.name.len();
@@ -62,8 +58,8 @@ pub fn info(cfg: &Config) -> anyhow::Result<()> {
 
     print_about_the_tool();
     print_local_system(cfg)?;
-    print_firewall_status(system_info.firewall, cfg)?;
-    print_local_services(system_info.services, cfg)?;
+    print_firewall_status(cfg)?;
+    print_local_services(cfg)?;
 
     let interfaces = zond_common::interface::get_prioritized_interfaces(5)?;
     print_network_interfaces(&interfaces, cfg)?;
@@ -106,8 +102,9 @@ fn print_network_interfaces(interfaces: &[NetworkInterface], cfg: &Config) -> an
     Ok(())
 }
 
-fn print_firewall_status(status: FirewallStatus, cfg: &Config) -> anyhow::Result<()> {
+fn print_firewall_status(cfg: &Config) -> anyhow::Result<()> {
     print::header("firewall status", cfg.quiet);
+    let status = system::get_firewall_status()?;
     let status_str = match status {
         FirewallStatus::Active => "active".green().bold(),
         FirewallStatus::Inactive => "inactive".red().bold(),
@@ -129,9 +126,10 @@ fn print_firewall_status(status: FirewallStatus, cfg: &Config) -> anyhow::Result
     Ok(())
 }
 
-fn print_local_services(service_groups: Vec<IpServiceGroup>, cfg: &Config) -> anyhow::Result<()> {
+fn print_local_services(cfg: &Config) -> anyhow::Result<()> {
     print::header("local services", cfg.quiet);
 
+    let service_groups = system::get_local_services()?;
     for (idx, group) in service_groups.iter().enumerate() {
         let ip_addr = group.ip_addr;
         let tcp_services = &group.tcp_services;
