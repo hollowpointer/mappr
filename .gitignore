@@ -2,9 +2,6 @@
 /target/
 /**/*.rs.bk
 
-# Ignore makepkg working directories
-src/
-pkg/
 # Ignore downloaded source tarballs
 *.tar.gz
 # Ignore the compiled package files
@@ -28,3 +25,7 @@ coverage/
 # Env & secrets
 .env
 *.pem
+
+# Packaging
+packaging/aur/src/
+packaging/aur/pkg/
