@@ -1,114 +1,116 @@
-# zond 🗺️
+# Zond
 
-Easy to use network mapping and discovery tool.
+**Zond** is a lightweight, fast network mapping and discovery tool designed for Linux and macOS.
 
-<img width="1200" height="720" alt="zond" src="https://github.com/user-attachments/assets/05722b01-cf9f-4820-9fd0-7c53f22928ee" />
+<img width="1920" height="1080" alt="github" src="https://github.com/user-attachments/assets/60bd1b8d-a9c8-4fea-9339-85e31ba97504" />
+
+## Compatibility
+
+* **Supported Platforms:** Linux, macOS
+* **Unsupported:** Windows is not currently supported.
+
+## Installation
+
+### Arch Linux (AUR)
+
+Zond is available on the AUR. You can install it using an AUR helper like `yay`:
+
+```bash
+yay -S zond
+
+```
+
+### Building from Source
+
+For other Linux distributions and macOS, you must build the tool from source. Ensure you have the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.
+
+1. **Clone the repository:**
+```bash
+git clone https://github.com/hollowpointer/zond
+cd zond
+
+```
 
 
-## ⚠️ Requirements
+2. **Build the release executable:**
+```bash
+cargo build --release
 
-* **Operating System:** Currently, `zond` only works on **Linux** and **macOS**.
-* **Rust:** You must have the [Rust toolchain](https://www.rust-lang.org/tools/install) (including `cargo`) installed to build the tool.
+```
 
----
 
-## 🛠️ Building from Source
+3. **Locate the binary:**
+The compiled binary will be available in `target/release/zond`. You may move this to your `/usr/local/bin` or add it to your `$PATH`.
 
-At the moment, you must build `zond` manually.
+## :Usage
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/hollowpointer/zond
-    ```
+**Note on Privileges:** Network discovery operations utilizing raw sockets typically require root privileges. Most discovery commands should be prefixed with `sudo`.
 
-2.  **Navigate into the project directory:**
-    ```bash
-    cd zond
-    ```
+### 1. Network Discovery
 
-3.  **Build the release executable:**
-    ```bash
-    cargo build --release
-    ```
+The `discover` command (alias: `d`) scans targets for active hosts. It retrieves IP addresses (IPv4/IPv6), MAC addresses, vendors, and hostnames.
 
-4.  **Move to the target directory:**
-    The binary will be located in `target/release`.
-    ```bash
-    cd target/release
-    ```
-    
----
+**Syntax:**
 
-## 🚀 Usage
+```bash
+sudo zond discover <target> [flags]
 
-> **Heads-Up:** Network discovery operations (`discover`) typically require root privileges. You will likely need to prefix these commands with `sudo`.
+```
 
-### Core Commands
+**Examples:**
 
-Here's a quick overview of the main commands (much more will be added soon):
+* **Automatic LAN Scan:** Detects the local subnet and scans for active hosts.
+```bash
+sudo zond d lan
 
-| Command | Alias | Description |
-| :--- | :--- | :--- |
-| `zond discover <target>`| `zond d <target>` | Scans a specific, user-defined target or range (see below). |
-| `zond info` | `zond i` | Displays info about your local network interfaces. |
+```
 
----
 
-### Host Discovery
+* **Complex Ranges & Subnets:** Zond supports CIDR notation and mixed targets in a single command.
+```bash
+sudo zond d 1.1.1.1/28 1.1.1.128/26
 
-You can discover hosts in two main ways.
+```
 
-**1. Automatic LAN Scan**
 
-  * Automatically finds and scans your local network based on your computer's current IP address and subnet.
-  * **Command:**
-    ```bash
-    zond d lan
-    ```
+* **Range Shorthand:** Use hyphens to define ranges. If the end of the range is a partial octet, Zond automatically fills the preceding octets from the start address.
+```bash
+# Scans from 10.0.0.1 to 10.0.2.128
+sudo zond d 10.0.0.1-2.128
 
-**2. Specific Target Scan**
+```
 
-  * Manually define a specific target or range to scan. This is accepted in three flexible formats:
 
-      * **CIDR Notation:** Scans the entire subnet.
 
-        ```bash
-        zond d 10.0.0.0/24
-        ```
+### 2. System Information
 
-      * **Full IP Range:** Scans all IPs between the two addresses.
+The `info` command (alias: `i`) displays detailed configuration regarding the local machine. This includes:
 
-        ```bash
-        zond d 172.16.0.1-172.16.0.254
-        ```
+* Network Interfaces
+* Firewall Status
+* Local Services (Open ports/processes on TCP/UDP)
+* System Details (OS, Kernel, Hostname)
 
-      * **Partial Octet Range (Shorthand):** A convenient shortcut where `zond` fills in the blanks from the first IP.
+**Example:**
 
-        *Example 1 (Last octet):*
+```bash
+sudo zond i
 
-        ```bash
-        # Expands to 192.168.0.1-192.168.0.50
-        zond d 192.168.0.1-50
-        ```
+```
 
-        *Example 2 (Multiple octets):*
+## Options & Flags
 
-        ```bash
-        # Expands to 10.0.0.1-10.1.2.3
-        zond d 10.0.0.1-1.2.3
-        ```
+Zond provides several flags to customize output density, logging levels, and privacy settings.
 
----
+| Flag | Description |
+| --- | --- |
+| `-n`, `--no-dns` | Disables sending of DNS packets. |
+| `--no-banner` | Keep logs and colors but hide the ASCII art. |
+| `-q`, `--quiet` | Reduce UI visual density. Use `-q` to reduce styling or `-qq` for raw IP output. |
+| `--redact` | Redact sensitive info (IPv6 suffixes, MAC addresses, etc.). |
+| `-v`, `--verbose` | Increase logging detail. Use `-v` for debug logs or `-vv` for full packet logs. |
+| `-h`, `--help` | Print help. |
 
-### Show Info
+## License
 
-Displays information about your network configuration.
-
-* **Command:**
-    ```bash
-    zond info
-    ```
-* **Short alias:**
-    ```bash
-    zond i
-    ```
+MIT
